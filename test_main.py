@@ -87,7 +87,7 @@ class TestTerm(TestCase):
         term = Term('3p5.(2P*<1/2>).5g', '2[9/2]*', '5')  # from NIST examples
         self.assertEqual(term.get_quantum_nums(), (1, 0.5, 4, 0.5, 0.5, None, None, None, 4.5))
         term = Term('4f2.(3H<4>).5g', '2[3]', '5/2')  # from NIST examples
-        self.assertEqual(term.get_quantum_nums(), (5, 1.5, 4, 0.5, 1.5, None, None, None, 3.0))
+        self.assertEqual(term.get_quantum_nums(), (5, 1.0, 4, 0.5, 4.0, None, None, None, 3.0))
         term = Term('4f13.(2F*<7/2>).5d2.(1D)', '1[7/2]*', '7/2')  # from NIST examples
         self.assertEqual(term.get_quantum_nums(), (3, 0.5, 2, 0.0, 3.5, None, None, None, 3.5))
         term = Term('4f13.(2F*<5/2>).5d.6s.(3D)', '3[9/2]*', '11/2')  # from NIST examples

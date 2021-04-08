@@ -122,87 +122,53 @@ class Term:
         return lc, sc, lo, so, jc, jo, l, s, k
 
     def parse_LS_term(self):
-        s = (int(re.search(r'^\d*', self.term).group()) - 1) / 2
-        l = self.let_to_l(re.search(r'[A-Z]', self.term).group())
+        [(ss, ls)] = re.findall(r'(\d+)([A-Z])', self.term)
+        s = (float(ss) - 1)/2
+        l = self.let_to_l(ls)
         return l, s
 
     def parse_JK_term(self):
-        inner_terms = re.findall(r'\d[A-Z]', self.conf)
-        if len(inner_terms) == 2:
-            term_inner, term_outer = inner_terms
-            lc = self.let_to_l(term_inner[1])
-            sc = (int(term_inner[0]) - 1) / 2
-            lo = self.let_to_l(term_outer[1])
-            so = (int(term_outer[0]) - 1) / 2
-        elif len(inner_terms) == 1:
-            term_inner = inner_terms[0]
-            lc = self.let_to_l(term_inner[1])
-            sc = (int(term_inner[0]) - 1) / 2
-            lo = self.let_to_l(self.conf[-1])
-            so = 0
+        relevant_parts = re.findall(r'(?:(?:(\d+)([A-Z]))\*?(?:<(.+?)>)?)', self.conf)
+        if len(relevant_parts) == 2:
+            [(scs, lcs, jcs), (_, los, _)] = relevant_parts
         else:
-            lc = sc = lo = so = None
+            [(scs, lcs, jcs)] = relevant_parts
+            los = self.conf[-1]
+        [(sos, ks)] = re.findall(r'(\d+)\[(.+?)]', self.term)
 
-        k = re.search(r'\[(.*?)]', self.term).group()
-        jc = re.search(r'<(.*?)>', self.conf).group()
-        k = self.frac_to_float(k.strip('[]'))
-        jc = self.frac_to_float(jc.strip('<>'))
+        jc = self.frac_to_float(jcs)
+        k = self.frac_to_float(ks)
+        sc = (float(scs) - 1)/2
+        so = (float(sos) - 1)/2
+        lc = self.let_to_l(lcs)
+        lo = self.let_to_l(los)
+
         return lc, sc, lo, so, jc, k
 
     def parse_JJ_term(self):
-        # find the following forms: 3D<2>, 7p<3/2>, (8,5/2)*<21/2>
-        relevant_parts = re.findall(r'(((\d+[A-Za-z])|(\(.*?\)))\*?<(.*?)>)', self.conf)
+        # find the following forms: 3D<2>, 7p<3/2>, (8,5/2)*<21/2>, and extract the relevant substrings
+        relevant_parts = re.findall(r'(?:(?:(\d+)([A-Za-z]))|(?:\(.+?\)))\*?<(.+?)>', self.conf)
         if len(relevant_parts) == 0:  # sometimes the ancestor terms are in the term, not in the config
-            relevant_parts = re.findall(r'(((\d+[A-Za-z])|(\(.*?\)))\*?<(.*?)>)', self.term)
-        print(self.conf, self.term, relevant_parts)
-        jc = re.findall(r'<(.*?)>', relevant_parts[0])[0]
-        lc = self.let_to_l(re.search(r'[A-Z]', relevant_parts[0]).group(0))
-        sc = (int(re.search(r'\d+', relevant_parts[0]).group(0)) - 1)/2
-        jo = re.findall(r'<(.*?)>', relevant_parts[1])[0]
-        lo = self.let_to_l(re.search(r'[A-Z]', relevant_parts[1]).group(0))
-        so = (int(re.search(r'\d+', relevant_parts[1]).group(0)) - 1) / 2
+            relevant_parts = re.findall(r'(?:(?:(\d+)([A-Za-z]))|(?:\(.+?\)))\*?<(.+?)>', self.term)
+        [(scs, lcs, jcs), (sos, los, jos)] = relevant_parts
 
-        '((?:(\d+)([A-Za-z]))|(?:\(.*?\)))\*?<(.*?)>'
+        jc = self.frac_to_float(jcs)
+        jo = self.frac_to_float(jos)
+        lc = self.let_to_l(lcs)
+        lo = self.let_to_l(los)
+        if lcs.isupper(): sc = (float(scs) - 1)/2
+        elif lcs.islower(): sc = 0.0
+        else: sc = None
+        if los.isupper(): so = (float(sos) - 1)/2
+        elif los.islower(): so = 0.0
+        else: so = None
 
-        """4f12.(3H<6>).5d.(2D).6s.6p.(3P*).(4F*<3/2>)  (6, 3/2)*
-3d9.(2D<5/2>).4p<3/2>  (5/2, 3/2)*
-5f4<7/2>.5f5<5/2>.(8,5/2)*<21/2>.7p<3/2>  (21/2, 3/2)
-5f3<7/2>.5f3<5/2>.(9/2, 9/2)<9>.7s.7p.(3P*<2>)  (9,2)*
-
-HOLY SHIT CAPTURE GROUPS ARE AMAZING"""
-        # js = re.findall(r'<(.*?)>', self.conf)
-        # if len(js) >= 2:
-        #     js = re.findall(r'(\d+/?\d*)', self.term)
-        #     inner_terms = re.findall(r'\d[A-Z]', self.conf)[-2:]
-        # else:
-        #     js = re.findall(r'<(.*?)>', self.term)
-        #     inner_terms = re.findall(r'\d[A-Z]', self.term)
-        #
-        # if len(inner_terms) == 2:
-        #     term_inner, term_outer = inner_terms
-        #     lc = self.let_to_l(term_inner[1])
-        #     sc = (int(term_inner[0]) - 1) / 2
-        #     lo = self.let_to_l(term_outer[1])
-        #     so = (int(term_outer[0]) - 1) / 2
-        # elif len(inner_terms) == 1:
-        #     term_inner = inner_terms[0]
-        #     lc = self.let_to_l(term_inner[1])
-        #     sc = (int(term_inner[0]) - 1) / 2
-        #     if self.conf[-1] == ')':
-        #         lo = re.findall(r'\d[A-Z]', self.conf)[-1][0]
-        #     else:
-        #         lo = self.let_to_l(re.sub(r'<(.*?)>', '', self.conf)[-1])
-        #     so = 0
-        # else:
-        #     lc = sc = lo = so = None
-        #
-        # jc, jo = js
-        jc = self.frac_to_float(jc.strip('<>'))
-        jo = self.frac_to_float(jo.strip('<>'))
         return lc, sc, lo, so, jc, jo
 
     @staticmethod
     def let_to_l(let):
+        if let == '':
+            return None
         return 'SPDFGHIKLMNOQRTUVWXYZ'.index(let.upper())
 
     @staticmethod
@@ -217,7 +183,7 @@ HOLY SHIT CAPTURE GROUPS ARE AMAZING"""
                 return float(f1) / float(f2)
             else:
                 return float(frac)
-        if frac is None:
+        if frac is None or '':
             return None
         return frac
 
@@ -231,7 +197,7 @@ HOLY SHIT CAPTURE GROUPS ARE AMAZING"""
                 f = float(f)
             except TypeError:
                 raise ValueError("Please input either a float or a fraction-formatted string")
-        if f is None:
+        if f is None or '':
             return None
         if (2 * f) % 2 == 0:
             return str(int(f))
