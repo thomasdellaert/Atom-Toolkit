@@ -18,6 +18,7 @@ c.add_transformation('[frequency]', '[wavenumber]',
                      lambda ureg, x: x / ureg.speed_of_light)
 ureg.enable_contexts('spectroscopy')
 
+
 def load_NIST_data(species, term_ordered=True):
     df = pd.read_csv(
         'https://physics.nist.gov/cgi-bin/ASD/energy1.pl?de=0' +
@@ -68,8 +69,6 @@ class Term:
         self.conf = conf
         self.term = term
         self.parity = (1 if '*' in self.term else 0)
-        #         if '/' not in term:
-        #             self.term  += self.float_to_frac(J)
 
         self.J_frac = self.float_to_frac(J)
         self.F_frac = self.float_to_frac(F)
@@ -268,7 +267,8 @@ class EnergyLevel:
         if J <= 0.5 or I <= 0.5:
             FE2 = 0
         else:
-            FE2 = (3 * IdotJ ** 2 + 1.5 * IdotJ - I * (I + 1) * J * (J + 1)) / (2.0 * I * (2.0 * I - 1.0) * J * (2.0 * J - 1.0))
+            FE2 = (3 * IdotJ ** 2 + 1.5 * IdotJ - I * (I + 1) * J * (J + 1)) / \
+                  (2.0 * I * (2.0 * I - 1.0) * J * (2.0 * J - 1.0))
 
         if J <= 1 or I <= 1:
             FM3 = 0
