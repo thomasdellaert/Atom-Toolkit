@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 import pint
 import pint_pandas
-import json
+# import json
 import re
 
 ureg = pint.UnitRegistry()
@@ -105,20 +105,15 @@ class Term:
             return "unknown"
 
     def get_quantum_nums(self):
+        lc = sc = lo = so = jc = jo = l = s = k = None
         if self.coupling == 'LS':
             l, s = self.parse_LS_term()
-            lc = sc = lo = so = jc = jo = k = None
         elif self.coupling == 'JK':
             lc, sc, lo, so, jc, k = self.parse_JK_term()
-            l = s = jo = None
         elif self.coupling == 'JJ':
             lc, sc, lo, so, jc, jo = self.parse_JJ_term()
-            l = s = k = None
         elif self.coupling == 'LK':
-            lc = sc = lo = so = jc = jo = l = s = k = None
-            pass  # TODO: add LK term parsing
-        else:
-            lc = sc = lo = so = jc = jo = l = s = k = None
+            lc, sc, lo, so, l, k = self.parse_LK_term()
         return lc, sc, lo, so, jc, jo, l, s, k
 
     def parse_LS_term(self):
@@ -165,9 +160,27 @@ class Term:
 
         return lc, sc, lo, so, jc, jo
 
+    def parse_LK_term(self):
+        relevant_parts = re.findall(r'\((\d+)([A-Z])\*?\)', self.conf)
+        if len(relevant_parts) == 2:
+            [(scs, lcs), (_, los)] = relevant_parts
+        else:
+            [(scs, lcs)] = relevant_parts
+            los = self.conf[-1]
+        [(ls, sos, ks)] = re.findall(r'([A-Z])\*? ?(\d+)\[(.+?)]', self.term)
+
+        k = self.frac_to_float(ks)
+        sc = (float(scs) - 1) / 2
+        so = (float(sos) - 1) / 2
+        l = self.let_to_l(ls)
+        lc = self.let_to_l(lcs)
+        lo = self.let_to_l(los)
+
+        return lc, sc, lo, so, l, k
+
     @staticmethod
     def let_to_l(let):
-        if let == '':
+        if let == '' or len(let) > 1:
             return None
         return 'SPDFGHIKLMNOQRTUVWXYZ'.index(let.upper())
 
@@ -177,18 +190,20 @@ class Term:
 
     @staticmethod
     def frac_to_float(frac):
+        if frac is None or '':
+            return None
         if type(frac) == str:
             if '/' in frac:
                 (f1, f2) = frac.split('/')
                 return float(f1) / float(f2)
             else:
                 return float(frac)
-        if frac is None or '':
-            return None
         return frac
 
     @staticmethod
     def float_to_frac(f):
+        if f is None:
+            return None
         # Assumes n/2, since all the fractions that appear in term symbols are of that form
         if type(f) == str:
             if '/' in f:
@@ -197,8 +212,6 @@ class Term:
                 f = float(f)
             except TypeError:
                 raise ValueError("Please input either a float or a fraction-formatted string")
-        if f is None or '':
-            return None
         if (2 * f) % 2 == 0:
             return str(int(f))
         else:

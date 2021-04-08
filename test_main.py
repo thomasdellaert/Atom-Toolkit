@@ -1,6 +1,5 @@
 from unittest import TestCase
 from main import Term
-import re
 
 
 class TestTerm(TestCase):
@@ -38,8 +37,6 @@ class TestTerm(TestCase):
         term = Term('3s2.3p.(2P*).4f', 'G 2[7/2]', '3')  # from NIST examples
         self.assertEqual(term.get_coupling(), 'LK')
         term = Term('3d7.(4P).4s.4p.(3P*)', 'D* 3[5/2]*', '7/2')
-        self.assertEqual(term.get_coupling(), 'LK')
-        term = Term('3s<2>.3p.(2P*).4f', 'G 2[7/2]', '3')
         self.assertEqual(term.get_coupling(), 'LK')
         # term = Term('3s<2>.3p.(2P*).4f', '5 2[7/2]', '3')
         # self.assertEqual(term.get_coupling(), 'LK')
@@ -93,3 +90,7 @@ class TestTerm(TestCase):
         term = Term('4f13.(2F*<5/2>).5d.6s.(3D)', '3[9/2]*', '11/2')  # from NIST examples
         self.assertEqual(term.get_quantum_nums(), (3, 0.5, 2, 1.0, 2.5, None, None, None, 4.5))
         # LK terms
+        term = Term('3s2.3p.(2P*).4f', 'G 2[7/2]', '3')  # from NIST examples
+        self.assertEqual(term.get_quantum_nums(), (1, 0.5, 3, 0.5, None, None, 4, None, 3.5))
+        term = Term('3d7.(4P).4s.4p.(3P*)', 'D* 3[5/2]*', '7/2')
+        self.assertEqual(term.get_quantum_nums(), (1, 1.5, 1, 1.0, None, None, 2, None, 2.5))
