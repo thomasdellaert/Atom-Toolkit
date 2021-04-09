@@ -69,7 +69,7 @@ def load_NIST_data(species, term_ordered=True):
 
 
 class Term:
-    def __init__(self, conf, term, J, F=None, mF=None, perc=100.0):
+    def __init__(self, conf: str, term: str, J: float or str, F: float or str=None, mF: float or str=None, perc=100.0):
 
         self.conf = conf
         self.term = term
@@ -122,18 +122,21 @@ class Term:
         return lc, sc, lo, so, jc, jo, l, s, k
 
     def parse_LS_term(self):
+        # find the following forms: 2F, 3P*, and extract the relevant substrings
         [(ss, ls)] = re.findall(r'(\d+)([A-Z])', self.term)
         s = (float(ss) - 1)/2
         l = self.let_to_l(ls)
         return l, s
 
     def parse_JK_term(self):
+        # find the following forms: 3D<2>, and extract the relevant substrings
         relevant_parts = re.findall(r'(?:(?:(\d+)([A-Z]))\*?(?:<(.+?)>)?)', self.conf)
         if len(relevant_parts) == 2:
             [(scs, lcs, jcs), (_, los, _)] = relevant_parts
         else:
             [(scs, lcs, jcs)] = relevant_parts
             los = self.conf[-1]
+        # find the following forms: 2[3/2], 3[4]*, and extract the relevant substrings
         [(sos, ks)] = re.findall(r'(\d+)\[(.+?)]', self.term)
 
         jc = self.frac_to_float(jcs)
@@ -166,12 +169,14 @@ class Term:
         return lc, sc, lo, so, jc, jo
 
     def parse_LK_term(self):
+        # find the following forms: 3D, and extract the relevant substrings
         relevant_parts = re.findall(r'\((\d+)([A-Z])\*?\)', self.conf)
         if len(relevant_parts) == 2:
             [(scs, lcs), (_, los)] = relevant_parts
         else:
             [(scs, lcs)] = relevant_parts
             los = self.conf[-1]
+        # find the following forms: D 2[3/2], P* 3[4]*, and extract the relevant substrings
         [(ls, sos, ks)] = re.findall(r'([A-Z])\*? ?(\d+)\[(.+?)]', self.term)
 
         k = self.frac_to_float(ks)
@@ -184,17 +189,17 @@ class Term:
         return lc, sc, lo, so, l, k
 
     @staticmethod
-    def let_to_l(let):
+    def let_to_l(let: str) -> int or None:
         if let == '' or len(let) > 1:
             return None
         return 'SPDFGHIKLMNOQRTUVWXYZ'.index(let.upper())
 
     @staticmethod
-    def l_to_let(l):
+    def l_to_let(l: int) -> str:
         return 'SPDFGHIKLMNOQRTUVWXYZ'[l]
 
     @staticmethod
-    def frac_to_float(frac):
+    def frac_to_float(frac: float or str) -> float or None:
         if frac is None or '':
             return None
         if type(frac) == str:
@@ -202,11 +207,14 @@ class Term:
                 (f1, f2) = frac.split('/')
                 return float(f1) / float(f2)
             else:
-                return float(frac)
+                try:
+                    return float(frac)
+                except TypeError:
+                    raise ValueError("Please input a fraction-formatted string or a float")
         return frac
 
     @staticmethod
-    def float_to_frac(f):
+    def float_to_frac(f: float or str) -> str or None:
         if f is None:
             return None
         # Assumes n/2, since all the fractions that appear in term symbols are of that form
@@ -224,7 +232,7 @@ class Term:
 
 
 class EnergyLevel:
-    def __init__(self, term, level, lande=None, parent=None, atom=None,
+    def __init__(self, term: Term, level: pint.Quantity, lande:float=None, parent=None, atom=None,
                  depth='f', hfA=0.0, hfB=0.0, hfC=0.0):
         self.term = term
         self.level = level.to('Hz')
@@ -325,7 +333,7 @@ class EnergyLevel:
 
 
 class Atom:
-    def __init__(self, name, I=0.0, levels=None):
+    def __init__(self, name: str, I=0.0, levels=None):
         self.name = name
         self.I = Term.frac_to_float(I)
         self._levels = {}
