@@ -35,39 +35,45 @@ def load_NIST_data(species, term_ordered=True):
         '&unc_out=0' +
         '&j_out=on' +
         '&lande_out=on' +
-        '&perc_out=0' +
+        '&perc_out=on' +
         '&biblio=0' +
         '&temp=',
         index_col=False)
-    # strip the data of extraneous symbols
+    # === strip the data of extraneous symbols ===
     df_clean = df.applymap(lambda x: x.strip(' ="?'))
-    # coerce types
+    # === coerce types ===
     df_clean['Configuration'] = df_clean['Configuration'].astype('str')
     df_clean['Term'] = df_clean['Term'].astype('str')
     df_clean['Term'] = df_clean['Term'].apply(lambda x: re.sub(r'[a-z] ', '', x))
     df_clean['J'] = df_clean['J'].astype('str')
     df_clean['Level (cm-1)'] = pd.to_numeric(df_clean['Level (cm-1)'], errors='coerce')
+    #    keep only the initial number of the leading percentage for now, replacing NaN with 100% I guess
+    df_clean['Leading percentages'] = df_clean['Leading percentages'].apply(lambda x: re.sub(r' ?:.*', '', x))
+    df_clean['Leading percentages'] = pd.to_numeric(df_clean['Leading percentages'], errors='coerce')
+    df_clean['Leading percentages'] = df_clean['Leading percentages'].fillna(value=100.0)
     if 'Lande' not in df_clean.columns:
         df_clean['Lande'] = None
     df_clean['Lande'] = pd.to_numeric(df_clean['Lande'], errors='coerce')
-
     # drop rows that don't have a defined level
     df_clean = df_clean.dropna(subset=['Level (cm-1)'])
-    # convert levels to a pint Quantity
+    # convert levels to pint Quantities
     df_clean['Level (cm-1)'] = df_clean['Level (cm-1)'].astype('pint[cm**-1]')
     df_clean['Level (Hz)'] = df_clean['Level (cm-1)'].pint.to('Hz')
 
-    df_clean = df_clean[df_clean.J.str.contains("---") == False]
-    df_clean = df_clean[df_clean.J.str.contains(",") == False]
+    df_clean = df_clean[df_clean.J.str.contains("---") == False] #  happens at ionization thresholds
+    df_clean = df_clean[df_clean.J.str.contains(",") == False] #  happens when J is unknown
+    # reset the indices, since we may have dropped some rows
+    df_clean.reset_index(drop=True, inplace=True)
 
     return df_clean
 
 
 class Term:
-    def __init__(self, conf, term, J, F=None, mF=None):
+    def __init__(self, conf, term, J, F=None, mF=None, perc=100.0):
 
         self.conf = conf
         self.term = term
+        self.perc = perc
         self.parity = (1 if '*' in self.term else 0)
 
         self.J_frac = self.float_to_frac(J)
@@ -366,15 +372,17 @@ class Atom:
 
 if __name__ == '__main__':
     def energylevel_from_df(df, i):
-        t = Term(df["Configuration"][i], df["Term"][i], df["J"][i])
+        t = Term(df["Configuration"][i], df["Term"][i], df["J"][i], perc=df["Leading percentages"])
         e = EnergyLevel(t, df["Level (cm-1)"][i], lande=df["Lande"][i], hfA=0.1 * ureg('megahertz'))
         return e
 
     species = "Yb II"
+    I = 0.5
+    num_levels = 30
     df = load_NIST_data(species)
 
-    a = Atom('171Yb', I=0.5)
-    for i in range(30):
+    a = Atom(species, I=I)
+    for i in range(num_levels):
         try:
             e = energylevel_from_df(df, i)
             a.append(e)
