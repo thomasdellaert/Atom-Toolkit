@@ -5,6 +5,8 @@ import pint_pandas
 # import json
 import re
 
+from typing import List
+
 ureg = pint.UnitRegistry()
 pint.set_application_registry(ureg)
 pint_pandas.PintType.ureg = ureg
@@ -60,8 +62,8 @@ def load_NIST_data(species, term_ordered=True):
     df_clean['Level (cm-1)'] = df_clean['Level (cm-1)'].astype('pint[cm**-1]')
     df_clean['Level (Hz)'] = df_clean['Level (cm-1)'].pint.to('Hz')
 
-    df_clean = df_clean[df_clean.J.str.contains("---") == False] #  happens at ionization thresholds
-    df_clean = df_clean[df_clean.J.str.contains(",") == False] #  happens when J is unknown
+    df_clean = df_clean[df_clean.J.str.contains("---") == False]  # happens at ionization thresholds
+    df_clean = df_clean[df_clean.J.str.contains(",") == False]  # happens when J is unknown
     # reset the indices, since we may have dropped some rows
     df_clean.reset_index(drop=True, inplace=True)
 
@@ -69,11 +71,14 @@ def load_NIST_data(species, term_ordered=True):
 
 
 class Term:
-    def __init__(self, conf: str, term: str, J: float or str, F: float or str=None, mF: float or str=None, perc=100.0):
+    def __init__(self,
+                 conf: str, term: str, J: float or str,
+                 F: float or str = None, mF: float or str = None,
+                 percentage=100.0):
 
         self.conf = conf
         self.term = term
-        self.perc = perc
+        self.percentage = percentage
         self.parity = (1 if '*' in self.term else 0)
 
         self.J_frac = self.float_to_frac(J)
@@ -130,7 +135,7 @@ class Term:
 
     def parse_JK_term(self):
         # find the following forms: 3D<2>, and extract the relevant substrings
-        relevant_parts = re.findall(r'(?:(?:(\d+)([A-Z]))\*?(?:<(.+?)>)?)', self.conf)
+        relevant_parts = re.findall(r'(\d+)([A-Z])\*?(?:<(.+?)>)?', self.conf)
         if len(relevant_parts) == 2:
             [(scs, lcs, jcs), (_, los, _)] = relevant_parts
         else:
@@ -150,21 +155,27 @@ class Term:
 
     def parse_JJ_term(self):
         # find the following forms: 3D<2>, 7p<3/2>, (8,5/2)*<21/2>, and extract the relevant substrings
-        relevant_parts = re.findall(r'(?:(?:(\d+)([A-Za-z]))|(?:\(.+?\)))\*?<(.+?)>', self.conf)
+        relevant_parts = re.findall(r'(?:(\d+)([A-Za-z])|\(.+?\))\*?<(.+?)>', self.conf)
         if len(relevant_parts) == 0:  # sometimes the ancestor terms are in the term, not in the config
-            relevant_parts = re.findall(r'(?:(?:(\d+)([A-Za-z]))|(?:\(.+?\)))\*?<(.+?)>', self.term)
+            relevant_parts = re.findall(r'(?:(\d+)([A-Za-z])|\(.+?\))\*?<(.+?)>', self.term)
         [(scs, lcs, jcs), (sos, los, jos)] = relevant_parts
 
         jc = self.frac_to_float(jcs)
         jo = self.frac_to_float(jos)
         lc = self.let_to_l(lcs)
         lo = self.let_to_l(los)
-        if lcs.isupper(): sc = (float(scs) - 1)/2
-        elif lcs.islower(): sc = 0.0
-        else: sc = None
-        if los.isupper(): so = (float(sos) - 1)/2
-        elif los.islower(): so = 0.0
-        else: so = None
+        if lcs.isupper():
+            sc = (float(scs) - 1)/2
+        elif lcs.islower():
+            sc = 0.0
+        else:
+            sc = None
+        if los.isupper():
+            so = (float(sos) - 1)/2
+        elif los.islower():
+            so = 0.0
+        else:
+            so = None
 
         return lc, sc, lo, so, jc, jo
 
@@ -234,7 +245,7 @@ class Term:
 
 
 class EnergyLevel:
-    def __init__(self, term: Term, level: pint.Quantity, lande:float=None, parent=None, atom=None,
+    def __init__(self, term: Term, level: pint.Quantity, lande: float = None, parent=None, atom=None,
                  depth='f', hfA=0.0, hfB=0.0, hfC=0.0):
         self.term = term
         self.level = level.to('Hz')
@@ -271,6 +282,10 @@ class EnergyLevel:
                     self[f'mF={mf}'] = e
         else:
             pass
+
+    # TODO: Since energy levels have sublevels, level needs to be an @property with getters and setters that update the
+    #   sub- and super-levels. In addition, add a self.level_constrained property for handling situations where two
+    #   transitions try to set the level
 
     def compute_hf_shift(self, F):
         J = self.term.J
@@ -334,8 +349,111 @@ class EnergyLevel:
         return self._sublevels.keys()
 
 
+class Transition:
+    def __init__(self, E1: EnergyLevel, E2: EnergyLevel, freq=None, A: float = None,
+                 name=None, update_mode='upper', atom=None):
+        self.E_1 = E1
+        self.E_2 = E2
+        self.A = A
+        if self.E_2.level > self.E_1.level:
+            self.E_upper = self.E_2
+            self.E_lower = self.E_1
+        else:
+            self.E_upper = self.E_1
+            self.E_lower = self.E_2
+        self.name = name
+        if self.name is None:
+            self.name = f'{self.E_1.name} -> {self.E_2.name}'
+        self.atom = atom
+        self.freq = abs(self.E_1.level - self.E_2.level)
+        self.wl = self.freq.to('nm')
+        if freq is not None:
+            if update_mode == 'upper':
+                self.E_upper.level = self.E_lower.level + freq.to('Hz')
+            elif update_mode == 'lower':
+                self.E_lower.level = self.E_upper.level - freq.to('Hz')
+            elif update_mode == 'ignore':
+                pass
+            else:
+                raise ValueError('Accepted arguments to update_mode are "upper", "lower", and "ignore"')
+    # TODO: Add appropriate methods. Things like getting the transition type (via clebsch-gordan math), perhaps
+    #  determining color, and computing the transition strength / linewidth given the A coefficient
+
+
+class Atom:
+    def __init__(self, name: str, I: float = 0.0,
+                 levels: List[EnergyLevel] = None, transitions: List[Transition] = None):
+        self.name = name
+        self.I = Term.frac_to_float(I)
+        self.levels = _LevelDict(self)
+        self.transitions = _TransitionDict(self)
+        if levels is not None:
+            for level in levels:
+                self.levels.append(level)
+        if transitions is not None:
+            for transition in transitions:
+                self.transitions.append(transition)
+
+    def __str__(self):
+        return f'{self.name} I={Term.float_to_frac(self.I)}'
+
+    def __repr__(self):
+        return f"Atom({self.name}, I={self.I}, levels={self.levels})"
+
+    def to_JSON(self):
+        # TODO: self.to_JSON
+        pass
+
+    @classmethod
+    def from_JSON(cls):
+        # TODO: cls.from_JSON
+        pass
+
+    def to_pickle(self):
+        # TODO: self.to_pickle
+        pass
+
+    @classmethod
+    def from_pickle(cls):
+        # TODO: cls.from_pickle
+        pass
+
+    # TODO: possibly a provision for B-fields? This would have to propagate down the whole tree, annoyingly
+
+class _TransitionDict:
+    def __init__(self, atom: Atom):
+        self._transitions = {}
+        self.atom = atom
+
+    def __len__(self):
+        return len(self._transitions)
+
+    def __getitem__(self, key):
+        return self._transitions[key]
+
+    def __setitem__(self, key, transition):
+        transition.atom = self
+        self._transitions[key] = transition
+
+    def __delitem__(self, key):
+        del self._transitions[key]
+
+    def __iter__(self):
+        return iter(self._transitions)
+
+    def append(self, transition):
+        transition.atom = self.atom
+        self._transitions[transition.name] = transition
+
+    def values(self):
+        return self._transitions.values()
+
+    def keys(self):
+        return self._transitions.keys()
+
+
 class _LevelDict:
-    def __init__(self, atom):
+    def __init__(self, atom: Atom):
         self._levels = {}
         self.atom = atom
 
@@ -370,25 +488,9 @@ class _LevelDict:
         return self._levels.keys()
 
 
-class Atom:
-    def __init__(self, name: str, I=0.0, levels=None):
-        self.name = name
-        self.I = Term.frac_to_float(I)
-        self.levels = _LevelDict(self)
-        if levels is not None:
-            for level in levels:
-                self.levels.append(level)
-
-    def __str__(self):
-        return f'{self.name} I={Term.float_to_frac(self.I)}'
-
-    def __repr__(self):
-        return f"Atom({self.name}, I={self.I}, levels={self.levels})"
-
-
 if __name__ == '__main__':
-    def energylevel_from_df(df, i):
-        t = Term(df["Configuration"][i], df["Term"][i], df["J"][i], perc=df["Leading percentages"])
+    def energy_level_from_df(df, i):
+        t = Term(df["Configuration"][i], df["Term"][i], df["J"][i], percentage=df["Leading percentages"])
         e = EnergyLevel(t, df["Level (cm-1)"][i], lande=df["Lande"][i], hfA=0.1 * ureg('megahertz'))
         return e
 
@@ -400,7 +502,7 @@ if __name__ == '__main__':
     a = Atom(species, I=I)
     for i in range(num_levels):
         try:
-            e = energylevel_from_df(df, i)
+            e = energy_level_from_df(df, i)
             a.levels.append(e)
         except KeyError:
             pass
