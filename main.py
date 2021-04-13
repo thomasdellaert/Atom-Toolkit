@@ -350,7 +350,7 @@ class EnergyLevel:
 
 
 class Transition:
-    def __init__(self, E1: EnergyLevel, E2: EnergyLevel, freq=None, A: float = None,
+    def __init__(self, E1: EnergyLevel, E2: EnergyLevel, freq=None, A: pint.Quantity = None,
                  name=None, update_mode='upper', atom=None):
         self.E_1 = E1
         self.E_2 = E2
