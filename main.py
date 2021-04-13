@@ -190,8 +190,10 @@ class Term:
 
     @staticmethod
     def let_to_l(let: str) -> int or None:
-        if let == '' or len(let) > 1:
+        if let == '':
             return None
+        if len(let) > 1:
+            raise ValueError('Argument must be a single character in "SPDFGHIKLMNOQRTUVWXYZ" or an empty string')
         return 'SPDFGHIKLMNOQRTUVWXYZ'.index(let.upper())
 
     @staticmethod
@@ -332,14 +334,10 @@ class EnergyLevel:
         return self._sublevels.keys()
 
 
-class Atom:
-    def __init__(self, name: str, I=0.0, levels=None):
-        self.name = name
-        self.I = Term.frac_to_float(I)
+class _LevelDict:
+    def __init__(self, atom):
         self._levels = {}
-        if levels is not None:
-            for level in levels:
-                self.append(level)
+        self.atom = atom
 
     def __len__(self):
         return len(self._levels)
@@ -359,15 +357,9 @@ class Atom:
     def __iter__(self):
         return iter(self._levels)
 
-    def __str__(self):
-        return f'{self.name} I={Term.float_to_frac(self.I)}'
-
-    def __repr__(self):
-        return f"Atom({self.name}, I={self.I}, levels={self._levels})"
-
     def append(self, level):
-        level.parent = self
-        level.atom = self
+        level.parent = self.atom
+        level.atom = self.atom
         level.populate_sublevels()
         self._levels[level.name] = level
 
@@ -376,6 +368,22 @@ class Atom:
 
     def keys(self):
         return self._levels.keys()
+
+
+class Atom:
+    def __init__(self, name: str, I=0.0, levels=None):
+        self.name = name
+        self.I = Term.frac_to_float(I)
+        self.levels = _LevelDict(self)
+        if levels is not None:
+            for level in levels:
+                self.levels.append(level)
+
+    def __str__(self):
+        return f'{self.name} I={Term.float_to_frac(self.I)}'
+
+    def __repr__(self):
+        return f"Atom({self.name}, I={self.I}, levels={self.levels})"
 
 
 if __name__ == '__main__':
@@ -393,11 +401,11 @@ if __name__ == '__main__':
     for i in range(num_levels):
         try:
             e = energylevel_from_df(df, i)
-            a.append(e)
+            a.levels.append(e)
         except KeyError:
             pass
 
-    for l in list(a.values()):
+    for l in list(a.levels.values()):
         print('MAIN:', l.name, l.level.to('THz'))
         for s in list(l.values()):
             print('    SUB:', s.term.term_name, s.level.to('THz'))
