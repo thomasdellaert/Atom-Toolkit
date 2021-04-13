@@ -248,11 +248,11 @@ class Term:
 class EnergyLevel:
     def __init__(self, term: Term, level: pint.Quantity, lande: float = None, parent=None, atom=None,
                  hfA=0.0, hfB=0.0, hfC=0.0):
-        self.term = term
-        self._level = None
-        self.level = level.to('Hz')
         self.parent = parent
         self.atom = atom
+        self.term = term
+        self._level = level.to('Hz')
+        self.shift = self._level
         self.name = self.term.name
         self.hfA, self.hfB, self.hfC = hfA, hfB, hfC
         self.level_constrained = False
@@ -268,9 +268,9 @@ class EnergyLevel:
             for f in np.arange(abs(self.term.J - self.parent.I), self.term.J + self.parent.I + 1):
                 t = Term(self.term.conf, self.term.term, self.term.J, F=f)
                 shift = self.compute_hf_shift(f)
-                e = EnergyLevel(t, self.level + shift, lande=self.lande,
-                                parent=self, atom=self.atom,
-                                hfA=self.hfA, hfB=self.hfB, hfC=self.hfC)
+                e = HFLevel(t, self.level + shift, lande=self.lande,
+                            parent=self, atom=self.atom,
+                            hfA=self.hfA, hfB=self.hfB, hfC=self.hfC)
                 self[f'F={f}'] = e
 
     @property
@@ -279,14 +279,7 @@ class EnergyLevel:
 
     @level.setter
     def level(self, value):
-        try:
-            shift = value - self.level
-        except pint.errors.DimensionalityError:
-            self._level = value
-            return
         self._level = value
-        for sublevel in list(self.values()):
-            sublevel.level += shift
 
     def compute_hf_shift(self, F):
         J = self.term.J
@@ -351,31 +344,25 @@ class HFLevel(EnergyLevel):
                  hfA=0.0, hfB=0.0, hfC=0.0):
         super(HFLevel, self).__init__(term, level, lande, parent, atom, hfA, hfB, hfC)
         self.gF = self.compute_gF()
+        self.shift = self._level - self.parent.level
 
     def populate_sublevels(self):
         if isinstance(self.parent, EnergyLevel):
             for mf in np.arange(-self.term.F, self.term.F + 1):
                 t = Term(self.term.conf, self.term.term, self.term.J, F=self.term.F, mF=mf)
-                e = EnergyLevel(t, self.level, lande=self.lande,
-                                parent=self, atom=self.atom,
-                                hfA=self.hfA, hfB=self.hfB, hfC=self.hfC)
+                e = ZLevel(t, self.level, lande=self.lande,
+                           parent=self, atom=self.atom,
+                           hfA=self.hfA, hfB=self.hfB, hfC=self.hfC)
                 self[f'mF={mf}'] = e
 
     @property
     def level(self):
-        return self._level
+        return self.parent.level + self.shift
 
     @level.setter
     def level(self, value):
-        try:
-            shift = value - self.level
-        except pint.errors.DimensionalityError:
-            self._level = value
-            return
-        self._level = value
-        self.parent.update_level(self.parent.level + shift)
-        for sublevel in list(self.values()):
-            sublevel.level += shift
+        shift = value - self.level
+        self.parent.level += shift
 
     def compute_gF(self):
         F = self.term.F
@@ -536,7 +523,7 @@ class _LevelDict:
 if __name__ == '__main__':
     def energy_level_from_df(df, i):
         t = Term(df["Configuration"][i], df["Term"][i], df["J"][i], percentage=df["Leading percentages"])
-        e = EnergyLevel(t, df["Level (cm-1)"][i], lande=df["Lande"][i], hfA=0.1 * ureg('megahertz'))
+        e = EnergyLevel(t, df["Level (cm-1)"][i], lande=df["Lande"][i], hfA=10 * ureg('gigahertz'))
         return e
 
     species = "Yb II"
@@ -555,6 +542,7 @@ if __name__ == '__main__':
     for l in list(a.levels.values()):
         print('MAIN:', l.name, l.level.to('THz'))
         for s in list(l.values()):
-            print('    SUB:', s.term.term_name, s.level.to('THz'))
+            print('    SUBSHIFT:', s.term.term_name, s.shift.to('THz'))
+
     #         for z in list(s.values()):
     #             print('        Zee:', z.term.term_name)
