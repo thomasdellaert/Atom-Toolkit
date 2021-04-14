@@ -4,6 +4,7 @@ import networkx as nx
 import pickle
 import pint
 import pint_pandas
+from indexedproperty import containerproperty
 # import json
 import re
 
@@ -413,6 +414,7 @@ class Transition:
     #  determining color, and computing the transition strength / linewidth given the A coefficient
 
 
+# noinspection PyPropertyDefinition
 class Atom:
     def __init__(self, name: str, I: float = 0.0,
                  levels: List[EnergyLevel] = None, transitions: List[Transition] = None):
@@ -428,18 +430,17 @@ class Atom:
             for transition in transitions:
                 self.add_transition(transition)
 
-    def __str__(self):
-        return f'{self.name} I={Term.float_to_frac(self.I)}'
-
-    def add_level(self, level: EnergyLevel):
+    def add_level(self, level: EnergyLevel, key=None):
+        if key is None:
+            key = level.name
         level.parent = self
         level.atom = self
         level.populate_sublevels()
-        self.levelsModel.add_node(level)
+        self.levelsModel.add_node(key, level=level)
         for sublevel in list(level.values()):
-            self.hfModel.add_node(sublevel)
+            self.hfModel.add_node(sublevel.name, level=sublevel)
             for z_level in list(sublevel.values()):
-                self.zModel.add_node(z_level)
+                self.zModel.add_node(z_level.name, level=z_level)
 
     def add_transition(self, transition: Transition):
         if isinstance(transition.E_1, EnergyLevel):
@@ -448,6 +449,51 @@ class Atom:
             self.hfModel.add_edge(transition.E_1, transition.E_2, transition=transition)
         elif isinstance(transition.E_1, ZLevel):
             self.zModel.add_edge(transition.E_1, transition.E_2, transition=transition)
+
+    # region levels property methods
+
+    @containerproperty
+    def levels(self, key):
+        return nx.get_node_attributes(self.levelsModel, 'level')[key]
+
+    @levels.deleter
+    def levels(self, key):
+        self.levelsModel.remove_node(key)
+
+    @levels.setter
+    def levels(self, key, value):
+        self.add_level(value, key=key)
+
+    @levels.append
+    def levels(self, value):
+        self.add_level(value)
+
+    @levels.values
+    def levels(self):
+        return nx.get_node_attributes(self.levelsModel, 'level').values()
+
+    @levels.keys
+    def levels(self):
+        return nx.get_node_attributes(self.levelsModel, 'level').keys()
+
+    # TODO: get len, iter, and items working, since they are supposed to with containerproperty. possibly call it with an
+    #  argument as per https://github.com/NJDFan/indexedproperty
+
+    # @levels.iter
+    # def levels(self):
+    #     return nx.get_node_attributes(self.levelsModel, 'level').__iter__()
+    #
+    # @levels.len
+    # def levels(self):
+    #     return len(nx.get_node_attributes(self.levelsModel, 'level'))
+
+    # endregion
+
+    @containerproperty
+    def transitions(self, key):
+        return nx.get_edge_attributes(self.levelsModel, 'transition')[key]
+
+    # region loading/unloading methods
 
     def to_JSON(self, filename=None):
         # TODO: self.to_JSON
@@ -477,6 +523,8 @@ class Atom:
         file.close()
         return p
 
+    # endregion
+
     # TODO: possibly a provision for B-fields? This would have to propagate down the whole tree, annoyingly
 
 
@@ -501,9 +549,18 @@ if __name__ == '__main__':
 
     # a = Atom.from_pickle('171Yb.atom')
 
-    for l in list(a.levelsModel.nodes()):
+    for l in list(a.levels.values()):
         print('MAIN:', l.name, l.level.to('THz'))
         for s in list(l.values()):
             print('    SUBSHIFT:', s.term.term_name, s.shift.to('THz'))
 
+    print('here0')
+    print(a.levels.items())
+    print('here')
+
     # a.to_pickle('171Yb')
+    # cooling = Transition(a.levelsModel.nodes['4f14.6s 2S1/2']['level'], a.levelsModel.nodes['4f14.6p 2P*1/2']['level'])
+    #
+    # a.add_transition(cooling)
+    #
+    # print(a.levelsModel.edges)
