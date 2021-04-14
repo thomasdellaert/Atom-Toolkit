@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 # import networkx as nx
+import pickle
 import pint
 import pint_pandas
 # import json
@@ -426,31 +427,45 @@ class Atom:
             for transition in transitions:
                 self.transitions.append(transition)
 
+    # TODO: Implement a (or 3) internal graph models of the atom using networkx. This will make finding cycles easier
+    #  and generally be a more elegant data structure than the current _LevelDict and _TransitionDict
+
     def __str__(self):
         return f'{self.name} I={Term.float_to_frac(self.I)}'
 
     def __repr__(self):
         return f"Atom({self.name}, I={self.I}, levels={self.levels})"
 
-    def to_JSON(self):
+    def to_JSON(self, filename=None):
         # TODO: self.to_JSON
         pass
 
     @classmethod
-    def from_JSON(cls):
+    def from_JSON(cls, filename=None, string=None):
         # TODO: cls.from_JSON
         pass
 
-    def to_pickle(self):
-        # TODO: self.to_pickle
-        pass
+    def to_pickle(self, filename):
+        if filename is None:
+            filename = self.name
+        try:
+            if filename.split(".", -1)[1] != "atom":
+                filename = filename + ".atom"
+        except IndexError:
+            filename = filename + ".atom"
+        file = open(filename, "wb")
+        pickle.dump(self, file)
+        file.close()
 
     @classmethod
-    def from_pickle(cls):
-        # TODO: cls.from_pickle
-        pass
+    def from_pickle(cls, filename):
+        file = open(filename, "rb")
+        p = pickle.load(file)
+        file.close()
+        return p
 
     # TODO: possibly a provision for B-fields? This would have to propagate down the whole tree, annoyingly
+
 
 class _TransitionDict:
     def __init__(self, atom: Atom):
