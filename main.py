@@ -1,5 +1,7 @@
 import pandas as pd
 import numpy as np
+# import networkx as nx
+import pickle
 import pint
 import pint_pandas
 # import json
@@ -246,20 +248,19 @@ class Term:
 
 class EnergyLevel:
     def __init__(self, term: Term, level: pint.Quantity, lande: float = None, parent=None, atom=None,
-                 depth='f', hfA=0.0, hfB=0.0, hfC=0.0):
-        self.term = term
-        self.level = level.to('Hz')
+                 hfA=0.0, hfB=0.0, hfC=0.0):
         self.parent = parent
         self.atom = atom
-        self.depth = depth
+        self.term = term
+        self._level = level.to('Hz')
+        self.shift = self._level
         self.name = self.term.name
         self.hfA, self.hfB, self.hfC = hfA, hfB, hfC
+        self.level_constrained = False
         if lande is None:
             self.lande = self.compute_gJ()
         else:
             self.lande = lande
-        if self.depth != 'f':
-            self.lande = self.compute_gF()
         self._sublevels = {}
         self.populate_sublevels()
 
@@ -268,24 +269,18 @@ class EnergyLevel:
             for f in np.arange(abs(self.term.J - self.parent.I), self.term.J + self.parent.I + 1):
                 t = Term(self.term.conf, self.term.term, self.term.J, F=f)
                 shift = self.compute_hf_shift(f)
-                e = EnergyLevel(t, self.level + shift, lande=self.lande,
-                                parent=self, atom=self.atom, depth='hf',
-                                hfA=self.hfA, hfB=self.hfB, hfC=self.hfC)
+                e = HFLevel(t, self.level + shift, lande=self.lande,
+                            parent=self, atom=self.atom,
+                            hfA=self.hfA, hfB=self.hfB, hfC=self.hfC)
                 self[f'F={f}'] = e
-        elif isinstance(self.parent, EnergyLevel):
-            if self.depth == 'hf':
-                for mf in np.arange(-self.term.F, self.term.F + 1):
-                    t = Term(self.term.conf, self.term.term, self.term.J, F=self.term.F, mF=mf)
-                    e = EnergyLevel(t, self.level, lande=self.lande,
-                                    parent=self, atom=self.atom, depth='z',
-                                    hfA=self.hfA, hfB=self.hfB, hfC=self.hfC)
-                    self[f'mF={mf}'] = e
-        else:
-            pass
 
-    # TODO: Since energy levels have sublevels, level needs to be an @property with getters and setters that update the
-    #   sub- and super-levels. In addition, add a self.level_constrained property for handling situations where two
-    #   transitions try to set the level
+    @property
+    def level(self):
+        return self._level
+
+    @level.setter
+    def level(self, value):
+        self._level = value
 
     def compute_hf_shift(self, F):
         J = self.term.J
@@ -310,14 +305,6 @@ class EnergyLevel:
 
         return self.hfA * FM1 + self.hfB * FE2 + self.hfC * FM3
 
-    def compute_gF(self):
-        F = self.term.F
-        J = self.term.J
-        I = self.atom.I
-        if F != 0:
-            return self.lande * (F * (F + 1) + J * (J + 1) - I * (I + 1)) / (2 * F * (F + 1))
-        return 0
-
     def compute_gJ(self):
         if self.term.coupling != 'LS':
             raise ValueError("Unable to compute g_J for non-LS-coupled terms")
@@ -325,6 +312,11 @@ class EnergyLevel:
         L = self.term.l
         S = self.term.s
         return 1 + (J * (J + 1) + S * (S + 1) - L * (L + 1)) / (2 * J * (J + 1))
+
+    def update_level(self, value):
+        # a method for when the level of a child level changes, necessitating an update
+        shift = value - self.level
+        self._level = self.level + shift
 
     def __len__(self):
         return len(self._sublevels)
@@ -348,6 +340,42 @@ class EnergyLevel:
     def keys(self):
         return self._sublevels.keys()
 
+class HFLevel(EnergyLevel):
+    def __init__(self, term: Term, level: pint.Quantity, lande: float = None, parent=None, atom=None,
+                 hfA=0.0, hfB=0.0, hfC=0.0):
+        super(HFLevel, self).__init__(term, level, lande, parent, atom, hfA, hfB, hfC)
+        self.gF = self.compute_gF()
+        self.shift = self._level - self.parent.level
+
+    def populate_sublevels(self):
+        if isinstance(self.parent, EnergyLevel):
+            for mf in np.arange(-self.term.F, self.term.F + 1):
+                t = Term(self.term.conf, self.term.term, self.term.J, F=self.term.F, mF=mf)
+                e = ZLevel(t, self.level, lande=self.lande,
+                           parent=self, atom=self.atom,
+                           hfA=self.hfA, hfB=self.hfB, hfC=self.hfC)
+                self[f'mF={mf}'] = e
+
+    @property
+    def level(self):
+        return self.parent.level + self.shift
+
+    @level.setter
+    def level(self, value):
+        shift = value - self.level
+        self.parent.level += shift
+
+    def compute_gF(self):
+        F = self.term.F
+        J = self.term.J
+        I = self.atom.I
+        if F != 0:
+            return self.lande * (F * (F + 1) + J * (J + 1) - I * (I + 1)) / (2 * F * (F + 1))
+        return 0
+
+class ZLevel(HFLevel):
+    def populate_sublevels(self):
+        pass
 
 class Transition:
     def __init__(self, E1: EnergyLevel, E2: EnergyLevel, freq=None, A: pint.Quantity = None,
@@ -368,6 +396,11 @@ class Transition:
         self.freq = abs(self.E_1.level - self.E_2.level)
         self.wl = self.freq.to('nm')
         if freq is not None:
+            if self.E_1.level_constrained or self.E_2.level_constrained:
+                raise ValueError('This level has been set by another transition')
+                # TODO: make this a warning
+            self.E_upper.level_constrained = True
+            self.E_lower.level_constrained = True
             if update_mode == 'upper':
                 self.E_upper.level = self.E_lower.level + freq.to('Hz')
             elif update_mode == 'lower':
@@ -394,31 +427,45 @@ class Atom:
             for transition in transitions:
                 self.transitions.append(transition)
 
+    # TODO: Implement a (or 3) internal graph models of the atom using networkx. This will make finding cycles easier
+    #  and generally be a more elegant data structure than the current _LevelDict and _TransitionDict
+
     def __str__(self):
         return f'{self.name} I={Term.float_to_frac(self.I)}'
 
     def __repr__(self):
         return f"Atom({self.name}, I={self.I}, levels={self.levels})"
 
-    def to_JSON(self):
+    def to_JSON(self, filename=None):
         # TODO: self.to_JSON
         pass
 
     @classmethod
-    def from_JSON(cls):
+    def from_JSON(cls, filename=None, string=None):
         # TODO: cls.from_JSON
         pass
 
-    def to_pickle(self):
-        # TODO: self.to_pickle
-        pass
+    def to_pickle(self, filename):
+        if filename is None:
+            filename = self.name
+        try:
+            if filename.split(".", -1)[1] != "atom":
+                filename = filename + ".atom"
+        except IndexError:
+            filename = filename + ".atom"
+        file = open(filename, "wb")
+        pickle.dump(self, file)
+        file.close()
 
     @classmethod
-    def from_pickle(cls):
-        # TODO: cls.from_pickle
-        pass
+    def from_pickle(cls, filename):
+        file = open(filename, "rb")
+        p = pickle.load(file)
+        file.close()
+        return p
 
     # TODO: possibly a provision for B-fields? This would have to propagate down the whole tree, annoyingly
+
 
 class _TransitionDict:
     def __init__(self, atom: Atom):
@@ -491,7 +538,7 @@ class _LevelDict:
 if __name__ == '__main__':
     def energy_level_from_df(df, i):
         t = Term(df["Configuration"][i], df["Term"][i], df["J"][i], percentage=df["Leading percentages"])
-        e = EnergyLevel(t, df["Level (cm-1)"][i], lande=df["Lande"][i], hfA=0.1 * ureg('megahertz'))
+        e = EnergyLevel(t, df["Level (cm-1)"][i], lande=df["Lande"][i], hfA=10 * ureg('gigahertz'))
         return e
 
     species = "Yb II"
@@ -510,6 +557,7 @@ if __name__ == '__main__':
     for l in list(a.levels.values()):
         print('MAIN:', l.name, l.level.to('THz'))
         for s in list(l.values()):
-            print('    SUB:', s.term.term_name, s.level.to('THz'))
+            print('    SUBSHIFT:', s.term.term_name, s.shift.to('THz'))
+
     #         for z in list(s.values()):
     #             print('        Zee:', z.term.term_name)
