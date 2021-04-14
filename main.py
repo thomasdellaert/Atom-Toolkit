@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-# import networkx as nx
+import networkx as nx
 import pickle
 import pint
 import pint_pandas
@@ -418,23 +418,36 @@ class Atom:
                  levels: List[EnergyLevel] = None, transitions: List[Transition] = None):
         self.name = name
         self.I = Term.frac_to_float(I)
-        self.levels = _LevelDict(self)
-        self.transitions = _TransitionDict(self)
+        self.levelsModel = nx.Graph()
+        self.hfModel = nx.Graph()
+        self.zModel = nx.Graph()
         if levels is not None:
             for level in levels:
-                self.levels.append(level)
+                self.add_level(level)
         if transitions is not None:
             for transition in transitions:
-                self.transitions.append(transition)
-
-    # TODO: Implement a (or 3) internal graph models of the atom using networkx. This will make finding cycles easier
-    #  and generally be a more elegant data structure than the current _LevelDict and _TransitionDict
+                self.add_transition(transition)
 
     def __str__(self):
         return f'{self.name} I={Term.float_to_frac(self.I)}'
 
-    def __repr__(self):
-        return f"Atom({self.name}, I={self.I}, levels={self.levels})"
+    def add_level(self, level: EnergyLevel):
+        level.parent = self
+        level.atom = self
+        level.populate_sublevels()
+        self.levelsModel.add_node(level)
+        for sublevel in list(level.values()):
+            self.hfModel.add_node(sublevel)
+            for z_level in list(sublevel.values()):
+                self.zModel.add_node(z_level)
+
+    def add_transition(self, transition: Transition):
+        if isinstance(transition.E_1, EnergyLevel):
+            self.levelsModel.add_edge(transition.E_1, transition.E_2, transition=transition)
+        elif isinstance(transition.E_1, HFLevel):
+            self.hfModel.add_edge(transition.E_1, transition.E_2, transition=transition)
+        elif isinstance(transition.E_1, ZLevel):
+            self.zModel.add_edge(transition.E_1, transition.E_2, transition=transition)
 
     def to_JSON(self, filename=None):
         # TODO: self.to_JSON
@@ -467,74 +480,6 @@ class Atom:
     # TODO: possibly a provision for B-fields? This would have to propagate down the whole tree, annoyingly
 
 
-class _TransitionDict:
-    def __init__(self, atom: Atom):
-        self._transitions = {}
-        self.atom = atom
-
-    def __len__(self):
-        return len(self._transitions)
-
-    def __getitem__(self, key):
-        return self._transitions[key]
-
-    def __setitem__(self, key, transition):
-        transition.atom = self
-        self._transitions[key] = transition
-
-    def __delitem__(self, key):
-        del self._transitions[key]
-
-    def __iter__(self):
-        return iter(self._transitions)
-
-    def append(self, transition):
-        transition.atom = self.atom
-        self._transitions[transition.name] = transition
-
-    def values(self):
-        return self._transitions.values()
-
-    def keys(self):
-        return self._transitions.keys()
-
-
-class _LevelDict:
-    def __init__(self, atom: Atom):
-        self._levels = {}
-        self.atom = atom
-
-    def __len__(self):
-        return len(self._levels)
-
-    def __getitem__(self, key):
-        return self._levels[key]
-
-    def __setitem__(self, key, level):
-        level.parent = self
-        level.atom = self
-        level.populate_sublevels()
-        self._levels[key] = level
-
-    def __delitem__(self, key):
-        del self._levels[key]
-
-    def __iter__(self):
-        return iter(self._levels)
-
-    def append(self, level):
-        level.parent = self.atom
-        level.atom = self.atom
-        level.populate_sublevels()
-        self._levels[level.name] = level
-
-    def values(self):
-        return self._levels.values()
-
-    def keys(self):
-        return self._levels.keys()
-
-
 if __name__ == '__main__':
     def energy_level_from_df(df, i):
         t = Term(df["Configuration"][i], df["Term"][i], df["J"][i], percentage=df["Leading percentages"])
@@ -550,14 +495,15 @@ if __name__ == '__main__':
     for i in range(num_levels):
         try:
             e = energy_level_from_df(df, i)
-            a.levels.append(e)
+            a.add_level(e)
         except KeyError:
             pass
 
-    for l in list(a.levels.values()):
+    # a = Atom.from_pickle('171Yb.atom')
+
+    for l in list(a.levelsModel.nodes()):
         print('MAIN:', l.name, l.level.to('THz'))
         for s in list(l.values()):
             print('    SUBSHIFT:', s.term.term_name, s.shift.to('THz'))
 
-    #         for z in list(s.values()):
-    #             print('        Zee:', z.term.term_name)
+    # a.to_pickle('171Yb')
