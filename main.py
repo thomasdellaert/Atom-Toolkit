@@ -78,7 +78,16 @@ class Term:
                  conf: str, term: str, J: float or str,
                  F: float or str = None, mF: float or str = None,
                  percentage=100.0):
-
+        """
+        TODO: docstring
+        :param conf: the configuration of the term, formatted according to NIST's conventions
+        :param term: The LS (Russell-Saunders), LK, JK, or JJ coupled term symbol, exclusing the J value
+        :param J: The J value for the term symbol
+        :param F: The F value for the term symbol
+        :param mF: The m_F value for ther term symbol
+        :param percentage: The leading percentage of the term. Correlates with how well the term's behavior
+                            physically corresponds with what you expect
+        """
         self.conf = conf
         self.term = term
         self.percentage = percentage
@@ -105,6 +114,10 @@ class Term:
         self.lc, self.sc, self.lo, self.so, self.jc, self.jo, self.l, self.s, self.k = self.get_quantum_nums()
 
     def get_coupling(self):
+        """
+
+        :return: A string corresponding to the coupling detected in the term symbol
+        """
         if '[' in self.term:
             if self.term[0] in 'SPDFGHIKMNOPQRTUVWXYZ':
                 return 'LK'
@@ -118,6 +131,10 @@ class Term:
             return "unknown"
 
     def get_quantum_nums(self):
+        """
+        Calls the appropriate term parsing method in order to (hopefully) extract all usable information
+        :return: a tuple of useful quantum numbers
+        """
         lc = sc = lo = so = jc = jo = l = s = k = None
         if self.coupling == 'LS':
             l, s = self.parse_LS_term()
@@ -130,6 +147,13 @@ class Term:
         return lc, sc, lo, so, jc, jo, l, s, k
 
     def parse_LS_term(self):
+        """
+        Parses an LS-coupled term. Looks for the following forms in self.term:
+            {2S+1}{L}
+        Examples:
+            2F, 3P*, 1S, 6L
+        :return: L, S
+        """
         # find the following forms: 2F, 3P*, and extract the relevant substrings
         [(ss, ls)] = re.findall(r'(\d+)([A-Z])', self.term)
         s = (float(ss) - 1)/2
@@ -137,6 +161,19 @@ class Term:
         return l, s
 
     def parse_JK_term(self):
+        """
+        Parses a JK-coupled term.
+        Looks for the following forms in self.term:
+            {2S+1}[{K}]
+        Examples:
+            2[3/2], 3[4]*, 1[11/2]
+        Looks for the following forms in self.conf:
+            {2s+1}{L}<{J}>
+        Examples:
+            3D<2>, 2F<7/2>
+
+        :return: Lc, Sc, Lo, So, Jc, K
+        """
         # find the following forms: 3D<2>, and extract the relevant substrings
         relevant_parts = re.findall(r'(\d+)([A-Z])\*?(?:<(.+?)>)?', self.conf)
         if len(relevant_parts) == 2:
@@ -157,6 +194,17 @@ class Term:
         return lc, sc, lo, so, jc, k
 
     def parse_JJ_term(self):
+        """
+         Parses a JJ-coupled term.
+         Looks for the following forms in self.conf:
+             {2S+1}{L}<{J}>
+             ({Jc, Jo})<{J}>
+         Examples:
+             3D<2>, 2F<7/2>
+             (2, 1/2)<5/2>
+
+         :return: Lc, Sc, Lo, So, Jc, Jo
+         """
         # find the following forms: 3D<2>, 7p<3/2>, (8,5/2)*<21/2>, and extract the relevant substrings
         relevant_parts = re.findall(r'(?:(\d+)([A-Za-z])|\(.+?\))\*?<(.+?)>', self.conf)
         if len(relevant_parts) == 0:  # sometimes the ancestor terms are in the term, not in the config
@@ -183,6 +231,19 @@ class Term:
         return lc, sc, lo, so, jc, jo
 
     def parse_LK_term(self):
+        """
+        Parses a JK-coupled term.
+        Looks for the following forms in self.term:
+            {L} {2S+1}[{K}]
+        Examples:
+            P 2[3/2], D 3[4]*, G 1[11/2]
+        Looks for the following forms in self.conf:
+            {2s+1}{L}<{J}>
+        Examples:
+            3D, 2F*
+
+        :return: Lc, Sc, Lo, So, L, K
+        """
         # find the following forms: 3D, and extract the relevant substrings
         relevant_parts = re.findall(r'\((\d+)([A-Z])\*?\)', self.conf)
         if len(relevant_parts) == 2:
@@ -204,6 +265,10 @@ class Term:
 
     @staticmethod
     def let_to_l(let: str) -> int or None:
+        """
+        :param let: a single character in "SPDFGHIKLMNOQRTUVWXYZ" or ""
+        :return: the L-value corresponding to the letter in spectroscopic notation
+        """
         if let == '':
             return None
         if len(let) > 1:
@@ -212,10 +277,19 @@ class Term:
 
     @staticmethod
     def l_to_let(l: int) -> str:
+        """
+        :param l: a positive integer
+        :return: the corresponding L-value in spectroscopic notation
+        """
         return 'SPDFGHIKLMNOQRTUVWXYZ'[l]
 
     @staticmethod
     def frac_to_float(frac: float or str) -> float or None:
+        """
+
+        :param frac: a string formatted as "1/2", "5/2", "3", etc
+        :return: the corresponding float
+        """
         if frac is None or '':
             return None
         if type(frac) == str:
@@ -231,6 +305,10 @@ class Term:
 
     @staticmethod
     def float_to_frac(f: float or str) -> str or None:
+        """
+        :param f: a half-integer float
+        :return: a string formatted as "1/2", "5/2", "3", etc
+        """
         if f is None:
             return None
         # Assumes n/2, since all the fractions that appear in term symbols are of that form
@@ -250,6 +328,17 @@ class Term:
 class EnergyLevel:
     def __init__(self, term: Term, level: pint.Quantity, lande: float = None, parent=None, atom=None,
                  hfA=0.0, hfB=0.0, hfC=0.0):
+        """
+        TODO: docstring
+        :param term:
+        :param level:
+        :param lande:
+        :param parent:
+        :param atom:
+        :param hfA:
+        :param hfB:
+        :param hfC:
+        """
         self.parent = parent
         self.atom = atom
         self.term = term
@@ -259,13 +348,19 @@ class EnergyLevel:
         self.hfA, self.hfB, self.hfC = hfA, hfB, hfC
         self.level_constrained = False
         if lande is None:
-            self.lande = self.compute_gJ()
+            try:
+                self.lande = self.compute_gJ()
+            except NotImplementedError:
+                self.lande = 0  # TODO: think about a placeholder value instead?
         else:
             self.lande = lande
         self._sublevels = {}
         self.populate_sublevels()
 
     def populate_sublevels(self):
+        """
+        Populates the sublevels dict with the appropriate hyperfine sublevels for the atom that the EnergyLevel is in
+        """
         if isinstance(self.parent, Atom):
             for f in np.arange(abs(self.term.J - self.parent.I), self.term.J + self.parent.I + 1):
                 t = Term(self.term.conf, self.term.term, self.term.J, F=f)
@@ -284,6 +379,11 @@ class EnergyLevel:
         self._level = value
 
     def compute_hf_shift(self, F):
+        """
+        Computes the hyperfine shift of a level given the EnergyLevel's hyperfine coeffieients and an F level
+        :param F: the F-level to be calculated
+        :return: the shift of the level
+        """
         J = self.term.J
         I = self.atom.I
 
@@ -307,29 +407,37 @@ class EnergyLevel:
         return self.hfA * FM1 + self.hfB * FE2 + self.hfC * FM3
 
     def compute_gJ(self):
+        """
+        Computes the Lande g-value of an LS-coupled term.
+        TODO: currently raises an error for other couplings. Maybe do a best guess or placeholder instead?
+        :return: gJ
+        """
         if self.term.coupling != 'LS':
-            raise ValueError("Unable to compute g_J for non-LS-coupled terms")
+            raise NotImplementedError("Unable to compute g_J for non-LS-coupled terms")
         J = self.term.J
         L = self.term.l
         S = self.term.s
         return 1 + (J * (J + 1) + S * (S + 1) - L * (L + 1)) / (2 * J * (J + 1))
 
-    def update_level(self, value):
-        # a method for when the level of a child level changes, necessitating an update
-        shift = value - self.level
-        self._level = self.level + shift
+    # def update_level(self, value):
+    #     # a method for when the level of a child level changes, necessitating an update
+    #     shift = value - self.level
+    #     self._level = self.level + shift
 
     def __len__(self):
+        """:return: the number of sublevels"""
         return len(self._sublevels)
 
     def __getitem__(self, key):
         return self._sublevels[key]
 
     def __setitem__(self, key, level):
+        """adds the energylevel to self._sublevels"""
         level.parent = self
         self._sublevels[key] = level
 
     def __delitem__(self, key):
+        """removes the energylevel from self._sublevels"""
         del self._sublevels[key]
 
     def __iter__(self):
@@ -344,11 +452,23 @@ class EnergyLevel:
 class HFLevel(EnergyLevel):
     def __init__(self, term: Term, level: pint.Quantity, lande: float = None, parent=None, atom=None,
                  hfA=0.0, hfB=0.0, hfC=0.0):
+        """
+        TODO: docstring
+        :param term:
+        :param level:
+        :param lande:
+        :param parent:
+        :param atom:
+        :param hfA:
+        :param hfB:
+        :param hfC:
+        """
         super(HFLevel, self).__init__(term, level, lande, parent, atom, hfA, hfB, hfC)
         self.gF = self.compute_gF()
         self.shift = self._level - self.parent.level
 
     def populate_sublevels(self):
+        """Populates the sublevels dict with the appropriate Zeeman sublevels"""
         if isinstance(self.parent, EnergyLevel):
             for mf in np.arange(-self.term.F, self.term.F + 1):
                 t = Term(self.term.conf, self.term.term, self.term.J, F=self.term.F, mF=mf)
@@ -359,28 +479,49 @@ class HFLevel(EnergyLevel):
 
     @property
     def level(self):
+        """When asked, sublevels calculate their position relative to their parent level"""
         return self.parent.level + self.shift
 
     @level.setter
-    def level(self, value):
+    def level(self, value: pint.Quantity):
+        """
+        When the level of a sublevel is changed (for example, by a transition being added), the sublevel tells its
+        parent to move by the same amount instead of moving itself
+        :param value: the new level of the hyperfine level
+        """
         shift = value - self.level
         self.parent.level += shift
 
     def compute_gF(self):
+        """
+        Computes the Lande g-value the hyperfine level
+        :return: gF
+        """
         F = self.term.F
         J = self.term.J
         I = self.atom.I
         if F != 0:
             return self.lande * (F * (F + 1) + J * (J + 1) - I * (I + 1)) / (2 * F * (F + 1))
-        return 0
+        return 0.0
 
 class ZLevel(HFLevel):
     def populate_sublevels(self):
+        """A Zeeman sublevel will have no further sublevels."""
         pass
 
 class Transition:
     def __init__(self, E1: EnergyLevel, E2: EnergyLevel, freq=None, A: pint.Quantity = None,
                  name=None, update_mode='upper', atom=None):
+        """
+        TODO: docstring
+        :param E1:
+        :param E2:
+        :param freq:
+        :param A:
+        :param name:
+        :param update_mode:
+        :param atom:
+        """
         self.E_1 = E1
         self.E_2 = E2
         self.A = A
@@ -418,6 +559,13 @@ class Transition:
 class Atom:
     def __init__(self, name: str, I: float = 0.0,
                  levels: List[EnergyLevel] = None, transitions: List[Transition] = None):
+        """
+        TODO: docstring
+        :param name:
+        :param I:
+        :param levels:
+        :param transitions:
+        """
         self.name = name
         self.I = Term.frac_to_float(I)
         self.levelsModel = nx.Graph()
@@ -431,6 +579,14 @@ class Atom:
                 self.add_transition(transition)
 
     def add_level(self, level: EnergyLevel, key=None):
+        """
+        Adds a level to the internal graph model. When the level is added, it calculates its sublevels.
+        Add the sublevels to the internal graphs as well.
+        TODO: accept a list of levels
+        :param level: the EnergyLevel to be added
+        :param key: A custom name, if desired. Otherwise defaults to the EnergyLevel's name
+        :return:
+        """
         if key is None:
             key = level.name
         level.parent = self
@@ -443,6 +599,13 @@ class Atom:
                 self.zModel.add_node(z_level.name, level=z_level)
 
     def add_transition(self, transition: Transition):
+        """
+        Add a transition between two EnergyLevels in the atom. If either of the referenced levels aren't in the atom
+        yet, they will be added.
+        TODO: accept a list of Transitions
+        :param transition: the Transition to be added
+        :return:
+        """
         if isinstance(transition.E_1, EnergyLevel):
             self.levelsModel.add_edge(transition.E_1, transition.E_2, transition=transition)
         elif isinstance(transition.E_1, HFLevel):
