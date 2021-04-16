@@ -1,14 +1,14 @@
-import pandas as pd
-import numpy as np
-import networkx as nx
 import pickle
-import pint
-import pint_pandas
-from indexedproperty import indexedproperty
-# import json
 import re
 from itertools import combinations
 from typing import List
+
+import networkx as nx
+import numpy as np
+import pandas as pd
+import pint
+import pint_pandas
+from indexedproperty import indexedproperty
 
 ureg = pint.UnitRegistry()
 pint.set_application_registry(ureg)
@@ -355,13 +355,13 @@ class EnergyLevel:
         :param hfC: the hyperfine C-coefficient
         """
         self.parent = parent
+        self.manifold = self.get_manifold()
         self.atom = atom
         self.term = term
         self._level = level.to('Hz')
         self.shift = self._level
         self.name = self.term.name
         self.hfA, self.hfB, self.hfC = hfA, hfB, hfC
-        self.level_constrained = False
         if lande is None:
             try:
                 self.lande = self.compute_gJ()
@@ -372,13 +372,15 @@ class EnergyLevel:
         self._sublevels = {}
         self.populate_sublevels()
 
+    def get_manifold(self):
+        return self
+
     def populate_sublevels(self):
         """
         Populates the sublevels dict with the appropriate hyperfine sublevels for the atom that the EnergyLevel is in
         """
         if isinstance(self.parent, Atom):
             for f in np.arange(abs(self.term.J - self.atom.I), self.term.J + self.atom.I + 1):
-                print(f)
                 t = Term(self.term.conf, self.term.term, self.term.J, F=f)
                 shift = self.compute_hf_shift(f)
                 e = HFLevel(t, self.level + shift, lande=self.lande,
@@ -501,6 +503,9 @@ class HFLevel(EnergyLevel):
         self.gF = self.compute_gF()
         self.shift = self._level - self.parent.level
 
+    def get_manifold(self):
+        return self.parent
+
     def populate_sublevels(self):
         """Populates the sublevels dict with the appropriate Zeeman sublevels"""
         if isinstance(self.parent, EnergyLevel):
@@ -539,6 +544,9 @@ class HFLevel(EnergyLevel):
         return 0.0
 
 class ZLevel(HFLevel):
+    def get_manifold(self):
+        return self.parent.parent
+
     def populate_sublevels(self):
         """A Zeeman sublevel will have no further sublevels."""
         pass
@@ -633,14 +641,11 @@ class Atom:
         """
         if key is None:
             key = level.name
+        if type(level) != EnergyLevel:
+            level = level.manifold
         level.atom = self
         level.parent = self
-        if type(level) == HFLevel:
-            level = level.parent
-        elif type(level) == ZLevel:
-            level = level.parent.parent
-        else:
-            level.populate_sublevels()
+        level.populate_sublevels()
         self.levelsModel.add_node(key, level=level)
         for sublevel in list(level.values()):
             self.hfModel.add_node(sublevel.name, level=sublevel)
@@ -665,11 +670,11 @@ class Atom:
             self.levelsModel.add_edge(transition.E_1, transition.E_2, transition=transition)
         elif type(transition.E_1) == HFLevel:
             check_levels_present(transition, self.hfModel)
-            self.levelsModel.add_edge(transition.E_1.parent, transition.E_2.parent, transition=transition)
+            self.levelsModel.add_edge(transition.E_1.manifold, transition.E_2.manifold, transition=transition)
             self.hfModel.add_edge(transition.E_1, transition.E_2, transition=transition)
         elif type(transition.E_1) == ZLevel:
             check_levels_present(transition, self.zModel)
-            self.levelsModel.add_edge(transition.E_1.parent.parent, transition.E_2.parent.parent, transition=transition)
+            self.levelsModel.add_edge(transition.E_1.manifold, transition.E_2.manifold, transition=transition)
             self.hfModel.add_edge(transition.E_1.parent, transition.E_2.parent, transition=transition)
             self.zModel.add_edge(transition.E_1, transition.E_2, transition=transition)
 
@@ -775,7 +780,7 @@ if __name__ == '__main__':
 
     species = "Yb II"
     I = 0.5
-    num_levels = 80
+    num_levels = 10
     df = load_NIST_data(species)
 
     a = Atom(species, I=I)
