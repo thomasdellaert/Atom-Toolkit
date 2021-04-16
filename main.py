@@ -377,7 +377,8 @@ class EnergyLevel:
         Populates the sublevels dict with the appropriate hyperfine sublevels for the atom that the EnergyLevel is in
         """
         if isinstance(self.parent, Atom):
-            for f in np.arange(abs(self.term.J - self.parent.I), self.term.J + self.parent.I + 1):
+            for f in np.arange(abs(self.term.J - self.atom.I), self.term.J + self.atom.I + 1):
+                print(f)
                 t = Term(self.term.conf, self.term.term, self.term.J, F=f)
                 shift = self.compute_hf_shift(f)
                 e = HFLevel(t, self.level + shift, lande=self.lande,
@@ -435,7 +436,7 @@ class EnergyLevel:
 
     def populate_transitions(self, include_zeeman=True):
         if self.atom is None:
-            raise AttributeError('EnergyLevel needs to be contained in an atom to add transitions')
+            raise RuntimeError('EnergyLevel needs to be contained in an atom to add transitions')
         hf_pairs = list(combinations(list(self.values()), 2))
         for pair in hf_pairs:
             # TODO: Think about a way to implement relative transition strengths in an elegant way
@@ -580,7 +581,7 @@ class Transition:
         self.wl = self.freq.to('nm')
         if freq is not None:
             if self.E_1.level_constrained or self.E_2.level_constrained:
-                raise ValueError('This level has been set by another transition')
+                raise RuntimeWarning('This level has been set by another transition')
                 # TODO: make this a warning
             self.E_upper.level_constrained = True
             self.E_lower.level_constrained = True
@@ -632,14 +633,14 @@ class Atom:
         """
         if key is None:
             key = level.name
+        level.atom = self
+        level.parent = self
         if type(level) == HFLevel:
             level = level.parent
         elif type(level) == ZLevel:
             level = level.parent.parent
         else:
             level.populate_sublevels()
-        level.parent = self
-        level.atom = self
         self.levelsModel.add_node(key, level=level)
         for sublevel in list(level.values()):
             self.hfModel.add_node(sublevel.name, level=sublevel)
@@ -654,8 +655,6 @@ class Atom:
         :param transition: the Transition to be added
         :return:
         """
-        print(isinstance(transition.E_1, HFLevel))
-
         def check_levels_present(transition, model):
             for t in [transition.E_1, transition.E_2]:
                 if t not in nx.get_node_attributes(model, 'level').values():
