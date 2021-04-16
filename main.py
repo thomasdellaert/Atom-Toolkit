@@ -78,7 +78,10 @@ class Term:
                  F: float or str = None, mF: float or str = None,
                  percentage=100.0):
         """
-        TODO: docstring
+        A Term contains all the good quantum numbers of an EnergyLevel, as well as any ancestor terms that can be
+        extracted from the configuration. These ancestor terms can (sometimes? often?) be used to convert between
+        different couplings, among other things.
+
         :param conf: the configuration of the term, formatted according to NIST's conventions
         :param term: The LS (Russell-Saunders), LK, JK, or JJ coupled term symbol, excluding the J value
         :param J: The J value for the term symbol
@@ -112,23 +115,6 @@ class Term:
 
         self.lc, self.sc, self.lo, self.so, self.jc, self.jo, self.l, self.s, self.k = self.get_quantum_nums()
 
-    def get_coupling(self):
-        """
-
-        :return: A string corresponding to the coupling detected in the term symbol
-        """
-        if '[' in self.term:
-            if self.term[0] in 'SPDFGHIKMNOPQRTUVWXYZ':
-                return 'LK'
-            else:
-                return 'JK'
-        elif '(' in self.term:
-            return 'JJ'
-        elif len(self.term) > 1:
-            return 'LS'
-        else:
-            return "unknown"
-
     def get_quantum_nums(self):
         """
         Calls the appropriate term parsing method in order to (hopefully) extract all usable information
@@ -144,6 +130,24 @@ class Term:
         elif self.coupling == 'LK':
             lc, sc, lo, so, l, k = self.parse_LK_term()
         return lc, sc, lo, so, jc, jo, l, s, k
+
+    # region parsing function
+
+    def get_coupling(self):
+        """
+        :return: A string corresponding to the coupling detected in the term symbol
+        """
+        if '[' in self.term:
+            if self.term[0] in 'SPDFGHIKMNOPQRTUVWXYZ':
+                return 'LK'
+            else:
+                return 'JK'
+        elif '(' in self.term:
+            return 'JJ'
+        elif len(self.term) > 1:
+            return 'LS'
+        else:
+            return "unknown"
 
     def parse_LS_term(self):
         """
@@ -262,6 +266,8 @@ class Term:
 
         return lc, sc, lo, so, l, k
 
+    # endregion
+
     @staticmethod
     def let_to_l(let: str) -> int or None:
         """
@@ -327,15 +333,26 @@ class EnergyLevel:
     def __init__(self, term: Term, level: pint.Quantity, lande: float = None, parent=None, atom=None,
                  hfA=0.0, hfB=0.0, hfC=0.0):
         """
-        TODO: docstring
-        :param term:
-        :param level:
-        :param lande:
-        :param parent:
-        :param atom:
-        :param hfA:
-        :param hfB:
-        :param hfC:
+        An EnergyLevel represents a single fine-structure manifold in an atom. It contains a number of sublevels,
+        which are instances of the HFLevel subclass. An example of a fully instantiated EnergyLevel looks like:
+        EnergyLevel
+            HFLevel
+                ZLevel
+                ZLevel
+            HFLevel
+                Zlevel
+                ZLevel
+        EnergyLevels serve as the nodes in the internal graph of an Atom object. Its level can be shifted to be
+        consistent with a transition that the level participates in
+
+        :param term: a Term object containing the level's quantum numbers
+        :param level: the energy of the (center of mass of) the level
+        :param lande: the lande-g value of the level
+        :param parent: the atom that the level is contained in
+        :param atom: the atom that the level is contained in
+        :param hfA: the hyperfine A-coefficient
+        :param hfB: the hyperfine B-coefficient
+        :param hfC: the hyperfine C-coefficient
         """
         self.parent = parent
         self.atom = atom
@@ -416,7 +433,7 @@ class EnergyLevel:
         S = self.term.s
         return 1 + (J * (J + 1) + S * (S + 1) - L * (L + 1)) / (2 * J * (J + 1))
 
-    def populate_HF_transitions(self, include_zeeman=True):
+    def populate_transitions(self, include_zeeman=True):
         if self.atom is None:
             raise AttributeError('EnergyLevel needs to be contained in an atom to add transitions')
         hf_pairs = list(combinations(list(self.values()), 2))
@@ -431,6 +448,8 @@ class EnergyLevel:
                         if abs(z0.term.mF - z1.term.mF) <= 1:
                             transition = Transition(z0, z1)
                             self.atom.add_transition(transition)
+
+    # region dict-like methods
 
     def __len__(self):
         """:return: the number of sublevels"""
@@ -451,25 +470,31 @@ class EnergyLevel:
     def __iter__(self):
         return iter(self._sublevels)
 
-    def values(self):
+    def values(self):  # TODO: maybe rename to sublevels
         return self._sublevels.values()
 
     def keys(self):
         return self._sublevels.keys()
 
+    # endregion
+
 class HFLevel(EnergyLevel):
     def __init__(self, term: Term, level: pint.Quantity, lande: float = None, parent=None, atom=None,
                  hfA=0.0, hfB=0.0, hfC=0.0):
         """
-        TODO: docstring
-        :param term:
-        :param level:
-        :param lande:
-        :param parent:
-        :param atom:
-        :param hfA:
-        :param hfB:
-        :param hfC:
+        An HFLevel represents a hyperfine sublevel of an energy level. It lives inside an EnergyLevel,
+        and contains Zeeman-sublevel ZLevel objects.
+        An HFLevel's level is assigned in the constructor, but in practice, the level defines where it
+        is based on its shift relative to its parent level
+
+        :param term: a Term object containing the level's quantum numbers
+        :param level: the energy of the (center of mass of) the level
+        :param lande: the lande-g value of the level
+        :param parent: the atom that the level is contained in
+        :param atom: the atom that the level is contained in
+        :param hfA: the hyperfine A-coefficient
+        :param hfB: the hyperfine B-coefficient
+        :param hfC: the hyperfine C-coefficient
         """
         super(HFLevel, self).__init__(term, level, lande, parent, atom, hfA, hfB, hfC)
         self.gF = self.compute_gF()
@@ -521,14 +546,22 @@ class Transition:
     def __init__(self, E1: EnergyLevel, E2: EnergyLevel, freq=None, A: pint.Quantity = None,
                  name=None, update_mode='upper', atom=None):
         """
-        TODO: docstring
-        :param E1:
-        :param E2:
-        :param freq:
-        :param A:
-        :param name:
-        :param update_mode:
-        :param atom:
+        A transition contains information about the transition between two EnergyLevels. When instantiated
+        with a set frequency, it can move one of the EnergyLevels in order to make the energy difference
+        between them consistent with the transition. This allows you to accommodate isotope shifts/more
+        precise spectroscopy, etc.
+
+        :param E1: EnergyLevel 1
+        :param E2: EnergyLevel 2
+        :param freq: a pint Quantity representing the transition frequency. (can be any quantity that pint can
+                     convert to a frequency, such as a wavenumber or a wavelength)
+        :param A: The Einstein A coefficient of the transition, corresponding to the natural linewidth
+        :param name: the name of the transition
+        :param update_mode: how the transition should deal with moving EnergyLevels to resolve inconsistencies:
+            upper: move the upper level
+            lower: move the lower level
+            ignore: ignore the conflict
+        :param atom: the atom that the transition lives in
         """
         self.E_1 = E1
         self.E_2 = E2
@@ -568,10 +601,13 @@ class Atom:
                  levels: List[EnergyLevel] = None, transitions: List[Transition] = None):
         """
         TODO: docstring
-        :param name:
-        :param I:
-        :param levels:
-        :param transitions:
+
+        :param name: The Atom's name
+        :param I: A half-integer (0.5, 2.0) , or a string formatted like one ('3', '7/2') representing the
+            nuclear spin of the atom
+        :param levels: Any EnergyLevel objects you want to instantiate the Atom with
+        :param transitions: Any Transition objects you want to instantiate the Atom with. Transitions when
+            added will bring their EnergyLevels with them
         """
         self.name = name
         self.I = Term.frac_to_float(I)
@@ -615,15 +651,14 @@ class Atom:
         """
         print(isinstance(transition.E_1, HFLevel))
 
+        # TODO: make sure that energylevels added this way properly populate their sublevels and **bring their parents with them**
+
         if type(transition.E_1) == EnergyLevel:
-            print(f'adding transition between {transition.E_1.name} and {transition.E_2.name}')
             self.levelsModel.add_edge(transition.E_1, transition.E_2, transition=transition)
         elif type(transition.E_1) == HFLevel:
-            print(f'adding hyperfine transition between {transition.E_1.name} and {transition.E_2.name}')
             self.levelsModel.add_edge(transition.E_1.parent, transition.E_2.parent, transition=transition)
             self.hfModel.add_edge(transition.E_1, transition.E_2, transition=transition)
         elif type(transition.E_1) == ZLevel:
-            print(f'adding zeeman hyperfine transition between {transition.E_1.name} and {transition.E_2.name}')
             self.levelsModel.add_edge(transition.E_1.parent.parent, transition.E_2.parent.parent, transition=transition)
             self.hfModel.add_edge(transition.E_1.parent, transition.E_2.parent, transition=transition)
             self.zModel.add_edge(transition.E_1, transition.E_2, transition=transition)
@@ -753,18 +788,8 @@ if __name__ == '__main__':
 
     a.add_transition(cooling)
 
-    print('=== Before ===')
+    a.levels['4f13.(2F*).6s2 2F*7/2'].populate_transitions()
 
     print(a.levelsModel.edges)
     print(a.hfModel.edges)
     print(a.zModel.edges)
-
-    a.levels['4f13.(2F*).6s2 2F*7/2'].populate_HF_transitions()
-
-    print(a.levelsModel.edges)
-    print(a.hfModel.edges)
-    print(a.zModel.edges)
-    #
-    # import matplotlib.pyplot as plt
-    # nx.draw(a.zModel)
-    # plt.show()
