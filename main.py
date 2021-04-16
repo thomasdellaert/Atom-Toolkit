@@ -551,6 +551,11 @@ class ZLevel(HFLevel):
         """A Zeeman sublevel will have no further sublevels."""
         pass
 
+    @property
+    def level(self):
+        """When asked, sublevels calculate their position relative to their parent level"""
+        return self.parent.level + pint.Quantity(13996244936.1, 'MHz/G') * self.atom.B
+
 class Transition:
     def __init__(self, E1: EnergyLevel, E2: EnergyLevel, freq=None, A: pint.Quantity = None,
                  name=None, update_mode='upper', atom=None):
@@ -613,7 +618,7 @@ class Transition:
 
 # noinspection PyPropertyDefinition
 class Atom:
-    def __init__(self, name: str, I: float = 0.0,
+    def __init__(self, name: str, I: float = 0.0, B: pint.Quantity = pint.Quantity(0.0, 'G'),
                  levels: List[EnergyLevel] = None, transitions: List[Transition] = None):
         """
         TODO: docstring
@@ -627,6 +632,7 @@ class Atom:
         """
         self.name = name
         self.I = Term.frac_to_float(I)
+        self.B = B
         self.levelsModel = nx.Graph()
         self.hfModel = nx.Graph()
         self.zModel = nx.Graph()
@@ -775,8 +781,6 @@ class Atom:
         return p
 
     # endregion
-
-    # TODO: possibly a provision for B-fields? This would have to propagate down the whole tree, annoyingly
 
 
 if __name__ == '__main__':
