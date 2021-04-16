@@ -585,14 +585,12 @@ class Transition:
         if self.name is None:
             self.name = f'{self.E_1.name} -> {self.E_2.name}'
         self.atom = atom
-        self.freq = abs(self.E_1.level - self.E_2.level)
-        self.wl = self.freq.to('nm')
+        self.setfreq = freq
         if freq is not None:
-            if self.E_1.level_constrained or self.E_2.level_constrained:
-                raise RuntimeWarning('This level has been set by another transition')
-                # TODO: make this a warning
-            self.E_upper.level_constrained = True
-            self.E_lower.level_constrained = True
+            # TODO: move this stuff to the Atom. The atom should enforce consistency between
+            #  the levels and transitions, not the EnergyLevel
+            # if self.E_1.level_constrained or self.E_2.level_constrained:
+            #     raise RuntimeWarning('This level has been set by another transition')
             if update_mode == 'upper':
                 self.E_upper.level = self.E_lower.level + freq.to('Hz')
             elif update_mode == 'lower':
@@ -601,6 +599,15 @@ class Transition:
                 pass
             else:
                 raise ValueError('Accepted arguments to update_mode are "upper", "lower", and "ignore"')
+
+    @property
+    def freq(self):
+        return abs(self.E_1.level - self.E_2.level)
+
+    @property
+    def wl(self):
+        return self.freq.to('nm')
+
     # TODO: Add appropriate methods. Things like getting the transition type (via clebsch-gordan math), perhaps
     #  determining color, and computing the transition strength / linewidth given the A coefficient
 
