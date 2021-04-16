@@ -340,7 +340,7 @@ class EnergyLevel:
                 ZLevel
                 ZLevel
             HFLevel
-                Zlevel
+                ZLevel
                 ZLevel
         EnergyLevels serve as the nodes in the internal graph of an Atom object. Its level can be shifted to be
         consistent with a transition that the level participates in
@@ -632,9 +632,14 @@ class Atom:
         """
         if key is None:
             key = level.name
+        if type(level) == HFLevel:
+            level = level.parent
+        elif type(level) == ZLevel:
+            level = level.parent.parent
+        else:
+            level.populate_sublevels()
         level.parent = self
         level.atom = self
-        level.populate_sublevels()
         self.levelsModel.add_node(key, level=level)
         for sublevel in list(level.values()):
             self.hfModel.add_node(sublevel.name, level=sublevel)
@@ -651,14 +656,20 @@ class Atom:
         """
         print(isinstance(transition.E_1, HFLevel))
 
-        # TODO: make sure that energylevels added this way properly populate their sublevels and **bring their parents with them**
+        def check_levels_present(transition, model):
+            for t in [transition.E_1, transition.E_2]:
+                if t not in nx.get_node_attributes(model, 'level').values():
+                    self.add_level(t)
 
         if type(transition.E_1) == EnergyLevel:
+            check_levels_present(transition, self.levelsModel)
             self.levelsModel.add_edge(transition.E_1, transition.E_2, transition=transition)
         elif type(transition.E_1) == HFLevel:
+            check_levels_present(transition, self.hfModel)
             self.levelsModel.add_edge(transition.E_1.parent, transition.E_2.parent, transition=transition)
             self.hfModel.add_edge(transition.E_1, transition.E_2, transition=transition)
         elif type(transition.E_1) == ZLevel:
+            check_levels_present(transition, self.zModel)
             self.levelsModel.add_edge(transition.E_1.parent.parent, transition.E_2.parent.parent, transition=transition)
             self.hfModel.add_edge(transition.E_1.parent, transition.E_2.parent, transition=transition)
             self.zModel.add_edge(transition.E_1, transition.E_2, transition=transition)
