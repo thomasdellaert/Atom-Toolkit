@@ -7,7 +7,7 @@ import pint_pandas
 from indexedproperty import indexedproperty
 # import json
 import re
-
+from itertools import combinations
 from typing import List
 
 ureg = pint.UnitRegistry()
@@ -72,7 +72,6 @@ def load_NIST_data(species, term_ordered=True):
 
     return df_clean
 
-
 class Term:
     def __init__(self,
                  conf: str, term: str, J: float or str,
@@ -81,10 +80,10 @@ class Term:
         """
         TODO: docstring
         :param conf: the configuration of the term, formatted according to NIST's conventions
-        :param term: The LS (Russell-Saunders), LK, JK, or JJ coupled term symbol, exclusing the J value
+        :param term: The LS (Russell-Saunders), LK, JK, or JJ coupled term symbol, excluding the J value
         :param J: The J value for the term symbol
         :param F: The F value for the term symbol
-        :param mF: The m_F value for ther term symbol
+        :param mF: The m_F value for the term symbol
         :param percentage: The leading percentage of the term. Correlates with how well the term's behavior
                             physically corresponds with what you expect
         """
@@ -324,7 +323,6 @@ class Term:
         else:
             return str(int(f * 2)) + '/2'
 
-
 class EnergyLevel:
     def __init__(self, term: Term, level: pint.Quantity, lande: float = None, parent=None, atom=None,
                  hfA=0.0, hfB=0.0, hfC=0.0):
@@ -380,7 +378,7 @@ class EnergyLevel:
 
     def compute_hf_shift(self, F):
         """
-        Computes the hyperfine shift of a level given the EnergyLevel's hyperfine coeffieients and an F level
+        Computes the hyperfine shift of a level given the EnergyLevel's hyperfine coefficients and an F level
         :param F: the F-level to be calculated
         :return: the shift of the level
         """
@@ -409,7 +407,6 @@ class EnergyLevel:
     def compute_gJ(self):
         """
         Computes the Lande g-value of an LS-coupled term.
-        TODO: currently raises an error for other couplings. Maybe do a best guess or placeholder instead?
         :return: gJ
         """
         if self.term.coupling != 'LS':
@@ -419,10 +416,21 @@ class EnergyLevel:
         S = self.term.s
         return 1 + (J * (J + 1) + S * (S + 1) - L * (L + 1)) / (2 * J * (J + 1))
 
-    # def update_level(self, value):
-    #     # a method for when the level of a child level changes, necessitating an update
-    #     shift = value - self.level
-    #     self._level = self.level + shift
+    def populate_HF_transitions(self, include_zeeman=True):
+        if self.atom is None:
+            raise AttributeError('EnergyLevel needs to be contained in an atom to add transitions')
+        hf_pairs = list(combinations(list(self.values()), 2))
+        for pair in hf_pairs:
+            # TODO: Think about a way to implement relative transition strengths in an elegant way
+            # TODO: Check that there aren't any wacky selection rules here
+            transition = Transition(pair[0], pair[1])
+            self.atom.add_transition(transition)
+            if include_zeeman:
+                for z0 in list(pair[0].values()):
+                    for z1 in list(pair[1].values()):
+                        if abs(z0.term.mF - z1.term.mF) <= 1:
+                            transition = Transition(z0, z1)
+                            self.atom.add_transition(transition)
 
     def __len__(self):
         """:return: the number of sublevels"""
@@ -605,11 +613,19 @@ class Atom:
         :param transition: the Transition to be added
         :return:
         """
-        if isinstance(transition.E_1, EnergyLevel):
+        print(isinstance(transition.E_1, HFLevel))
+
+        if type(transition.E_1) == EnergyLevel:
+            print(f'adding transition between {transition.E_1.name} and {transition.E_2.name}')
             self.levelsModel.add_edge(transition.E_1, transition.E_2, transition=transition)
-        elif isinstance(transition.E_1, HFLevel):
+        elif type(transition.E_1) == HFLevel:
+            print(f'adding hyperfine transition between {transition.E_1.name} and {transition.E_2.name}')
+            self.levelsModel.add_edge(transition.E_1.parent, transition.E_2.parent, transition=transition)
             self.hfModel.add_edge(transition.E_1, transition.E_2, transition=transition)
-        elif isinstance(transition.E_1, ZLevel):
+        elif type(transition.E_1) == ZLevel:
+            print(f'adding zeeman hyperfine transition between {transition.E_1.name} and {transition.E_2.name}')
+            self.levelsModel.add_edge(transition.E_1.parent.parent, transition.E_2.parent.parent, transition=transition)
+            self.hfModel.add_edge(transition.E_1.parent, transition.E_2.parent, transition=transition)
             self.zModel.add_edge(transition.E_1, transition.E_2, transition=transition)
 
     # region levels property methods
@@ -714,7 +730,7 @@ if __name__ == '__main__':
 
     species = "Yb II"
     I = 0.5
-    num_levels = 30
+    num_levels = 80
     df = load_NIST_data(species)
 
     a = Atom(species, I=I)
@@ -730,11 +746,25 @@ if __name__ == '__main__':
     for l in list(a.levels.values()):
         print('MAIN:', l.name, l.level.to('THz'))
         for s in list(l.values()):
-            print('    SUBSHIFT:', s.term.term_name, s.shift.to('THz'))
+            print('    SUB:', s.term.term_name, s.shift.to('THz'))
 
     # a.to_pickle('171Yb')
-    # cooling = Transition(a.levelsModel.nodes['4f14.6s 2S1/2']['level'], a.levelsModel.nodes['4f14.6p 2P*1/2']['level'])
+    cooling = Transition(a.levelsModel.nodes['4f14.6s 2S1/2']['level'], a.levelsModel.nodes['4f14.6p 2P*1/2']['level'])
+
+    a.add_transition(cooling)
+
+    print('=== Before ===')
+
+    print(a.levelsModel.edges)
+    print(a.hfModel.edges)
+    print(a.zModel.edges)
+
+    a.levels['4f13.(2F*).6s2 2F*7/2'].populate_HF_transitions()
+
+    print(a.levelsModel.edges)
+    print(a.hfModel.edges)
+    print(a.zModel.edges)
     #
-    # a.add_transition(cooling)
-    #
-    # print(a.levelsModel.edges)
+    # import matplotlib.pyplot as plt
+    # nx.draw(a.zModel)
+    # plt.show()
