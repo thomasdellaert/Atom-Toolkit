@@ -4,7 +4,7 @@ import networkx as nx
 import pickle
 import pint
 import pint_pandas
-from indexedproperty import containerproperty
+from indexedproperty import indexedproperty
 # import json
 import re
 
@@ -413,7 +413,6 @@ class Transition:
     # TODO: Add appropriate methods. Things like getting the transition type (via clebsch-gordan math), perhaps
     #  determining color, and computing the transition strength / linewidth given the A coefficient
 
-
 # noinspection PyPropertyDefinition
 class Atom:
     def __init__(self, name: str, I: float = 0.0,
@@ -452,7 +451,7 @@ class Atom:
 
     # region levels property methods
 
-    @containerproperty
+    @indexedproperty
     def levels(self, key):
         return nx.get_node_attributes(self.levelsModel, 'level')[key]
 
@@ -476,33 +475,49 @@ class Atom:
     def levels(self):
         return nx.get_node_attributes(self.levelsModel, 'level').keys()
 
-    # TODO: get len, iter, and items working, since they are supposed to with containerproperty. possibly call it with an
-    #  argument as per https://github.com/NJDFan/indexedproperty
+    @levels.iter
+    def levels(self):
+        return nx.get_node_attributes(self.levelsModel, 'level').__iter__()
 
-    # @levels.iter
-    # def levels(self):
-    #     return nx.get_node_attributes(self.levelsModel, 'level').__iter__()
-    #
-    # @levels.len
-    # def levels(self):
-    #     return len(nx.get_node_attributes(self.levelsModel, 'level'))
+    @levels.len
+    def levels(self):
+        return len(nx.get_node_attributes(self.levelsModel, 'level'))
 
     # endregion
 
-    @containerproperty
+    # region transitions property methods
+
+    @indexedproperty
     def transitions(self, key):
         return nx.get_edge_attributes(self.levelsModel, 'transition')[key]
 
+    @transitions.setter
+    def transitions(self, value):
+        self.add_transition(value)
+
+    @transitions.deleter
+    def transitions(self, level1, level2):
+        self.levelsModel.remove_edge(level1, level2)
+
+    @transitions.append
+    def transitions(self, value):
+        self.add_transition(value)
+
+    @transitions.len
+    def transitions(self):
+        return len(nx.get_edge_attributes(self.levelsModel, 'transition'))
+
+    @transitions.values
+    def transitions(self):
+        return nx.get_edge_attributes(self.levelsModel, 'transition').values()
+
+    @transitions.iter
+    def transitions(self):
+        return nx.get_edge_attributes(self.levelsModel, 'transition').__iter__()
+
+    # endregion
+
     # region loading/unloading methods
-
-    def to_JSON(self, filename=None):
-        # TODO: self.to_JSON
-        pass
-
-    @classmethod
-    def from_JSON(cls, filename=None, string=None):
-        # TODO: cls.from_JSON
-        pass
 
     def to_pickle(self, filename):
         if filename is None:
@@ -553,10 +568,6 @@ if __name__ == '__main__':
         print('MAIN:', l.name, l.level.to('THz'))
         for s in list(l.values()):
             print('    SUBSHIFT:', s.term.term_name, s.shift.to('THz'))
-
-    print('here0')
-    print(a.levels.items())
-    print('here')
 
     # a.to_pickle('171Yb')
     # cooling = Transition(a.levelsModel.nodes['4f14.6s 2S1/2']['level'], a.levelsModel.nodes['4f14.6p 2P*1/2']['level'])
