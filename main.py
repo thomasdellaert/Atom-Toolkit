@@ -554,7 +554,7 @@ class ZLevel(HFLevel):
     @property
     def level(self):
         """When asked, sublevels calculate their position relative to their parent level"""
-        return self.parent.level + pint.Quantity(13996244936.1, 'MHz/G') * self.atom.B
+        return self.parent.level + self.gF * self.term.mF * Q_(1.39962449361, 'MHz/G') * self.atom.B
 
 class Transition:
     def __init__(self, E1: EnergyLevel, E2: EnergyLevel, freq=None, A: pint.Quantity = None,
@@ -618,7 +618,7 @@ class Transition:
 
 # noinspection PyPropertyDefinition
 class Atom:
-    def __init__(self, name: str, I: float = 0.0, B: pint.Quantity = pint.Quantity(0.0, 'G'),
+    def __init__(self, name: str, I: float = 0.0, B=Q_(0.0, 'G'),
                  levels: List[EnergyLevel] = None, transitions: List[Transition] = None):
         """
         TODO: docstring
@@ -794,7 +794,7 @@ if __name__ == '__main__':
     num_levels = 10
     df = load_NIST_data(species)
 
-    a = Atom(species, I=I)
+    a = Atom(species, I=I, B=Q_(5.0, 'G'))
     for i in range(num_levels):
         try:
             e = energy_level_from_df(df, i)
