@@ -3,3 +3,5 @@ numpy~=1.18.5
 pandas~=1.2.3
 pint~=0.17
 indexedproperty~=0.1.4
+py3nj~=0.1.1
+sympy~=1.6.1
