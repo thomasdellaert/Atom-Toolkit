@@ -1,6 +1,9 @@
 import numpy as np
 import warnings
 try:
+    # py3nj is a pain to install, and requires a fortran compiler among other things. Therefore it's optional,
+    # and everything can work with sympy if it needs to. Py3nj is a bit faster, and it supports vectorized inputs,
+    # so it's preferred.
     from py3nj import wigner3j, wigner6j, wigner9j
     nj = True
 except ImportError:

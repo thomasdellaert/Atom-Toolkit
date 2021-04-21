@@ -3,7 +3,7 @@ import re
 from itertools import combinations
 from typing import List
 
-from config import *
+from config import ureg, Q_
 
 import networkx as nx
 import numpy as np
