@@ -2,8 +2,8 @@ import numpy as np
 import warnings
 try:
     from py3nj import wigner3j, wigner6j, wigner9j
-    nj=True
-except IndexError or ImportError:
+    nj = True
+except ImportError:
     from sympy.physics.wigner import wigner_3j as wigner3j
     from sympy.physics.wigner import wigner_6j as wigner6j
     from sympy.physics.wigner import wigner_9j as wigner9j
@@ -13,10 +13,10 @@ except IndexError or ImportError:
 def wignerPicker(func):
     def wrapper(*args):
         if nj:
-            # py3nj takes the arguments doubled, and requires them to be ints
+            # py3nj takes the arguments doubled, and requires them to be integers
             return func(*map(lambda x: int(x*2), args))
         else:
-            # sympy throws an error when selection rules are violated
+            # sympy throws an error when selection rules are violated, but it needs to return 0
             try:
                 return N(func(*args))
             except ValueError:
