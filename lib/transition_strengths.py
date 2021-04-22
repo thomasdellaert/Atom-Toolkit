@@ -108,36 +108,78 @@ def E2_transition_strength_avg(I, J0, F0, M0, J1, F1, M1):
     return tot
 
 
+def JJ_to_LS(J, Jc, Jo, lc, sc, lo, so):
+    lsdict = {}
+    for L in np.arange(abs(lc-lo), abs(lc+lo)+1):
+        for S in np.arange(abs(sc-so), abs(sc+so)+1):
+            coeff = float(wigner9j(lc, sc, Jc,
+                                   lo, so, Jo,
+                                   L,  S,  J) *\
+                    np.sqrt((2*Jc+1)*(2*Jo+1)*(2*L+1)*(2*S+1)))
+            if coeff != 0:
+                lsdict[f'L={L} S={S}'] = coeff
+    return lsdict
+
+
+def JK_to_LS(J, Jc, K, lc, sc, lo, so):
+    lsdict = {}
+    for L in np.arange(abs(lc-lo), abs(lc+lo)+1):
+        for S in np.arange(abs(sc-so), abs(sc+so)+1):
+            coeff = float((-1)**(-lc-lo-2*sc-so-K-L-J) *\
+                          np.sqrt((2*Jc+1)*(2*L+1)*(2*K+1)*(2*S+1)) *\
+                          wigner6j(sc, lc, Jc,
+                                   lo, K,  L) *\
+                          wigner6j(L, sc, K,
+                                   so, J, S))
+            if coeff != 0:
+                lsdict[f'L={L} S={S}'] = coeff
+    return lsdict
+
+def LK_to_LS(J, L, K, sc, so):
+    lsdict = {}
+    for S in np.arange(abs(sc-so), abs(sc+so)+1):
+        coeff = np.sqrt((2*K+1)*(2*S+1)) *\
+                wigner6j(L, sc, K,
+                         so, J, S)
+        if coeff != 0:
+            lsdict[f'L={L} S={S}'] = coeff
+    return lsdict
+
 if __name__ == '__main__':
-    I_0 = 2.5
-    L_0 = 3
-    L_1 = 3
-    S_0 = 0.5
-    S_1 = 0.5
-    J_0 = 3.5
-    J_1 = 3.5
-    F_0 = 4
-    F_1 = 3
-    G = [-4, -3, -2, -1, 0, 1, 2, 3, 4]
-    E = [-3, -2, -1, 0, 1, 2, 3]
-    print(wigner3j(0.0, 0.5, 0.5, 0.0, 0.5, -0.5))
-    print("M1")
-    flg = False
-    for mg in G:
-        for me in E:
-            s = M1_transition_strength_avg(I_0, J_0, F_0, mg, J_1, F_1, me)
-            if s != 0:
-                flg = True
-                print("{0:.6f} {1:} {2:}".format(s, mg, me))
-    if not flg:
-        print("no allowed transitions")
-    print("E1")
-    flg = False
-    for mg in G:
-        for me in E:
-            s = E1_transition_strength_avg(I_0, J_0, F_0, mg, J_1, F_1, me)
-            if s != 0:
-                flg = True
-                print("{0:.6f} {1:} {2:}".format(s, mg, me))
-    if not flg:
-        print("no allowed transitions")
+    # I_0 = 2.5
+    # L_0 = 3
+    # L_1 = 3
+    # S_0 = 0.5
+    # S_1 = 0.5
+    # J_0 = 3.5
+    # J_1 = 3.5
+    # F_0 = 4
+    # F_1 = 3
+    # G = [-4, -3, -2, -1, 0, 1, 2, 3, 4]
+    # E = [-3, -2, -1, 0, 1, 2, 3]
+    # print(wigner3j(0.0, 0.5, 0.5, 0.0, 0.5, -0.5))
+    # print("M1")
+    # flg = False
+    # for mg in G:
+    #     for me in E:
+    #         s = M1_transition_strength_avg(I_0, J_0, F_0, mg, J_1, F_1, me)
+    #         if s != 0:
+    #             flg = True
+    #             print("{0:.6f} {1:} {2:}".format(s, mg, me))
+    # if not flg:
+    #     print("no allowed transitions")
+    # print("E1")
+    # flg = False
+    # for mg in G:
+    #     for me in E:
+    #         s = E1_transition_strength_avg(I_0, J_0, F_0, mg, J_1, F_1, me)
+    #         if s != 0:
+    #             flg = True
+    #             print("{0:.6f} {1:} {2:}".format(s, mg, me))
+    # if not flg:
+    #     print("no allowed transitions")
+    print(JJ_to_LS(3.5, 3.5, 0, 3, 0.5, 1, 1))
+
+    print(JK_to_LS(0.5, 3.5, 1.5, 3, 0.5, 2, 1))
+
+    print(4/np.sqrt(21), np.sqrt(6)/np.sqrt(63), 1/np.sqrt(7))
