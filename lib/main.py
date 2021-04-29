@@ -207,6 +207,10 @@ class Term:
 
     # endregion
 
+    @classmethod
+    def from_dataframe(cls, df, i=0):
+        return Term(df["Configuration"][i], df["Term"][i], df["J"][i], percentage=df["Leading percentages"])
+
     @staticmethod
     def let_to_l(let: str) -> int or None:
         """
@@ -390,6 +394,12 @@ class EnergyLevel:
                         if abs(z0.term.mF - z1.term.mF) <= 1:
                             transition = Transition(z0, z1)
                             self.atom.add_transition(transition)
+
+    @classmethod
+    def from_dataframe(cls, df, i=0):
+        t = Term.from_dataframe(df, i)
+        # TODO: remove the placeholder hfA value
+        return EnergyLevel(t, df["Level (cm-1)"][i], lande=df["Lande"][i], hfA=10 * ureg('gigahertz'))
 
     # region dict-like methods
 
@@ -719,29 +729,30 @@ class Atom:
         file.close()
         return p
 
+    @classmethod
+    def from_dataframe(cls, df, name, I=0.0, num_levels=None, B=Q_(0.0, 'G')):
+        a = Atom(name, I=I, B=B)
+        for i in range(num_levels):
+            try:
+                e = EnergyLevel.from_dataframe(df, i)
+                a.add_level(e)
+            except KeyError:
+                pass
+        return a
+
     # endregion
 
 
 if __name__ == '__main__':
     from IO import load_NIST_data
 
-    def energy_level_from_df(df, i):
-        t = Term(df["Configuration"][i], df["Term"][i], df["J"][i], percentage=df["Leading percentages"])
-        e = EnergyLevel(t, df["Level (cm-1)"][i], lande=df["Lande"][i], hfA=10 * ureg('gigahertz'))
-        return e
-
     species = "Yb II"
     I = 0.5
     num_levels = 10
+    B = Q_(5.0, 'G')
     df = load_NIST_data(species)
 
-    a = Atom(species, I=I, B=Q_(5.0, 'G'))
-    for i in range(num_levels):
-        try:
-            e = energy_level_from_df(df, i)
-            a.add_level(e)
-        except KeyError:
-            pass
+    a = Atom.from_dataframe(df, species, I=I, num_levels=num_levels, B=B)
 
     # a = Atom.from_pickle('171Yb.atom')
 

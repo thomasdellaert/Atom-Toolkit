@@ -49,3 +49,4 @@ def load_NIST_data(species, term_ordered=True):
     df_clean.reset_index(drop=True, inplace=True)
 
     return df_clean
+    #  TODO: uncertainty
