@@ -742,6 +742,14 @@ class Atom:
 
     # endregion
 
+    def generate_hf_csv(self, filename=None, blank=False):
+        import csv
+        if filename is None:
+            filename = f'{self.name}_Hyperfine.csv'
+        rows_to_write = [[level.name, level.hfA, level.hfB, level.hfC] for level in list(self.levels.values())]
+        with open(filename, 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerows(rows_to_write)
 
 if __name__ == '__main__':
     from IO import load_NIST_data
@@ -767,7 +775,9 @@ if __name__ == '__main__':
     a.add_transition(cooling)
 
     a.levels['4f13.(2F*).6s2 2F*7/2'].populate_transitions()
+    #
+    # print(a.levelsModel.edges)
+    # print(a.hfModel.edges)
+    # print(a.zModel.edges)
 
-    print(a.levelsModel.edges)
-    print(a.hfModel.edges)
-    print(a.zModel.edges)
+    a.generate_hf_csv(filename='test.csv')
