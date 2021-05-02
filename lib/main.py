@@ -274,7 +274,7 @@ class Term:
 
 class EnergyLevel:
     def __init__(self, term: Term, level: pint.Quantity, lande: float = None, parent=None, atom=None,
-                 hfA=0.0, hfB=0.0, hfC=0.0):
+                 hfA=Q_(0.0, 'gigahertz'), hfB=Q_(0.0, 'gigahertz'), hfC=Q_(0.0, 'gigahertz')):
         """
         An EnergyLevel represents a single fine-structure manifold in an atom. It contains a number of sublevels,
         which are instances of the HFLevel subclass. An example of a fully instantiated EnergyLevel looks like:
@@ -302,7 +302,6 @@ class EnergyLevel:
         self.atom = atom
         self.term = term
         self._level = level.to('Hz')
-        self.shift = self._level
         self.name = self.term.name
         self.hfA, self.hfB, self.hfC = hfA, hfB, hfC
         if lande is None:
@@ -325,8 +324,7 @@ class EnergyLevel:
         if isinstance(self.parent, Atom):
             for f in np.arange(abs(self.term.J - self.atom.I), self.term.J + self.atom.I + 1):
                 t = Term(self.term.conf, self.term.term, self.term.J, F=f)
-                shift = self.compute_hf_shift(f)
-                e = HFLevel(t, self.level + shift, lande=self.lande,
+                e = HFLevel(t, self.level, lande=self.lande,
                             parent=self, atom=self.atom,
                             hfA=self.hfA, hfB=self.hfB, hfC=self.hfC)
                 self[f'F={f}'] = e
@@ -338,34 +336,6 @@ class EnergyLevel:
     @level.setter
     def level(self, value):
         self._level = value
-
-    def compute_hf_shift(self, F):
-        """
-        Computes the hyperfine shift of a level given the EnergyLevel's hyperfine coefficients and an F level
-        :param F: the F-level to be calculated
-        :return: the shift of the level
-        """
-        J = self.term.J
-        I = self.atom.I
-
-        IdotJ = 0.5 * (F * (F + 1) - J * (J + 1) - I * (I + 1))
-
-        FM1 = IdotJ
-
-        if J <= 0.5 or I <= 0.5:
-            FE2 = 0
-        else:
-            FE2 = (3 * IdotJ ** 2 + 1.5 * IdotJ - I * (I + 1) * J * (J + 1)) / \
-                  (2.0 * I * (2.0 * I - 1.0) * J * (2.0 * J - 1.0))
-
-        if J <= 1 or I <= 1:
-            FM3 = 0
-        else:
-            FM3 = (10 * IdotJ ** 3 + 20 * IdotJ ** 2 + 2 * IdotJ * (
-                        -3 * I * (I + 1) * J * (J + 1) + I * (I + 1) + J * (J + 1) + 3)
-                   - 5 * I * (I + 1) * J * (J + 1)) / (I * (I - 1) * J * (J - 1) * (2 * J - 1))
-
-        return self.hfA * FM1 + self.hfB * FE2 + self.hfC * FM3
 
     def compute_gJ(self):
         """
@@ -399,7 +369,7 @@ class EnergyLevel:
     def from_dataframe(cls, df, i=0):
         t = Term.from_dataframe(df, i)
         # TODO: remove the placeholder hfA value
-        return EnergyLevel(t, df["Level (cm-1)"][i], lande=df["Lande"][i], hfA=10 * ureg('gigahertz'))
+        return EnergyLevel(t, df["Level (cm-1)"][i], lande=df["Lande"][i])
 
     # region dict-like methods
 
@@ -450,7 +420,6 @@ class HFLevel(EnergyLevel):
         """
         super(HFLevel, self).__init__(term, level, lande, parent, atom, hfA, hfB, hfC)
         self.gF = self.compute_gF()
-        self.shift = self._level - self.parent.level
 
     def get_manifold(self):
         return self.parent
@@ -464,6 +433,38 @@ class HFLevel(EnergyLevel):
                            parent=self, atom=self.atom,
                            hfA=self.hfA, hfB=self.hfB, hfC=self.hfC)
                 self[f'mF={mf}'] = e
+
+    def compute_hf_shift(self):
+        """
+        Computes the hyperfine shift of a level given the EnergyLevel's hyperfine coefficients and an F level
+        :return: the shift of the level
+        """
+        J = self.term.J
+        I = self.atom.I
+        F = self.term.F
+
+        IdotJ = 0.5 * (F * (F + 1) - J * (J + 1) - I * (I + 1))
+
+        FM1 = IdotJ
+
+        if J <= 0.5 or I <= 0.5:
+            FE2 = 0
+        else:
+            FE2 = (3 * IdotJ ** 2 + 1.5 * IdotJ - I * (I + 1) * J * (J + 1)) / \
+                  (2.0 * I * (2.0 * I - 1.0) * J * (2.0 * J - 1.0))
+
+        if J <= 1 or I <= 1:
+            FM3 = 0
+        else:
+            FM3 = (10 * IdotJ ** 3 + 20 * IdotJ ** 2 + 2 * IdotJ * (
+                        -3 * I * (I + 1) * J * (J + 1) + I * (I + 1) + J * (J + 1) + 3)
+                   - 5 * I * (I + 1) * J * (J + 1)) / (I * (I - 1) * J * (J - 1) * (2 * J - 1))
+
+        return self.manifold.hfA * FM1 + self.manifold.hfB * FE2 + self.manifold.hfC * FM3
+
+    @property
+    def shift(self):
+        return self.compute_hf_shift()
 
     @property
     def level(self):
@@ -746,26 +747,41 @@ class Atom:
         import csv
         if filename is None:
             filename = f'{self.name}_Hyperfine.csv'
-        rows_to_write = [[level.name, level.hfA, level.hfB, level.hfC] for level in list(self.levels.values())]
-        with open(filename, 'w', newline='') as f:
+        if not blank:
+            rows_to_write = [[level.name, level.hfA, level.hfB, level.hfC] for level in list(self.levels.values())]
+        else:
+            rows_to_write = [[level.name, Q_(0.0, 'GHz'), Q_(0.0, 'GHz'), Q_(0.0, 'GHz')] for level in list(self.levels.values())]
+        with open(filename, 'w', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
             writer.writerows(rows_to_write)
+
+    def apply_hf_csv(self, filename):
+        import csv
+        with open(filename, newline='', encoding='utf-8') as f:
+            reader = csv.reader(f)
+            for row in reader:
+                name, hfA, hfB, hfC = row
+                self.levels[name].hfA = Q_(hfA)
+                self.levels[name].hfB = Q_(hfB)
+                self.levels[name].hfC = Q_(hfC)
+
 
 if __name__ == '__main__':
     from IO import load_NIST_data
 
     species = "Yb II"
     I = 0.5
-    num_levels = 10
+    num_levels = 30
     B = Q_(5.0, 'G')
     df = load_NIST_data(species)
 
     a = Atom.from_dataframe(df, species, I=I, num_levels=num_levels, B=B)
 
+    a.apply_hf_csv('171Yb_Hyperfine.csv')
     # a = Atom.from_pickle('171Yb.atom')
 
     for l in list(a.levels.values()):
-        print('MAIN:', l.name, l.level.to('THz'))
+        print('MAIN:', l.name, l.level.to('THz'), l.hfA)
         for s in list(l.values()):
             print('    SUB:', s.term.term_name, s.shift.to('THz'))
 
