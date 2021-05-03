@@ -1,5 +1,7 @@
 import numpy as np
 import warnings
+from main import EnergyLevel, HFLevel, ZLevel
+
 try:
     # py3nj is a pain to install, and requires a fortran compiler among other things. Therefore it's optional,
     # and everything can work with sympy if it needs to. Py3nj is a bit faster, and it supports vectorized inputs,
@@ -107,18 +109,19 @@ def E2_transition_strength_avg(I, J0, F0, M0, J1, F1, M1):
     return tot
 
 
-def transition_allowed(term_0, term_1, mode='manifold', I=None):
-    J0, J1 = term_0.J, term_1.J
-    p0, p1 = term_0.parity, term_1.parity
-    if mode == 'manifold':
+def transition_allowed(level_0, level_1):
+    I = level_0.atom.I
+    J0, J1 = level_0.term.J, level_1.term.J
+    p0, p1 = level_0.term.parity, level_1.term.parity
+    if type(level_0) != type(level_1):
+        return False, False, False
+    if type(level_0) == EnergyLevel:
         return (np.abs(J1-J0) <= 1.0 and p0 != p1,
                 np.abs(J1-J0) <= 1.0 and p0 == p1,
                 np.abs(J1-J0) <= 2.0 and p0 == p1)
-    if mode == 'hf':
-        if I is None:
-            raise ValueError("I not defined")
-        F0, F1 = term_0.F, term_1.F
-        init = transition_allowed(term_0, term_1, mode='manifold')
+    if type(level_0) == HFLevel:
+        F0, F1 = level_0.term.F, level_1.term.F
+        init = transition_allowed(level_0.manifold, level_1.manifold)
         ret = [False, False, False]
         if init[0]:
             ret[0] = wigner6j(J0, J1, 1, F1, F0, I) != 0.0
@@ -127,10 +130,10 @@ def transition_allowed(term_0, term_1, mode='manifold', I=None):
         if init[2]:
             ret[2] = wigner6j(J0, J1, 2, F1, F0, I) != 0.0
         return tuple(ret)
-    if mode == 'z':
-        F0, F1 = term_0.F, term_1.F
-        mF0, mF1 = term_0.mF, term_1.mF
-        init = transition_allowed(term_0, term_1, mode='hf')
+    if type(level_0) == ZLevel:
+        F0, F1 = level_0.term.F, level_1.term.F
+        mF0, mF1 = level_0.term.mF, level_1.term.mF
+        init = transition_allowed(level_0.parent, level_1.parent)
         ret = [False, False, False]
         if init[0]:
             ret[0] = sum([wigner3j(F1, 1, F0, -mF1, q, mF0) for q in [-1, 0, 1]]) != 0.0
