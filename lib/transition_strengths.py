@@ -40,7 +40,6 @@ def tkq_transition_strength(I, k, q, J0, F0, M0, J1, F1, M1):
                      -M1, q, M0) ** 2
     return prod
 
-
 # The tensor math for E2 (and somewhat E1) transitions is adapted from Tony's thesis (Ransford 2020)
 
 def E1_transition_strength_geom(eps, I, J0, F0, M0, J1, F1, M1):
@@ -108,6 +107,40 @@ def E2_transition_strength_avg(I, J0, F0, M0, J1, F1, M1):
     return tot
 
 
+def transition_allowed(term_0, term_1, mode='manifold', I=None):
+    J0, J1 = term_0.J, term_1.J
+    p0, p1 = term_0.parity, term_1.parity
+    if mode == 'manifold':
+        return (np.abs(J1-J0) <= 1.0 and p0 != p1,
+                np.abs(J1-J0) <= 1.0 and p0 == p1,
+                np.abs(J1-J0) <= 2.0 and p0 == p1)
+    if mode == 'hf':
+        if I is None:
+            raise ValueError("I not defined")
+        F0, F1 = term_0.F, term_1.F
+        init = transition_allowed(term_0, term_1, mode='manifold')
+        ret = [False, False, False]
+        if init[0]:
+            ret[0] = wigner6j(J0, J1, 1, F1, F0, I) != 0.0
+        if init[1]:
+            ret[1] = wigner6j(J0, J1, 1, F1, F0, I) != 0.0
+        if init[2]:
+            ret[2] = wigner6j(J0, J1, 2, F1, F0, I) != 0.0
+        return tuple(ret)
+    if mode == 'z':
+        F0, F1 = term_0.F, term_1.F
+        mF0, mF1 = term_0.mF, term_1.mF
+        init = transition_allowed(term_0, term_1, mode='hf')
+        ret = [False, False, False]
+        if init[0]:
+            ret[0] = sum([wigner3j(F1, 1, F0, -mF1, q, mF0) for q in [-1, 0, 1]]) != 0.0
+        if init[1]:
+            ret[1] = sum([wigner3j(F1, 1, F0, -mF1, q, mF0) for q in [-1, 0, 1]]) != 0.0
+        if init[2]:
+            ret[2] = sum([wigner3j(F1, 2, F0, -mF1, q, mF0) for q in [-2, -1, 0, 1, 2]]) != 0.0
+        return tuple(ret)
+
+
 def JJ_to_LS(J, Jc, Jo, lc, sc, lo, so):
     lsdict = {}
     for L in np.arange(abs(lc-lo), abs(lc+lo)+1):
@@ -119,7 +152,6 @@ def JJ_to_LS(J, Jc, Jo, lc, sc, lo, so):
             if coeff != 0:
                 lsdict[f'L={L} S={S}'] = coeff
     return lsdict
-
 
 def JK_to_LS(J, Jc, K, lc, sc, lo, so):
     lsdict = {}
