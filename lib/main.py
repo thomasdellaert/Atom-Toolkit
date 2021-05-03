@@ -868,15 +868,15 @@ if __name__ == '__main__':
     # Magnetic field
     B = Q_(5.0, 'G')
     # whether to load from pickle
-    pickleq = False
+    pickleq = True
 
     if pickleq:
-        a = Atom.from_pickle(f'{species}.atom')
+        a = Atom.from_pickle(f'atoms/{species}.atom')
     else:
         df = load_NIST_data(speciesdict[species]['species'])
-        a = Atom.generate_full(df, species, speciesdict[species]['I'], hf_csv=f'{species}_Hyperfine.csv')
+        a = Atom.generate_full(df, species, speciesdict[species]['I'], hf_csv=f'resources/{species}_Hyperfine.csv')
         a.to_pickle('171Yb')
-        a.generate_hf_csv(filename=f'{species}_Hyperfine.csv')
+        a.generate_hf_csv(filename=f'resources/{species}_Hyperfine.csv')
 
     # for l in list(a.levels.values()):
     #     print('MAIN:', l.name, l.level.to('THz'), l.hfA)
