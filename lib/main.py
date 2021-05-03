@@ -784,7 +784,7 @@ class Atom:
         return p
 
     @classmethod
-    def from_dataframe(cls, df, name, I=0.0, num_levels=None, B=Q_(0.0, 'G')):
+    def from_dataframe(cls, df, name, I=0.0, num_levels=None, B=Q_(0.0, 'G'), **kwargs):
         a = Atom(name, I=I, B=B)
         for i in range(num_levels):
             try:
@@ -795,27 +795,33 @@ class Atom:
         return a
 
     @classmethod
-    def generate_full(cls, df, name, I=0.0, hf_csv=None, transition_csv=None):
-        pass
-        # TODO
+    def generate_full(cls, df, name, I=0.0, **kwargs):
+        a = Atom.from_dataframe(df, name, I, num_levels=num_levels, B=B, **kwargs)
+        a.populate_transitions(allowed=0b111, subtransitions=True, **kwargs)
+        if 'hf_csv' in kwargs:
+            a.apply_hf_csv(kwargs['hf_csv'])
+        if 'transitions_csv' in kwargs:
+            a.apply_transition_csv(kwargs['transitions_csv'])
+        return a
 
     # endregion
 
-    def populate_transitions(self, allowed=0b111, subtransitions=False):
+    def populate_transitions(self, allowed=0b111, subtransitions=False, **kwargs):
         level_pairs = tqdm(list(combinations(list(self.levels.values()), 2)))
         for pair in level_pairs:
             t = Transition(pair[0], pair[1])
-            level_pairs.set_description(f'processing transition {t.name}')
+            level_pairs.set_description(f'processing transition {t.name:100}')
             if t.allowed_types & allowed == 0:
                 del t
             else:
                 self.add_transition(t, subtransitions)
 
-    def generate_hf_csv(self, filename=None, blank=False):
+    def generate_hf_csv(self, filename=None, blank=False, def_A=Q_(0.0, 'gigahertz')):
         if filename is None:
             filename = f'{self.name}_Hyperfine.csv'
         if not blank:
-            rows_to_write = [[level.name, level.hfA, level.hfB, level.hfC] for level in list(self.levels.values())]
+            rows_to_write = [[level.name, (level.hfA if level.hfA != Q_(0.0, 'gigahertz') else def_A), level.hfB, level.hfC]
+                             for level in list(self.levels.values())]
         else:
             rows_to_write = [[level.name, Q_(0.0, 'GHz'), Q_(0.0, 'GHz'), Q_(0.0, 'GHz')] for level in list(self.levels.values())]
         with open(filename, 'w', newline='', encoding='utf-8') as f:
@@ -841,6 +847,10 @@ class Atom:
         pass
         # TODO
 
+    def apply_transition_csv(self, filename):
+        pass
+        # TODO
+
 
 if __name__ == '__main__':
     from IO import load_NIST_data
@@ -851,24 +861,27 @@ if __name__ == '__main__':
         '173Yb': {'species': 'Yb II', 'I': 2.5}
     }
 
+    # Name of the atom
     species = '171Yb'
-    num_levels = 30
+    # Number of levels to generate
+    num_levels = 100
+    # Magnetic field
     B = Q_(5.0, 'G')
-    df = load_NIST_data(speciesdict[species]['species'])
+    # whether to load from pickle
+    pickleq = False
 
-    a = Atom.from_dataframe(df, species, I=speciesdict[species]['I'], num_levels=num_levels, B=B)
-
-    a.apply_hf_csv(f'{species}_Hyperfine.csv')
-    # a = Atom.from_pickle('171Yb.atom')
+    if pickleq:
+        a = Atom.from_pickle(f'{species}.atom')
+    else:
+        df = load_NIST_data(speciesdict[species]['species'])
+        a = Atom.generate_full(df, species, speciesdict[species]['I'], hf_csv=f'{species}_Hyperfine.csv')
+        a.to_pickle('171Yb')
+        a.generate_hf_csv(filename=f'{species}_Hyperfine.csv')
 
     # for l in list(a.levels.values()):
     #     print('MAIN:', l.name, l.level.to('THz'), l.hfA)
     #     for s in list(l.values()):
     #         print('    SUB:', s.term.term_name, s.shift.to('THz'))
 
-    # a.to_pickle('171Yb')
-    a.populate_transitions(allowed=0b111, subtransitions=True)
-
-    a.generate_hf_csv(filename=f'{species}_Hyperfine.csv')
     nx.draw(a.levelsModel)
     plt.show()
