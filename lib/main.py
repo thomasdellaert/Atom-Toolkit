@@ -3,7 +3,7 @@ import re
 from itertools import combinations
 from typing import List
 
-from config import ureg, Q_
+from config import Q_
 
 import networkx as nx
 import numpy as np
@@ -312,7 +312,6 @@ class EnergyLevel:
         else:
             self.lande = lande
         self._sublevels = {}
-        self.populate_sublevels()
 
     def get_manifold(self):
         return self
@@ -770,14 +769,14 @@ if __name__ == '__main__':
     from IO import load_NIST_data
 
     species = "Yb II"
-    I = 0.5
+    I = 2.5
     num_levels = 30
     B = Q_(5.0, 'G')
     df = load_NIST_data(species)
 
     a = Atom.from_dataframe(df, species, I=I, num_levels=num_levels, B=B)
 
-    a.apply_hf_csv('171Yb_Hyperfine.csv')
+    a.apply_hf_csv('173Yb_Hyperfine.csv')
     # a = Atom.from_pickle('171Yb.atom')
 
     for l in list(a.levels.values()):
@@ -796,4 +795,4 @@ if __name__ == '__main__':
     # print(a.hfModel.edges)
     # print(a.zModel.edges)
 
-    a.generate_hf_csv(filename='test.csv')
+    a.generate_hf_csv(filename='173Yb_Hyperfine.csv')

@@ -145,6 +145,7 @@ def LK_to_LS(J, L, K, sc, so):
             lsdict[f'L={L} S={S}'] = coeff
     return lsdict
 
+
 if __name__ == '__main__':
     # I_0 = 2.5
     # L_0 = 3
