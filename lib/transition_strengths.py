@@ -1,6 +1,5 @@
 import numpy as np
 import warnings
-from main import EnergyLevel, HFLevel, ZLevel
 
 try:
     # py3nj is a pain to install, and requires a fortran compiler among other things. Therefore it's optional,
@@ -27,7 +26,6 @@ def wignerPicker(func):
             except ValueError:
                 return 0.0
     return wrapper
-
 
 wigner3j = wignerPicker(wigner3j)
 wigner6j = wignerPicker(wigner6j)
@@ -107,42 +105,6 @@ def E2_transition_strength_avg(I, J0, F0, M0, J1, F1, M1):
     tot += tkq_transition_strength(I, 2, 1, J0, F0, M0, J1, F1, M1) * (9.0 / 58.0)
     tot += tkq_transition_strength(I, 2, 2, J0, F0, M0, J1, F1, M1) * (4.0 / 15.0)
     return tot
-
-
-def transition_allowed(level_0, level_1):
-    I = level_0.atom.I
-    J0, J1 = level_0.term.J, level_1.term.J
-    p0, p1 = level_0.term.parity, level_1.term.parity
-    if type(level_0) != type(level_1):
-        return False, False, False
-    if type(level_0) == EnergyLevel:
-        return (np.abs(J1-J0) <= 1.0 and p0 != p1,
-                np.abs(J1-J0) <= 1.0 and p0 == p1,
-                np.abs(J1-J0) <= 2.0 and p0 == p1)
-    if type(level_0) == HFLevel:
-        F0, F1 = level_0.term.F, level_1.term.F
-        init = transition_allowed(level_0.manifold, level_1.manifold)
-        ret = [False, False, False]
-        if init[0]:
-            ret[0] = wigner6j(J0, J1, 1, F1, F0, I) != 0.0
-        if init[1]:
-            ret[1] = wigner6j(J0, J1, 1, F1, F0, I) != 0.0
-        if init[2]:
-            ret[2] = wigner6j(J0, J1, 2, F1, F0, I) != 0.0
-        return tuple(ret)
-    if type(level_0) == ZLevel:
-        F0, F1 = level_0.term.F, level_1.term.F
-        mF0, mF1 = level_0.term.mF, level_1.term.mF
-        init = transition_allowed(level_0.parent, level_1.parent)
-        ret = [False, False, False]
-        if init[0]:
-            ret[0] = sum([wigner3j(F1, 1, F0, -mF1, q, mF0) for q in [-1, 0, 1]]) != 0.0
-        if init[1]:
-            ret[1] = sum([wigner3j(F1, 1, F0, -mF1, q, mF0) for q in [-1, 0, 1]]) != 0.0
-        if init[2]:
-            ret[2] = sum([wigner3j(F1, 2, F0, -mF1, q, mF0) for q in [-2, -1, 0, 1, 2]]) != 0.0
-        return tuple(ret)
-
 
 def JJ_to_LS(J, Jc, Jo, lc, sc, lo, so):
     lsdict = {}

@@ -10,7 +10,6 @@ import numpy as np
 import pint
 from indexedproperty import indexedproperty
 
-
 class Term:
     def __init__(self,
                  conf: str, term: str, J: float or str,
@@ -507,7 +506,7 @@ class ZLevel(HFLevel):
 
 class Transition:
     def __init__(self, E1: EnergyLevel, E2: EnergyLevel, freq=None, A: pint.Quantity = None,
-                 name=None, update_mode='upper', atom=None):
+                 name=None, update_mode='upper'):
         """
         A transition contains information about the transition between two EnergyLevels. When instantiated
         with a set frequency, it can move one of the EnergyLevels in order to make the energy difference
@@ -524,11 +523,11 @@ class Transition:
             upper: move the upper level
             lower: move the lower level
             ignore: ignore the conflict
-        :param atom: the atom that the transition lives in
         """
         self.E_1 = E1
         self.E_2 = E2
         self.A = A
+        self.allowed_types = self.transition_allowed(self.E_1, self.E_2)
         if self.E_2.level > self.E_1.level:
             self.E_upper = self.E_2
             self.E_lower = self.E_1
@@ -538,7 +537,6 @@ class Transition:
         self.name = name
         if self.name is None:
             self.name = f'{self.E_1.name} -> {self.E_2.name}'
-        self.atom = atom
         self.set_freq = freq
         if freq is not None:
             # TODO: move this stuff to the Atom. The atom should enforce consistency between
@@ -562,6 +560,40 @@ class Transition:
     def wl(self):
         return self.freq.to('nm')
 
+    def transition_allowed(self, level_0, level_1):
+        from transition_strengths import wigner3j, wigner6j
+        I = level_0.atom.I
+        J0, J1 = level_0.term.J, level_1.term.J
+        p0, p1 = level_0.term.parity, level_1.term.parity
+        if type(level_0) != type(level_1):
+            return 0b000
+        if type(level_0) == EnergyLevel:
+            return 0b001 * (np.abs(J1 - J0) <= 1.0 and p0 != p1) | \
+                   0b010 * (np.abs(J1 - J0) <= 1.0 and p0 == p1) | \
+                   0b100 * (np.abs(J1 - J0) <= 2.0 and p0 == p1)
+        if type(level_0) == HFLevel:
+            F0, F1 = level_0.term.F, level_1.term.F
+            init = self.transition_allowed(level_0.manifold, level_1.manifold)
+            ret = 0b000
+            if init & 1:
+                ret |= 0b001 * wigner6j(J0, J1, 1, F1, F0, I) != 0.0
+            if (init >> 1) & 1:
+                ret |= 0b010 * wigner6j(J0, J1, 1, F1, F0, I) != 0.0
+            if (init >> 2) & 1:
+                ret |= 0b100 * wigner6j(J0, J1, 2, F1, F0, I) != 0.0
+            return ret
+        if type(level_0) == ZLevel:
+            F0, F1 = level_0.term.F, level_1.term.F
+            mF0, mF1 = level_0.term.mF, level_1.term.mF
+            init = self.transition_allowed(level_0.parent, level_1.parent)
+            ret = 0b000
+            if init & 1:
+                ret |= 0b001 * sum([wigner3j(F1, 1, F0, -mF1, q, mF0) for q in [-1, 0, 1]]) != 0.0
+            if (init >> 1) & 1:
+                ret |= 0b010 * sum([wigner3j(F1, 1, F0, -mF1, q, mF0) for q in [-1, 0, 1]]) != 0.0
+            if (init >> 2) & 1:
+                ret |= 0b100 * sum([wigner3j(F1, 2, F0, -mF1, q, mF0) for q in [-2, -1, 0, 1, 2]]) != 0.0
+            return ret
     # TODO: Add appropriate methods. Things like getting the transition type (via clebsch-gordan math), perhaps
     #  determining color, and computing the transition strength / linewidth given the A coefficient
 
@@ -619,6 +651,7 @@ class Atom:
         Add a transition between two EnergyLevels in the atom. If either of the referenced levels aren't in the atom
         yet, they will be added.
         TODO: accept a list of Transitions
+        TODO: optionally populate sub-transitions
         :param transition: the Transition to be added
         :return:
         """
@@ -740,7 +773,21 @@ class Atom:
                 pass
         return a
 
+    @classmethod
+    def generate_full(cls, df, name, I=0.0, hf_csv=None, transition_csv=None):
+        pass
+
     # endregion
+
+    def populate_transitions(self, allowed=0b111):
+        level_pairs = list(combinations(list(self.levels.values()), 2))
+        for pair in level_pairs:
+            t = Transition(pair[0], pair[1])
+            if t.allowed_types & allowed == 0:
+                del t
+            else:
+                print(t.name, bin(t.allowed_types))
+                self.add_transition(t)
 
     def generate_hf_csv(self, filename=None, blank=False):
         import csv
@@ -767,16 +814,17 @@ class Atom:
 
 if __name__ == '__main__':
     from IO import load_NIST_data
+    import matplotlib.pyplot as plt
 
     species = "Yb II"
-    I = 2.5
-    num_levels = 30
+    I = 0.5
+    num_levels = 100
     B = Q_(5.0, 'G')
     df = load_NIST_data(species)
 
     a = Atom.from_dataframe(df, species, I=I, num_levels=num_levels, B=B)
 
-    a.apply_hf_csv('173Yb_Hyperfine.csv')
+    a.apply_hf_csv('171Yb_Hyperfine.csv')
     # a = Atom.from_pickle('171Yb.atom')
 
     for l in list(a.levels.values()):
@@ -785,9 +833,10 @@ if __name__ == '__main__':
             print('    SUB:', s.term.term_name, s.shift.to('THz'))
 
     # a.to_pickle('171Yb')
-    cooling = Transition(a.levelsModel.nodes['4f14.6s 2S1/2']['level'], a.levelsModel.nodes['4f14.6p 2P*1/2']['level'])
-
-    a.add_transition(cooling)
+    a.populate_transitions()
+    # cooling = Transition(a.levelsModel.nodes['4f14.6s 2S1/2']['level'], a.levelsModel.nodes['4f14.6p 2P*1/2']['level'])
+    #
+    # a.add_transition(cooling)
 
     a.levels['4f13.(2F*).6s2 2F*7/2'].populate_transitions()
     #
@@ -795,4 +844,8 @@ if __name__ == '__main__':
     # print(a.hfModel.edges)
     # print(a.zModel.edges)
 
-    a.generate_hf_csv(filename='173Yb_Hyperfine.csv')
+    a.generate_hf_csv(filename='171Yb_Hyperfine.csv')
+    print('drawing')
+    nx.draw(a.levelsModel)
+    plt.show()
+    print('drawn')
