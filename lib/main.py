@@ -1,10 +1,11 @@
 import pickle
 import re
-from itertools import combinations
+from itertools import combinations, product
 from typing import List
 
 from config import Q_
 
+from tqdm import tqdm
 import networkx as nx
 import numpy as np
 import pint
@@ -643,16 +644,18 @@ class Atom:
         self.levelsModel.add_node(key, level=level)
         for sublevel in list(level.values()):
             self.hfModel.add_node(sublevel.name, level=sublevel)
+            sublevel.populate_sublevels()
             for z_level in list(sublevel.values()):
                 self.zModel.add_node(z_level.name, level=z_level)
 
-    def add_transition(self, transition: Transition):
+    def add_transition(self, transition: Transition, subtransitions=False):
         """
         Add a transition between two EnergyLevels in the atom. If either of the referenced levels aren't in the atom
         yet, they will be added.
         TODO: accept a list of Transitions
         TODO: optionally populate sub-transitions
         :param transition: the Transition to be added
+        :param subtransitions: what types of sub-transitions to add
         :return:
         """
         def check_levels_present(transition, model):
@@ -663,10 +666,20 @@ class Atom:
         if type(transition.E_1) == EnergyLevel:
             check_levels_present(transition, self.levelsModel)
             self.levelsModel.add_edge(transition.E_1, transition.E_2, transition=transition)
+            if subtransitions:
+                for pair in list(product(list(transition.E_1.values()), list(transition.E_2.values()))):
+                    t = Transition(pair[0], pair[1])
+                    if t.allowed_types & transition.allowed_types:
+                        self.add_transition(t, subtransitions=subtransitions)
         elif type(transition.E_1) == HFLevel:
             check_levels_present(transition, self.hfModel)
             self.levelsModel.add_edge(transition.E_1.manifold, transition.E_2.manifold, transition=transition)
             self.hfModel.add_edge(transition.E_1, transition.E_2, transition=transition)
+            if subtransitions:
+                for pair in list(product(list(transition.E_1.values()), list(transition.E_2.values()))):
+                    t = Transition(pair[0], pair[1])
+                    if t.allowed_types & transition.allowed_types:
+                        self.add_transition(t)
         elif type(transition.E_1) == ZLevel:
             check_levels_present(transition, self.zModel)
             self.levelsModel.add_edge(transition.E_1.manifold, transition.E_2.manifold, transition=transition)
@@ -779,15 +792,15 @@ class Atom:
 
     # endregion
 
-    def populate_transitions(self, allowed=0b111):
-        level_pairs = list(combinations(list(self.levels.values()), 2))
+    def populate_transitions(self, allowed=0b111, subtransitions=False):
+        level_pairs = tqdm(list(combinations(list(self.levels.values()), 2)))
         for pair in level_pairs:
             t = Transition(pair[0], pair[1])
+            level_pairs.set_description(f'processing transition {t.name}')
             if t.allowed_types & allowed == 0:
                 del t
             else:
-                print(t.name, bin(t.allowed_types))
-                self.add_transition(t)
+                self.add_transition(t, subtransitions)
 
     def generate_hf_csv(self, filename=None, blank=False):
         import csv
@@ -806,10 +819,13 @@ class Atom:
         with open(filename, newline='', encoding='utf-8') as f:
             reader = csv.reader(f)
             for row in reader:
-                name, hfA, hfB, hfC = row
-                self.levels[name].hfA = Q_(hfA)
-                self.levels[name].hfB = Q_(hfB)
-                self.levels[name].hfC = Q_(hfC)
+                try:
+                    name, hfA, hfB, hfC = row
+                    self.levels[name].hfA = Q_(hfA)
+                    self.levels[name].hfB = Q_(hfB)
+                    self.levels[name].hfC = Q_(hfC)
+                except KeyError:
+                    pass
 
 
 if __name__ == '__main__':
@@ -818,7 +834,7 @@ if __name__ == '__main__':
 
     species = "Yb II"
     I = 0.5
-    num_levels = 100
+    num_levels = 30
     B = Q_(5.0, 'G')
     df = load_NIST_data(species)
 
@@ -833,19 +849,8 @@ if __name__ == '__main__':
             print('    SUB:', s.term.term_name, s.shift.to('THz'))
 
     # a.to_pickle('171Yb')
-    a.populate_transitions()
-    # cooling = Transition(a.levelsModel.nodes['4f14.6s 2S1/2']['level'], a.levelsModel.nodes['4f14.6p 2P*1/2']['level'])
-    #
-    # a.add_transition(cooling)
-
-    a.levels['4f13.(2F*).6s2 2F*7/2'].populate_transitions()
-    #
-    # print(a.levelsModel.edges)
-    # print(a.hfModel.edges)
-    # print(a.zModel.edges)
+    a.populate_transitions(allowed=0b111, subtransitions=True)
 
     a.generate_hf_csv(filename='171Yb_Hyperfine.csv')
-    print('drawing')
     nx.draw(a.levelsModel)
     plt.show()
-    print('drawn')
