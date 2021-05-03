@@ -2,6 +2,7 @@ import re
 
 import pandas as pd
 
+
 def load_NIST_data(species, term_ordered=True):
     df = pd.read_csv(
         'https://physics.nist.gov/cgi-bin/ASD/energy1.pl?de=0' +

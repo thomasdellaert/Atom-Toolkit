@@ -1,15 +1,17 @@
+import csv
 import pickle
 import re
 from itertools import combinations, product
 from typing import List
 
-from config import Q_
-
-from tqdm import tqdm
 import networkx as nx
 import numpy as np
 import pint
 from indexedproperty import indexedproperty
+from tqdm import tqdm
+
+from config import Q_
+
 
 class Term:
     def __init__(self,
@@ -98,7 +100,7 @@ class Term:
         """
         # find the following forms: 2F, 3P*, and extract the relevant substrings
         [(ss, ls)] = re.findall(r'(\d+)([A-Z])', self.term)
-        s = (float(ss) - 1)/2
+        s = (float(ss) - 1) / 2
         l = self.let_to_l(ls)
         return l, s
 
@@ -128,8 +130,8 @@ class Term:
 
         jc = self.frac_to_float(jcs)
         k = self.frac_to_float(ks)
-        sc = (float(scs) - 1)/2
-        so = (float(sos) - 1)/2
+        sc = (float(scs) - 1) / 2
+        so = (float(sos) - 1) / 2
         lc = self.let_to_l(lcs)
         lo = self.let_to_l(los)
 
@@ -158,13 +160,13 @@ class Term:
         lc = self.let_to_l(lcs)
         lo = self.let_to_l(los)
         if lcs.isupper():
-            sc = (float(scs) - 1)/2
+            sc = (float(scs) - 1) / 2
         elif lcs.islower():
             sc = 0.0
         else:
             sc = None
         if los.isupper():
-            so = (float(sos) - 1)/2
+            so = (float(sos) - 1) / 2
         elif los.islower():
             so = 0.0
         else:
@@ -271,6 +273,7 @@ class Term:
             return str(int(f))
         else:
             return str(int(f * 2)) + '/2'
+
 
 class EnergyLevel:
     def __init__(self, term: Term, level: pint.Quantity, lande: float = None, parent=None, atom=None,
@@ -399,6 +402,7 @@ class EnergyLevel:
 
     # endregion
 
+
 class HFLevel(EnergyLevel):
     def __init__(self, term: Term, level: pint.Quantity, lande: float = None, parent=None, atom=None,
                  hfA=0.0, hfB=0.0, hfC=0.0):
@@ -456,7 +460,7 @@ class HFLevel(EnergyLevel):
             FM3 = 0
         else:
             FM3 = (10 * IdotJ ** 3 + 20 * IdotJ ** 2 + 2 * IdotJ * (
-                        -3 * I * (I + 1) * J * (J + 1) + I * (I + 1) + J * (J + 1) + 3)
+                    -3 * I * (I + 1) * J * (J + 1) + I * (I + 1) + J * (J + 1) + 3)
                    - 5 * I * (I + 1) * J * (J + 1)) / (I * (I - 1) * J * (J - 1) * (2 * J - 1))
 
         return self.manifold.hfA * FM1 + self.manifold.hfB * FE2 + self.manifold.hfC * FM3
@@ -492,6 +496,7 @@ class HFLevel(EnergyLevel):
             return self.lande * (F * (F + 1) + J * (J + 1) - I * (I + 1)) / (2 * F * (F + 1))
         return 0.0
 
+
 class ZLevel(HFLevel):
     def get_manifold(self):
         return self.parent.parent
@@ -504,6 +509,7 @@ class ZLevel(HFLevel):
     def level(self):
         """When asked, sublevels calculate their position relative to their parent level"""
         return self.parent.level + self.gF * self.term.mF * Q_(1.39962449361, 'MHz/G') * self.atom.B
+
 
 class Transition:
     def __init__(self, E1: EnergyLevel, E2: EnergyLevel, freq=None, A: pint.Quantity = None,
@@ -598,6 +604,7 @@ class Transition:
     # TODO: Add appropriate methods. Things like getting the transition type (via clebsch-gordan math), perhaps
     #  determining color, and computing the transition strength / linewidth given the A coefficient
 
+
 # noinspection PyPropertyDefinition
 class Atom:
     def __init__(self, name: str, I: float = 0.0, B=Q_(0.0, 'G'),
@@ -658,28 +665,29 @@ class Atom:
         :param subtransitions: what types of sub-transitions to add
         :return:
         """
+
         def check_levels_present(transition, model):
             for t in [transition.E_1, transition.E_2]:
                 if t not in nx.get_node_attributes(model, 'level').values():
                     self.add_level(t)
 
+        def add_subtransitions(transition, subtransitions):
+            for pair in list(product(list(transition.E_1.values()), list(transition.E_2.values()))):
+                t = Transition(pair[0], pair[1])
+                if t.allowed_types & transition.allowed_types:
+                    self.add_transition(t, subtransitions=subtransitions)
+
         if type(transition.E_1) == EnergyLevel:
             check_levels_present(transition, self.levelsModel)
             self.levelsModel.add_edge(transition.E_1, transition.E_2, transition=transition)
             if subtransitions:
-                for pair in list(product(list(transition.E_1.values()), list(transition.E_2.values()))):
-                    t = Transition(pair[0], pair[1])
-                    if t.allowed_types & transition.allowed_types:
-                        self.add_transition(t, subtransitions=subtransitions)
+                add_subtransitions(transition, subtransitions=subtransitions)
         elif type(transition.E_1) == HFLevel:
             check_levels_present(transition, self.hfModel)
             self.levelsModel.add_edge(transition.E_1.manifold, transition.E_2.manifold, transition=transition)
             self.hfModel.add_edge(transition.E_1, transition.E_2, transition=transition)
             if subtransitions:
-                for pair in list(product(list(transition.E_1.values()), list(transition.E_2.values()))):
-                    t = Transition(pair[0], pair[1])
-                    if t.allowed_types & transition.allowed_types:
-                        self.add_transition(t)
+                add_subtransitions(transition, subtransitions=0b000)
         elif type(transition.E_1) == ZLevel:
             check_levels_present(transition, self.zModel)
             self.levelsModel.add_edge(transition.E_1.manifold, transition.E_2.manifold, transition=transition)
@@ -789,6 +797,7 @@ class Atom:
     @classmethod
     def generate_full(cls, df, name, I=0.0, hf_csv=None, transition_csv=None):
         pass
+        # TODO
 
     # endregion
 
@@ -803,7 +812,6 @@ class Atom:
                 self.add_transition(t, subtransitions)
 
     def generate_hf_csv(self, filename=None, blank=False):
-        import csv
         if filename is None:
             filename = f'{self.name}_Hyperfine.csv'
         if not blank:
@@ -827,30 +835,40 @@ class Atom:
                 except KeyError:
                     pass
 
+    def generate_transition_csv(self, filename=None, blank=False):
+        if filename is None:
+            filename = f'{self.name}_Transitions.csv'
+        pass
+        # TODO
+
 
 if __name__ == '__main__':
     from IO import load_NIST_data
     import matplotlib.pyplot as plt
 
-    species = "Yb II"
-    I = 0.5
+    speciesdict = {
+        '171Yb': {'species': 'Yb II', 'I': 0.5},
+        '173Yb': {'species': 'Yb II', 'I': 2.5}
+    }
+
+    species = '171Yb'
     num_levels = 30
     B = Q_(5.0, 'G')
-    df = load_NIST_data(species)
+    df = load_NIST_data(speciesdict[species]['species'])
 
-    a = Atom.from_dataframe(df, species, I=I, num_levels=num_levels, B=B)
+    a = Atom.from_dataframe(df, species, I=speciesdict[species]['I'], num_levels=num_levels, B=B)
 
-    a.apply_hf_csv('171Yb_Hyperfine.csv')
+    a.apply_hf_csv(f'{species}_Hyperfine.csv')
     # a = Atom.from_pickle('171Yb.atom')
 
-    for l in list(a.levels.values()):
-        print('MAIN:', l.name, l.level.to('THz'), l.hfA)
-        for s in list(l.values()):
-            print('    SUB:', s.term.term_name, s.shift.to('THz'))
+    # for l in list(a.levels.values()):
+    #     print('MAIN:', l.name, l.level.to('THz'), l.hfA)
+    #     for s in list(l.values()):
+    #         print('    SUB:', s.term.term_name, s.shift.to('THz'))
 
     # a.to_pickle('171Yb')
     a.populate_transitions(allowed=0b111, subtransitions=True)
 
-    a.generate_hf_csv(filename='171Yb_Hyperfine.csv')
+    a.generate_hf_csv(filename=f'{species}_Hyperfine.csv')
     nx.draw(a.levelsModel)
     plt.show()

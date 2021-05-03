@@ -6,29 +6,35 @@ try:
     # and everything can work with sympy if it needs to. Py3nj is a bit faster, and it supports vectorized inputs,
     # so it's preferred.
     from py3nj import wigner3j, wigner6j, wigner9j
+
     nj = True
 except ImportError:
     from sympy.physics.wigner import wigner_3j as wigner3j
     from sympy.physics.wigner import wigner_6j as wigner6j
     from sympy.physics.wigner import wigner_9j as wigner9j
     from sympy import N
+
     nj = False
+
 
 def wignerPicker(func):
     def wrapper(*args):
         if nj:
             # py3nj takes the arguments doubled, and requires them to be integers
-            return func(*map(lambda x: int(x*2), args))
+            return func(*map(lambda x: int(x * 2), args))
         else:
             # sympy throws an error when selection rules are violated, but it needs to return 0
             try:
                 return N(func(*args))
             except ValueError:
                 return 0.0
+
     return wrapper
+
 
 wigner3j = wignerPicker(wigner3j)
 wigner6j = wignerPicker(wigner6j)
+
 
 # noinspection PyTypeChecker
 def tkq_transition_strength(I, k, q, J0, F0, M0, J1, F1, M1):
@@ -36,9 +42,10 @@ def tkq_transition_strength(I, k, q, J0, F0, M0, J1, F1, M1):
     prod *= (2 * F0 + 1) * (2 * F1 + 2) * \
             wigner6j(J0, J1, k,
                      F1, F0, I) ** 2
-    prod *= wigner3j(F1,  k, F0,
+    prod *= wigner3j(F1, k, F0,
                      -M1, q, M0) ** 2
     return prod
+
 
 # The tensor math for E2 (and somewhat E1) transitions is adapted from Tony's thesis (Ransford 2020)
 
@@ -64,8 +71,8 @@ def M1_transition_strength_geom(eps, I, J0, F0, M0, J1, F1, M1):
     tot = 0
     tot += tkq_transition_strength(I, 1, -1, J0, F0, M0, J1, F1, M1) * \
            0.5 * (eps[0] ** 2 + eps[1] ** 2)
-    tot += tkq_transition_strength(I, 1,  0, J0, F0, M0, J1, F1, M1) * eps[2] ** 2
-    tot += tkq_transition_strength(I, 1,  1, J0, F0, M0, J1, F1, M1) * \
+    tot += tkq_transition_strength(I, 1, 0, J0, F0, M0, J1, F1, M1) * eps[2] ** 2
+    tot += tkq_transition_strength(I, 1, 1, J0, F0, M0, J1, F1, M1) * \
            0.5 * (eps[0] ** 2 + eps[1] ** 2)
     return tot
 
@@ -73,8 +80,8 @@ def M1_transition_strength_geom(eps, I, J0, F0, M0, J1, F1, M1):
 def M1_transition_strength_avg(I, J0, F0, M0, J1, F1, M1):
     tot = 0
     tot += tkq_transition_strength(I, 1, -1, J0, F0, M0, J1, F1, M1) * (1.0 / 3.0)
-    tot += tkq_transition_strength(I, 1,  0, J0, F0, M0, J1, F1, M1) * (1.0 / 3.0)
-    tot += tkq_transition_strength(I, 1,  1, J0, F0, M0, J1, F1, M1) * (1.0 / 3.0)
+    tot += tkq_transition_strength(I, 1, 0, J0, F0, M0, J1, F1, M1) * (1.0 / 3.0)
+    tot += tkq_transition_strength(I, 1, 1, J0, F0, M0, J1, F1, M1) * (1.0 / 3.0)
     return tot
 
 
@@ -85,15 +92,15 @@ def E2_transition_strength_geom(eps, k, I, J0, F0, M0, J1, F1, M1):
         warnings.warn("k-vector and polarization are not orthogonal")
     tot = 0
     tot += tkq_transition_strength(I, 2, -2, J0, F0, M0, J1, F1, M1) * \
-        (eps[0] ** 2 + eps[1] ** 2) * (k[0] ** 2 + k[1] ** 2)
+           (eps[0] ** 2 + eps[1] ** 2) * (k[0] ** 2 + k[1] ** 2)
     tot += tkq_transition_strength(I, 2, -1, J0, F0, M0, J1, F1, M1) * \
-        (eps[2] * k[0] + eps[0] * k[2]) ** 2 + (eps[1] * k[0] + eps[0] * k[1]) ** 2
+           (eps[2] * k[0] + eps[0] * k[2]) ** 2 + (eps[1] * k[0] + eps[0] * k[1]) ** 2
     tot += tkq_transition_strength(I, 2, 0, J0, F0, M0, J1, F1, M1) * \
-        (2. / 3.) * (3 * k[0] * eps[0] + 3 * k[1] * eps[1] + 2 * k[2] * eps[2]) ** 2
+           (2. / 3.) * (3 * k[0] * eps[0] + 3 * k[1] * eps[1] + 2 * k[2] * eps[2]) ** 2
     tot += tkq_transition_strength(I, 2, 1, J0, F0, M0, J1, F1, M1) * \
-        (eps[2] * k[0] + eps[0] * k[2]) ** 2 + (eps[1] * k[0] + eps[0] * k[1]) ** 2
+           (eps[2] * k[0] + eps[0] * k[2]) ** 2 + (eps[1] * k[0] + eps[0] * k[1]) ** 2
     tot += tkq_transition_strength(I, 2, 2, J0, F0, M0, J1, F1, M1) * \
-        (eps[0] ** 2 + eps[1] ** 2) * (k[0] ** 2 + k[1] ** 2)
+           (eps[0] ** 2 + eps[1] ** 2) * (k[0] ** 2 + k[1] ** 2)
     return tot
 
 
@@ -106,36 +113,39 @@ def E2_transition_strength_avg(I, J0, F0, M0, J1, F1, M1):
     tot += tkq_transition_strength(I, 2, 2, J0, F0, M0, J1, F1, M1) * (4.0 / 15.0)
     return tot
 
+
 def JJ_to_LS(J, Jc, Jo, lc, sc, lo, so):
     lsdict = {}
-    for L in np.arange(abs(lc-lo), abs(lc+lo)+1):
-        for S in np.arange(abs(sc-so), abs(sc+so)+1):
+    for L in np.arange(abs(lc - lo), abs(lc + lo) + 1):
+        for S in np.arange(abs(sc - so), abs(sc + so) + 1):
             coeff = float(wigner9j(lc, sc, Jc,
                                    lo, so, Jo,
-                                   L,  S,  J) *\
-                    np.sqrt((2*Jc+1)*(2*Jo+1)*(2*L+1)*(2*S+1)))
+                                   L, S, J) * \
+                          np.sqrt((2 * Jc + 1) * (2 * Jo + 1) * (2 * L + 1) * (2 * S + 1)))
             if coeff != 0:
                 lsdict[f'L={L} S={S}'] = coeff
     return lsdict
 
+
 def JK_to_LS(J, Jc, K, lc, sc, lo, so):
     lsdict = {}
-    for L in np.arange(abs(lc-lo), abs(lc+lo)+1):
-        for S in np.arange(abs(sc-so), abs(sc+so)+1):
-            coeff = float((-1)**(-lc-lo-2*sc-so-K-L-J) *\
-                          np.sqrt((2*Jc+1)*(2*L+1)*(2*K+1)*(2*S+1)) *\
+    for L in np.arange(abs(lc - lo), abs(lc + lo) + 1):
+        for S in np.arange(abs(sc - so), abs(sc + so) + 1):
+            coeff = float((-1) ** (-lc - lo - 2 * sc - so - K - L - J) * \
+                          np.sqrt((2 * Jc + 1) * (2 * L + 1) * (2 * K + 1) * (2 * S + 1)) * \
                           wigner6j(sc, lc, Jc,
-                                   lo, K,  L) *\
+                                   lo, K, L) * \
                           wigner6j(L, sc, K,
                                    so, J, S))
             if coeff != 0:
                 lsdict[f'L={L} S={S}'] = coeff
     return lsdict
 
+
 def LK_to_LS(J, L, K, sc, so):
     lsdict = {}
-    for S in np.arange(abs(sc-so), abs(sc+so)+1):
-        coeff = np.sqrt((2*K+1)*(2*S+1)) *\
+    for S in np.arange(abs(sc - so), abs(sc + so) + 1):
+        coeff = np.sqrt((2 * K + 1) * (2 * S + 1)) * \
                 wigner6j(L, sc, K,
                          so, J, S)
         if coeff != 0:
@@ -180,4 +190,4 @@ if __name__ == '__main__':
 
     print(JK_to_LS(0.5, 3.5, 1.5, 3, 0.5, 2, 1))
 
-    print(4/np.sqrt(21), np.sqrt(6)/np.sqrt(63), 1/np.sqrt(7))
+    print(4 / np.sqrt(21), np.sqrt(6) / np.sqrt(63), 1 / np.sqrt(7))
