@@ -32,6 +32,8 @@ def load_NIST_data(species, term_ordered=True):
     df_clean['J'] = df_clean['J'].astype('str')
     df_clean['Level (cm-1)'] = pd.to_numeric(df_clean['Level (cm-1)'], errors='coerce')
     #    keep only the initial number of the leading percentage for now, replacing NaN with 100% I guess
+    if 'Leading percentages' not in df_clean.columns:
+        df_clean['Leading percentages'] = '100'
     df_clean['Leading percentages'] = df_clean['Leading percentages'].apply(lambda x: re.sub(r' ?:.*', '', x))
     df_clean['Leading percentages'] = pd.to_numeric(df_clean['Leading percentages'], errors='coerce')
     df_clean['Leading percentages'] = df_clean['Leading percentages'].fillna(value=100.0)

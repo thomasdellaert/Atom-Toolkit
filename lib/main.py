@@ -679,20 +679,20 @@ class Atom:
 
         if type(transition.E_1) == EnergyLevel:
             check_levels_present(transition, self.levelsModel)
-            self.levelsModel.add_edge(transition.E_1, transition.E_2, transition=transition)
+            self.levelsModel.add_edge(transition.E_1.name, transition.E_2.name, transition=transition)
             if subtransitions:
                 add_subtransitions(transition, subtransitions=subtransitions)
         elif type(transition.E_1) == HFLevel:
             check_levels_present(transition, self.hfModel)
-            self.levelsModel.add_edge(transition.E_1.manifold, transition.E_2.manifold, transition=transition)
-            self.hfModel.add_edge(transition.E_1, transition.E_2, transition=transition)
+            self.levelsModel.add_edge(transition.E_1.manifold.name, transition.E_2.manifold.name, transition=transition)
+            self.hfModel.add_edge(transition.E_1.name, transition.E_2.name, transition=transition)
             if subtransitions:
                 add_subtransitions(transition, subtransitions=0b000)
         elif type(transition.E_1) == ZLevel:
             check_levels_present(transition, self.zModel)
-            self.levelsModel.add_edge(transition.E_1.manifold, transition.E_2.manifold, transition=transition)
-            self.hfModel.add_edge(transition.E_1.parent, transition.E_2.parent, transition=transition)
-            self.zModel.add_edge(transition.E_1, transition.E_2, transition=transition)
+            self.levelsModel.add_edge(transition.E_1.manifold.name, transition.E_2.manifold.name, transition=transition)
+            self.hfModel.add_edge(transition.E_1.parent.name, transition.E_2.parent.name, transition=transition)
+            self.zModel.add_edge(transition.E_1.name, transition.E_2.name, transition=transition)
 
     # region levels property methods
 
@@ -795,11 +795,15 @@ class Atom:
         return a
 
     @classmethod
-    def generate_full(cls, df, name, I=0.0, **kwargs):
+    def generate_full_from_dataframe(cls, df, name, I=0.0, **kwargs):
         a = Atom.from_dataframe(df, name, I, num_levels=num_levels, B=B, **kwargs)
-        a.populate_transitions(allowed=0b111, subtransitions=True, **kwargs)
+        a.populate_internal_transitions()
+        a.populate_transitions(subtransitions=True, **kwargs)
         if 'hf_csv' in kwargs:
-            a.apply_hf_csv(kwargs['hf_csv'])
+            try:
+                a.apply_hf_csv(kwargs['hf_csv'])
+            except FileNotFoundError:
+                pass
         if 'transitions_csv' in kwargs:
             a.apply_transition_csv(kwargs['transitions_csv'])
         return a
@@ -815,6 +819,13 @@ class Atom:
                 del t
             else:
                 self.add_transition(t, subtransitions)
+
+    def populate_internal_transitions(self):
+        levels = tqdm(list(self.levels.values()))
+        for level in levels:
+            level.populate_transitions()
+            levels.set_description(f'adding internal transitions to {level.name:91}')
+
 
     def generate_hf_csv(self, filename=None, blank=False, def_A=Q_(0.0, 'gigahertz')):
         if filename is None:
@@ -858,24 +869,29 @@ if __name__ == '__main__':
 
     speciesdict = {
         '171Yb': {'species': 'Yb II', 'I': 0.5},
-        '173Yb': {'species': 'Yb II', 'I': 2.5}
+        '173Yb': {'species': 'Yb II', 'I': 2.5},
+        '138Ba': {'species': 'Ba II', 'I': 0.0},
+        '133Ba': {'species': 'Ba II', 'I': 0.5},
+        '201Hg': {'species': 'Hg I', 'I': 1.5},
+        '9Be': {'species': 'Be II', 'I': 1.5}
     }
 
+    # whether to load from pickle
+    pickleq = False
     # Name of the atom
     species = '171Yb'
     # Number of levels to generate
-    num_levels = 100
+    num_levels = 50
     # Magnetic field
     B = Q_(5.0, 'G')
-    # whether to load from pickle
-    pickleq = True
 
     if pickleq:
         a = Atom.from_pickle(f'atoms/{species}.atom')
     else:
         df = load_NIST_data(speciesdict[species]['species'])
-        a = Atom.generate_full(df, species, speciesdict[species]['I'], hf_csv=f'resources/{species}_Hyperfine.csv')
-        a.to_pickle('171Yb')
+        a = Atom.generate_full_from_dataframe(df, species, speciesdict[species]['I'],
+                                              hf_csv=f'resources/{species}_Hyperfine.csv', allowed=0b001)
+        a.to_pickle(f'atoms/{species}.atom')
         a.generate_hf_csv(filename=f'resources/{species}_Hyperfine.csv')
 
     # for l in list(a.levels.values()):
@@ -883,5 +899,13 @@ if __name__ == '__main__':
     #     for s in list(l.values()):
     #         print('    SUB:', s.term.term_name, s.shift.to('THz'))
 
-    nx.draw(a.levelsModel)
+    posdict = {l.name:(l.term.J, l.level.magnitude) for l in a.levels.values()}
+
+    nx.draw(a.levelsModel, pos=posdict, with_labels=True, font_size=8, node_size=100)
     plt.show()
+    #
+    # nx.draw(a.hfModel, with_labels=True, font_size=8, node_size=100)
+    # plt.show()
+    #
+    # nx.draw(a.zModel, with_labels=True, font_size=8, node_size=100)
+    # plt.show()
