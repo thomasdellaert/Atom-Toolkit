@@ -513,7 +513,7 @@ class ZLevel(HFLevel):
 
 class Transition:
     def __init__(self, E1: EnergyLevel, E2: EnergyLevel, freq=None, A: pint.Quantity = None,
-                 name=None, update_mode='upper'):
+                 name=None, update_mode='upper', parent=None):
         """
         A transition contains information about the transition between two EnergyLevels. When instantiated
         with a set frequency, it can move one of the EnergyLevels in order to make the energy difference
@@ -534,8 +534,8 @@ class Transition:
         self.E_1 = E1
         self.E_2 = E2
         self.A = A
+        self.parent = parent
         self.allowed_types = self.transition_allowed(self.E_1, self.E_2)
-        # TODO: transitions currently do a lot of unneccessary Clebsch-gordan math that can be optimized out
         if self.E_2.level > self.E_1.level:
             self.E_upper = self.E_2
             self.E_lower = self.E_1
@@ -581,7 +581,10 @@ class Transition:
                    0b100 * (np.abs(J1 - J0) <= 2.0 and p0 == p1)
         if type(level_0) == HFLevel:
             F0, F1 = level_0.term.F, level_1.term.F
-            init = self.transition_allowed(level_0.manifold, level_1.manifold)
+            if self.parent is None:
+                init = self.transition_allowed(level_0.manifold, level_1.manifold)
+            else:
+                init = self.parent.allowed_types
             ret = 0b000
             if init & 1:
                 ret |= 0b001 * wigner6j(J0, J1, 1, F1, F0, I) != 0.0
@@ -593,7 +596,10 @@ class Transition:
         if type(level_0) == ZLevel:
             F0, F1 = level_0.term.F, level_1.term.F
             mF0, mF1 = level_0.term.mF, level_1.term.mF
-            init = self.transition_allowed(level_0.parent, level_1.parent)
+            if self.parent is None:
+                init = self.transition_allowed(level_0.parent, level_1.parent)
+            else:
+                init = self.parent.allowed_types
             ret = 0b000
             if init & 1:
                 ret |= 0b001 * sum([wigner3j(F1, 1, F0, -mF1, q, mF0) for q in [-1, 0, 1]]) != 0.0
@@ -602,9 +608,6 @@ class Transition:
             if (init >> 2) & 1:
                 ret |= 0b100 * sum([wigner3j(F1, 2, F0, -mF1, q, mF0) for q in [-2, -1, 0, 1, 2]]) != 0.0
             return ret
-    # TODO: Add appropriate methods. Things like getting the transition type (via clebsch-gordan math), perhaps
-    #  determining color, and computing the transition strength / linewidth given the A coefficient
-
 
 # noinspection PyPropertyDefinition
 class Atom:
@@ -661,36 +664,27 @@ class Atom:
         Add a transition between two EnergyLevels in the atom. If either of the referenced levels aren't in the atom
         yet, they will be added.
         TODO: accept a list of Transitions
-        TODO: optionally populate sub-transitions
         :param transition: the Transition to be added
         :param subtransitions: what types of sub-transitions to add
         :return:
         """
 
-        def check_levels_present(transition, model):
-            for t in [transition.E_1, transition.E_2]:
-                if t not in nx.get_node_attributes(model, 'level').values():
-                    self.add_level(t)
-
         def add_subtransitions(transition, subtransitions):
             for pair in list(product(list(transition.E_1.values()), list(transition.E_2.values()))):
-                t = Transition(pair[0], pair[1])
+                t = Transition(pair[0], pair[1], parent=transition)
                 if t.allowed_types & transition.allowed_types:
                     self.add_transition(t, subtransitions=subtransitions)
 
         if type(transition.E_1) == EnergyLevel:
-            check_levels_present(transition, self.levelsModel)
             self.levelsModel.add_edge(transition.E_1.name, transition.E_2.name, transition=transition)
             if subtransitions:
                 add_subtransitions(transition, subtransitions=subtransitions)
         elif type(transition.E_1) == HFLevel:
-            check_levels_present(transition, self.hfModel)
             self.levelsModel.add_edge(transition.E_1.manifold.name, transition.E_2.manifold.name, transition=transition)
             self.hfModel.add_edge(transition.E_1.name, transition.E_2.name, transition=transition)
             if subtransitions:
                 add_subtransitions(transition, subtransitions=0b000)
         elif type(transition.E_1) == ZLevel:
-            check_levels_present(transition, self.zModel)
             self.levelsModel.add_edge(transition.E_1.manifold.name, transition.E_2.manifold.name, transition=transition)
             self.hfModel.add_edge(transition.E_1.parent.name, transition.E_2.parent.name, transition=transition)
             self.zModel.add_edge(transition.E_1.name, transition.E_2.name, transition=transition)
@@ -789,7 +783,7 @@ class Atom:
         if num_levels is None:
             num_levels = len(df)
         a = Atom(name, I=I, B=B)
-        for i in range(num_levels):
+        for i in tqdm(range(num_levels)):
             try:
                 e = EnergyLevel.from_dataframe(df, i)
                 a.add_level(e)
@@ -914,7 +908,7 @@ if __name__ == '__main__':
     # Name of the atom
     species = '171Yb'
     # Number of levels to generate
-    num_levels = None
+    num_levels = 200
     # Magnetic field
     B = Q_(5.0, 'G')
 
@@ -924,7 +918,8 @@ if __name__ == '__main__':
         df = load_NIST_data(speciesdict[species]['species'])
         trans_df = load_transition_data("resources/Yb_II_Oscillator_Strengths.csv", columns={
         "conf_l": "LConfiguration", "conf_u": "UConfiguration",
-        "term_l": "LTerm", "term_u": "UTerm", "j_l": "LJ", "j_u": "UJ", "A": "A atlas"}).dropna(subset=['A'])
+        "term_l": "LTerm", "term_u": "UTerm", "j_l": "LJ", "j_u": "UJ",
+        "A": "A atlas"}).dropna(subset=['A'])
         a = Atom.generate_full_from_dataframe(df, species, speciesdict[species]['I'],
                                               hf_csv=f'resources/{species}_Hyperfine.csv',
                                               transitions_df=trans_df,
