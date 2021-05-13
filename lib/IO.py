@@ -53,3 +53,41 @@ def load_NIST_data(species, term_ordered=True):
 
     return df_clean
     #  TODO: uncertainty
+
+def load_transition_data(filename:str, columns:dict = None, **kwargs):
+    """
+
+    :param filename: the name of the CSV to be imported
+    :param columns: a dict containing at least the following as keys, which defines the columns to use:
+        "conf_l", "conf_u", "term_l", "term_u", "j_l", "j_u"
+        optional columns include:
+        "A" OR "A_coeff", "frequency" OR "freq", "alias", "nickname"
+    :return:
+    """
+    df_file = pd.read_csv(filename, **kwargs)
+    if ("freq" not in columns) and ("frequency" in columns):
+        columns["freq"] = columns["frequency"]
+    if ("A" not in columns) and ("A_coeff" in columns):
+        columns["A"] = columns["A_coeff"]
+    df = pd.DataFrame(data={k:df_file[columns[k]] for k in ["conf_l", "term_l", "j_l",
+                                                            "conf_u", "term_u", "j_u"]})
+    if "freq" in columns:
+        df["freq"] = df_file[columns["freq"]]
+    else:
+        df["freq"] = None
+    if "A" in columns:
+        df["A"] = df_file[columns["A"]]
+    else:
+        df["A"] = None
+    return df
+
+if __name__ == "__main__":
+    df = load_transition_data("resources/Yb_II_Oscillator_Strengths.csv", columns={
+        "conf_l": "LConfiguration",
+        "conf_u": "UConfiguration",
+        "term_l": "LTerm",
+        "term_u": "UTerm",
+        "j_l": "LJ",
+        "j_u": "UJ",
+        "A": "A atlas"
+    })

@@ -1,6 +1,7 @@
 import csv
 import pickle
 import re
+from warnings import warn
 from itertools import combinations, product
 from typing import List
 
@@ -370,7 +371,6 @@ class EnergyLevel:
     @classmethod
     def from_dataframe(cls, df, i=0):
         t = Term.from_dataframe(df, i)
-        # TODO: remove the placeholder hfA value
         return EnergyLevel(t, df["Level (cm-1)"][i], lande=df["Lande"][i])
 
     # region dict-like methods
@@ -535,6 +535,7 @@ class Transition:
         self.E_2 = E2
         self.A = A
         self.allowed_types = self.transition_allowed(self.E_1, self.E_2)
+        # TODO: transitions currently do a lot of unneccessary Clebsch-gordan math that can be optimized out
         if self.E_2.level > self.E_1.level:
             self.E_upper = self.E_2
             self.E_lower = self.E_1
@@ -785,6 +786,8 @@ class Atom:
 
     @classmethod
     def from_dataframe(cls, df, name, I=0.0, num_levels=None, B=Q_(0.0, 'G'), **kwargs):
+        if num_levels is None:
+            num_levels = len(df)
         a = Atom(name, I=I, B=B)
         for i in range(num_levels):
             try:
@@ -796,9 +799,16 @@ class Atom:
 
     @classmethod
     def generate_full_from_dataframe(cls, df, name, I=0.0, **kwargs):
+        """
+
+        :param df:
+        :param name:
+        :param I:
+        :param kwargs:
+            'transitions_csv', 'transitions_df', 'hf_csv', 'subtransitions'
+        :return:
+        """
         a = Atom.from_dataframe(df, name, I, num_levels=num_levels, B=B, **kwargs)
-        a.populate_internal_transitions()
-        a.populate_transitions(subtransitions=True, **kwargs)
         if 'hf_csv' in kwargs:
             try:
                 a.apply_hf_csv(kwargs['hf_csv'])
@@ -806,6 +816,11 @@ class Atom:
                 pass
         if 'transitions_csv' in kwargs:
             a.apply_transition_csv(kwargs['transitions_csv'])
+        elif 'transitions_df' in kwargs:
+            a.populate_transitions_df(kwargs['transitions_df'], **kwargs)
+        else:
+            a.populate_transitions(**kwargs)
+        a.populate_internal_transitions()
         return a
 
     # endregion
@@ -826,6 +841,23 @@ class Atom:
             level.populate_transitions()
             levels.set_description(f'adding internal transitions to {level.name:91}')
 
+    def populate_transitions_df(self, df, subtransitions=True, **kwargs):
+        """
+        Load transitions into the Atom from a dataframe generated from the IO module's load_transition_data function
+        """
+        rows = tqdm(list(df.iterrows()))
+        for _, row in rows:
+            j_l = Term.float_to_frac(float(row['j_l']))
+            j_u = Term.float_to_frac(float(row['j_u']))
+            try:
+                e1 = self.levels[f'{row["conf_l"]} {row["term_l"]}{j_l}']
+                e2 = self.levels[f'{row["conf_u"]} {row["term_u"]}{j_u}']
+                freq = row["freq"]
+                A = row["A"]
+                t = Transition(e1, e2, freq=freq, A=A)
+                self.add_transition(t, subtransitions=subtransitions)
+            except KeyError:
+                pass
 
     def generate_hf_csv(self, filename=None, blank=False, def_A=Q_(0.0, 'gigahertz')):
         if filename is None:
@@ -856,7 +888,6 @@ class Atom:
         if filename is None:
             filename = f'{self.name}_Transitions.csv'
         pass
-        # TODO
 
     def apply_transition_csv(self, filename):
         pass
@@ -864,7 +895,9 @@ class Atom:
 
 
 if __name__ == '__main__':
-    from IO import load_NIST_data
+    from IO import load_NIST_data, load_transition_data
+    import matplotlib
+    matplotlib.use('Qt5Agg')
     import matplotlib.pyplot as plt
 
     speciesdict = {
@@ -873,7 +906,7 @@ if __name__ == '__main__':
         '138Ba': {'species': 'Ba II', 'I': 0.0},
         '133Ba': {'species': 'Ba II', 'I': 0.5},
         '201Hg': {'species': 'Hg I', 'I': 1.5},
-        '9Be': {'species': 'Be II', 'I': 1.5}
+        '9Be':   {'species': 'Be II', 'I': 1.5}
     }
 
     # whether to load from pickle
@@ -881,7 +914,7 @@ if __name__ == '__main__':
     # Name of the atom
     species = '171Yb'
     # Number of levels to generate
-    num_levels = 50
+    num_levels = None
     # Magnetic field
     B = Q_(5.0, 'G')
 
@@ -889,8 +922,13 @@ if __name__ == '__main__':
         a = Atom.from_pickle(f'atoms/{species}.atom')
     else:
         df = load_NIST_data(speciesdict[species]['species'])
+        trans_df = load_transition_data("resources/Yb_II_Oscillator_Strengths.csv", columns={
+        "conf_l": "LConfiguration", "conf_u": "UConfiguration",
+        "term_l": "LTerm", "term_u": "UTerm", "j_l": "LJ", "j_u": "UJ", "A": "A atlas"}).dropna(subset=['A'])
         a = Atom.generate_full_from_dataframe(df, species, speciesdict[species]['I'],
-                                              hf_csv=f'resources/{species}_Hyperfine.csv', allowed=0b001)
+                                              hf_csv=f'resources/{species}_Hyperfine.csv',
+                                              transitions_df=trans_df,
+                                              allowed=0b001)
         a.to_pickle(f'atoms/{species}.atom')
         a.generate_hf_csv(filename=f'resources/{species}_Hyperfine.csv')
 
