@@ -61,7 +61,7 @@ def load_transition_data(filename:str, columns:dict = None, **kwargs):
     :param columns: a dict containing at least the following as keys, which defines the columns to use:
         "conf_l", "conf_u", "term_l", "term_u", "j_l", "j_u"
         optional columns include:
-        "A" OR "A_coeff", "frequency" OR "freq", "alias", "nickname"
+        "A" OR "A_coeff", "frequency" OR "freq", "alias", "nickname", "ref_A", "ref_freq"
     :return:
     """
     df_file = pd.read_csv(filename, **kwargs)

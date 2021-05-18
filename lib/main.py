@@ -11,7 +11,7 @@ import pint
 from indexedproperty import indexedproperty
 from tqdm import tqdm
 
-from config import Q_
+from config import Q_, ureg
 
 
 class Term:
@@ -338,7 +338,7 @@ class EnergyLevel:
 
     @level.setter
     def level(self, value):
-        self._level = value
+        self._level = value.to('Hz')
 
     def compute_gJ(self):
         """
@@ -394,7 +394,10 @@ class EnergyLevel:
     def __iter__(self):
         return iter(self._sublevels)
 
-    def values(self):  # TODO: maybe rename to sublevels
+    def values(self):
+        return self._sublevels.values()
+
+    def sublevels(self):
         return self._sublevels.values()
 
     def keys(self):
@@ -486,7 +489,7 @@ class HFLevel(EnergyLevel):
 
     def compute_gF(self):
         """
-        Computes the Lande g-value the hyperfine level
+        Computes the Lande g-value for the hyperfine level
         :return: gF
         """
         F = self.term.F
@@ -508,7 +511,7 @@ class ZLevel(HFLevel):
     @property
     def level(self):
         """When asked, sublevels calculate their position relative to their parent level"""
-        return self.parent.level + self.gF * self.term.mF * Q_(1.39962449361, 'MHz/G') * self.atom.B
+        return self.parent.level + (self.gF * self.term.mF) * (Q_(1.39962449361, 'MHz/G') * self.atom.B)
 
 
 class Transition:
@@ -783,9 +786,11 @@ class Atom:
         if num_levels is None:
             num_levels = len(df)
         a = Atom(name, I=I, B=B)
-        for i in tqdm(range(num_levels)):
+        rows = tqdm(range(num_levels))
+        for i in rows:
             try:
                 e = EnergyLevel.from_dataframe(df, i)
+                rows.set_description(f'adding level {e.name:109}')
                 a.add_level(e)
             except KeyError:
                 pass
@@ -849,6 +854,7 @@ class Atom:
                 freq = row["freq"]
                 A = row["A"]
                 t = Transition(e1, e2, freq=freq, A=A)
+                rows.set_description(f'adding transition {t.name:104}')
                 self.add_transition(t, subtransitions=subtransitions)
             except KeyError:
                 pass
@@ -908,7 +914,7 @@ if __name__ == '__main__':
     # Name of the atom
     species = '171Yb'
     # Number of levels to generate
-    num_levels = 200
+    num_levels = 100
     # Magnetic field
     B = Q_(5.0, 'G')
 
