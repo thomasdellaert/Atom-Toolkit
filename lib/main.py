@@ -13,6 +13,7 @@ from tqdm import tqdm
 
 from config import Q_, ureg
 
+Hz = ureg.hertz
 
 class Term:
     def __init__(self,
@@ -305,9 +306,10 @@ class EnergyLevel:
         self.manifold = self.get_manifold()
         self.atom = atom
         self.term = term
-        self._level = level.to('Hz')
+        self._level_Hz = level.to(Hz).magnitude
         self.name = self.term.name
         self.hfA, self.hfB, self.hfC = hfA, hfB, hfC
+        self.hfA_Hz, self.hfB_Hz, self.hfC_Hz = hfA.to(Hz).magnitude, hfB.to(Hz).magnitude, hfB.to(Hz).magnitude
         if lande is None:
             try:
                 self.lande = self.compute_gJ()
@@ -333,12 +335,20 @@ class EnergyLevel:
                 self[f'F={f}'] = e
 
     @property
+    def level_Hz(self):
+        return self._level_Hz
+
+    @level_Hz.setter
+    def level_Hz(self, value: float):
+        self._level_Hz = value
+
+    @property
     def level(self):
-        return self._level
+        return self.level_Hz * Hz
 
     @level.setter
-    def level(self, value):
-        self._level = value.to('Hz')
+    def level(self, value: pint.Quantity):
+        self.level_Hz = value.to(Hz).magnitude
 
     def compute_gJ(self):
         """
@@ -352,7 +362,7 @@ class EnergyLevel:
         S = self.term.s
         return 1 + (J * (J + 1) + S * (S + 1) - L * (L + 1)) / (2 * J * (J + 1))
 
-    def populate_transitions(self, include_zeeman=True):
+    def populate_internal_transitions(self, include_zeeman=True):
         if self.atom is None:
             raise RuntimeError('EnergyLevel needs to be contained in an atom to add transitions')
         hf_pairs = list(combinations(list(self.values()), 2))
@@ -376,19 +386,16 @@ class EnergyLevel:
     # region dict-like methods
 
     def __len__(self):
-        """:return: the number of sublevels"""
         return len(self._sublevels)
 
     def __getitem__(self, key):
         return self._sublevels[key]
 
     def __setitem__(self, key, level):
-        """adds the energylevel to self._sublevels"""
         level.parent = self
         self._sublevels[key] = level
 
     def __delitem__(self, key):
-        """removes the energylevel from self._sublevels"""
         del self._sublevels[key]
 
     def __iter__(self):
@@ -465,17 +472,26 @@ class HFLevel(EnergyLevel):
             FM3 = (10 * IdotJ ** 3 + 20 * IdotJ ** 2 + 2 * IdotJ * (
                     -3 * I * (I + 1) * J * (J + 1) + I * (I + 1) + J * (J + 1) + 3)
                    - 5 * I * (I + 1) * J * (J + 1)) / (I * (I - 1) * J * (J - 1) * (2 * J - 1))
-
-        return self.manifold.hfA * FM1 + self.manifold.hfB * FE2 + self.manifold.hfC * FM3
+        # print(self.manifold.hfA, self.manifold.hfB, self.manifold.hfC)
+        # print(self.manifold.hfA_Hz, self.manifold.hfB_Hz, self.manifold.hfC_Hz)
+        return self.manifold.hfA_Hz * FM1 + self.manifold.hfB_Hz * FE2 + self.manifold.hfC_Hz * FM3
 
     @property
     def shift(self):
+        return self.compute_hf_shift() * Hz
+
+    @property
+    def shift_Hz(self):
         return self.compute_hf_shift()
 
     @property
     def level(self):
         """When asked, sublevels calculate their position relative to their parent level"""
-        return self.parent.level + self.shift
+        return (self.parent.level_Hz + self.shift_Hz) * Hz
+
+    @property
+    def level_Hz(self):
+        return self.parent.level_Hz + self.shift_Hz
 
     @level.setter
     def level(self, value: pint.Quantity):
@@ -511,7 +527,8 @@ class ZLevel(HFLevel):
     @property
     def level(self):
         """When asked, sublevels calculate their position relative to their parent level"""
-        return self.parent.level + (self.gF * self.term.mF) * (Q_(1.39962449361, 'MHz/G') * self.atom.B)
+        # 1.39962449361e6 is the Bohr magneton in Hz/G
+        return self.parent.level_Hz * Hz + (self.gF * self.term.mF * 1.39962449361e6 * (Hz/ureg.gauss) * self.atom.B)
 
 
 class Transition:
@@ -564,12 +581,16 @@ class Transition:
                 raise ValueError('Accepted arguments to update_mode are "upper", "lower", and "ignore"')
 
     @property
+    def freq_Hz(self):
+        return abs(self.E_1.leve_Hz - self.E_2.level_Hz)
+
+    @property
     def freq(self):
-        return abs(self.E_1.level - self.E_2.level)
+        return self.freq_Hz * Hz
 
     @property
     def wl(self):
-        return self.freq.to('nm')
+        return self.freq.to(ureg.nanometer)
 
     def transition_allowed(self, level_0, level_1):
         from transition_strengths import wigner3j, wigner6j
@@ -837,7 +858,7 @@ class Atom:
     def populate_internal_transitions(self):
         levels = tqdm(list(self.levels.values()))
         for level in levels:
-            level.populate_transitions()
+            level.populate_internal_transitions()
             levels.set_description(f'adding internal transitions to {level.name:91}')
 
     def populate_transitions_df(self, df, subtransitions=True, **kwargs):
@@ -879,8 +900,11 @@ class Atom:
                 try:
                     name, hfA, hfB, hfC = row
                     self.levels[name].hfA = Q_(hfA)
+                    self.levels[name].hfA_Hz = Q_(hfA).to(Hz).magnitude
                     self.levels[name].hfB = Q_(hfB)
+                    self.levels[name].hfB_Hz = Q_(hfB).to(Hz).magnitude
                     self.levels[name].hfC = Q_(hfC)
+                    self.levels[name].hfC_Hz = Q_(hfC).to(Hz).magnitude
                 except KeyError:
                     pass
 
@@ -936,9 +960,9 @@ if __name__ == '__main__':
     # for l in list(a.levels.values()):
     #     print('MAIN:', l.name, l.level.to('THz'), l.hfA)
     #     for s in list(l.values()):
-    #         print('    SUB:', s.term.term_name, s.shift.to('THz'))
+    #         print('    SUB:', s.term.term_name, s.shift)
 
-    posdict = {l.name:(l.term.J, l.level.magnitude) for l in a.levels.values()}
+    posdict = {l.name:(l.term.J, l.level_Hz) for l in a.levels.values()}
 
     nx.draw(a.levelsModel, pos=posdict, with_labels=True, font_size=8, node_size=100)
     plt.show()
