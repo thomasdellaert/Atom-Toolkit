@@ -490,8 +490,6 @@ class HFLevel(BaseLevel):
             FM3 = (10 * IdotJ ** 3 + 20 * IdotJ ** 2 + 2 * IdotJ * (
                     -3 * I * (I + 1) * J * (J + 1) + I * (I + 1) + J * (J + 1) + 3)
                    - 5 * I * (I + 1) * J * (J + 1)) / (I * (I - 1) * J * (J - 1) * (2 * J - 1))
-        # print(self.manifold.hfA, self.manifold.hfB, self.manifold.hfC)
-        # print(self.manifold.hfA_Hz, self.manifold.hfB_Hz, self.manifold.hfC_Hz)
         return self.manifold.hfA_Hz * FM1 + self.manifold.hfB_Hz * FE2 + self.manifold.hfC_Hz * FM3
 
     @property
@@ -543,10 +541,22 @@ class ZLevel(HFLevel):
         pass
 
     @property
+    def shift_Hz(self):
+        return self.gF * self.term.mF * 1.39962449361e6 * self.atom.B_gauss
+
+    @property
+    def shift(self):
+        return self.shift_Hz * Hz
+
+    @property
+    def level_Hz(self):
+        return self.parent.level_Hz + self.shift_Hz
+
+    @property
     def level(self):
         """When asked, sublevels calculate their position relative to their parent level"""
         # 1.39962449361e6 is the Bohr magneton in Hz/G
-        return self.parent.level_Hz * Hz + (self.gF * self.term.mF * 1.39962449361e6 * (Hz/ureg.gauss) * self.atom.B)
+        return (self.parent.level_Hz + self.shift_Hz) * Hz
 
 
 class Transition:
@@ -667,7 +677,7 @@ class Atom:
         """
         self.name = name
         self.I = Term.frac_to_float(I)
-        self.B = B
+        self.B_gauss = B.to(ureg.gauss).magnitude
         self.levelsModel = nx.Graph()
         self.hfModel = nx.Graph()
         self.zModel = nx.Graph()
@@ -730,6 +740,14 @@ class Atom:
             self.levelsModel.add_edge(transition.E_1.manifold.name, transition.E_2.manifold.name, transition=transition)
             self.hfModel.add_edge(transition.E_1.parent.name, transition.E_2.parent.name, transition=transition)
             self.zModel.add_edge(transition.E_1.name, transition.E_2.name, transition=transition)
+
+    @property
+    def B(self):
+        return self.B_gauss * ureg.gauss
+
+    @B.setter
+    def B(self, value:pint.Quantity):
+        self.B_gauss = value.to(ureg.gauss).magnitude
 
     # region levels property methods
 
