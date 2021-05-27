@@ -3,7 +3,7 @@ import re
 import pandas as pd
 
 
-def load_NIST_data(species, term_ordered=True):
+def load_NIST_data(species, term_ordered=False):
     df = pd.read_csv(
         'https://physics.nist.gov/cgi-bin/ASD/energy1.pl?de=0' +
         '&spectrum=' + species.replace(' ', '+') +
@@ -46,11 +46,12 @@ def load_NIST_data(species, term_ordered=True):
     df_clean['Level (cm-1)'] = df_clean['Level (cm-1)'].astype('pint[cm**-1]')
     df_clean['Level (Hz)'] = df_clean['Level (cm-1)'].pint.to('Hz')
 
-    df_clean = df_clean[df_clean.J.str.contains("---") == False]  # happens at ionization thresholds
+    df_clean = df_clean.loc[:(df_clean['Term'] == 'Limit').idxmax()-1] #remove any terms above ionization, and the ionization row
     df_clean = df_clean[df_clean.J.str.contains(",") == False]  # happens when J is unknown
     # reset the indices, since we may have dropped some rows
     df_clean.reset_index(drop=True, inplace=True)
 
+    print(df_clean.tail(20))
     return df_clean
     #  TODO: uncertainty
 
