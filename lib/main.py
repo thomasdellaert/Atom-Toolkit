@@ -23,7 +23,7 @@ if __name__ == '__main__':
     # Name of the atom
     species = '171Yb'
     # Number of levels to generate
-    num_levels = None
+    num_levels = 80
     # Magnetic field
     B = Q_(5.0, 'G')
 
@@ -36,6 +36,8 @@ if __name__ == '__main__':
         "term_l": "LTerm", "term_u": "UTerm", "j_l": "LJ", "j_u": "UJ",
         "A": "A atlas"}).dropna(subset=['A'])
         a = Atom.generate_full_from_dataframe(df, species, speciesdict[species]['I'],
+                                              num_levels=num_levels,
+                                              B=B,
                                               hf_csv=f'resources/{species}_Hyperfine.csv',
                                               transitions_df=trans_df,
                                               allowed=0b001)

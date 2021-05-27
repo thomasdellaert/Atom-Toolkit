@@ -1,9 +1,16 @@
 import re
+import warnings
+warnings.filterwarnings("ignore", category=RuntimeWarning)
+
+from config import *
 
 import pandas as pd
-
+from tqdm import tqdm
 
 def load_NIST_data(species, term_ordered=False):
+    pbar = tqdm(total=7)
+    pbar.update(1)
+    pbar.set_description('loading data')
     df = pd.read_csv(
         'https://physics.nist.gov/cgi-bin/ASD/energy1.pl?de=0' +
         '&spectrum=' + species.replace(' ', '+') +
@@ -23,8 +30,13 @@ def load_NIST_data(species, term_ordered=False):
         '&biblio=0' +
         '&temp=',
         index_col=False)
+
+    pbar.update(1)
+    pbar.set_description('data loaded')
     # === strip the data of extraneous symbols ===
     df_clean = df.applymap(lambda x: x.strip(' ="?'))
+    pbar.update(1)
+    pbar.set_description('data stripped')
     # === coerce types ===
     df_clean['Configuration'] = df_clean['Configuration'].astype('str')
     df_clean['Term'] = df_clean['Term'].astype('str')
@@ -40,18 +52,27 @@ def load_NIST_data(species, term_ordered=False):
     if 'Lande' not in df_clean.columns:
         df_clean['Lande'] = None
     df_clean['Lande'] = pd.to_numeric(df_clean['Lande'], errors='coerce')
+    pbar.update(1)
+    pbar.set_description('data typed')
     # drop rows that don't have a defined level
     df_clean = df_clean.dropna(subset=['Level (cm-1)'])
+    pbar.update(1)
+    pbar.set_description('empty levels dropped')
     # convert levels to pint Quantities
     df_clean['Level (cm-1)'] = df_clean['Level (cm-1)'].astype('pint[cm**-1]')
     df_clean['Level (Hz)'] = df_clean['Level (cm-1)'].pint.to('Hz')
+    pbar.update(1)
+    pbar.set_description('pint quantities created')
 
     df_clean = df_clean.loc[:(df_clean['Term'] == 'Limit').idxmax()-1] #remove any terms above ionization, and the ionization row
     df_clean = df_clean[df_clean.J.str.contains(",") == False]  # happens when J is unknown
     # reset the indices, since we may have dropped some rows
     df_clean.reset_index(drop=True, inplace=True)
 
-    print(df_clean.tail(20))
+    pbar.update(1)
+    pbar.set_description('data finalized')
+
+    pbar.close()
     return df_clean
     #  TODO: uncertainty
 
@@ -83,12 +104,13 @@ def load_transition_data(filename:str, columns:dict = None, **kwargs):
     return df
 
 if __name__ == "__main__":
-    df = load_transition_data("resources/Yb_II_Oscillator_Strengths.csv", columns={
-        "conf_l": "LConfiguration",
-        "conf_u": "UConfiguration",
-        "term_l": "LTerm",
-        "term_u": "UTerm",
-        "j_l": "LJ",
-        "j_u": "UJ",
-        "A": "A atlas"
-    })
+    # df = load_transition_data("resources/Yb_II_Oscillator_Strengths.csv", columns={
+    #     "conf_l": "LConfiguration",
+    #     "conf_u": "UConfiguration",
+    #     "term_l": "LTerm",
+    #     "term_u": "UTerm",
+    #     "j_l": "LJ",
+    #     "j_u": "UJ",
+    #     "A": "A atlas"
+    # })
+    df = load_NIST_data("Yb II")
