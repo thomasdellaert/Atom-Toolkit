@@ -277,8 +277,62 @@ class Term:
             return str(int(f * 2)) + '/2'
 
 
-class EnergyLevel:
-    def __init__(self, term: Term, level: pint.Quantity, lande: float = None, parent=None, atom=None,
+class BaseLevel:
+
+    def __init__(self, term:Term, parent):
+        self.parent = parent
+        self.term = term
+        self.atom = self.get_atom()
+        self.manifold = self.get_manifold()
+        self.name = self.term.name
+
+        self._sublevels = dict()
+
+    def get_atom(self):
+        raise NotImplementedError()
+
+    def get_manifold(self):
+        raise NotImplementedError()
+
+    def populate_sublevels(self):
+        raise NotImplementedError()
+
+    @property
+    def level(self):
+        raise NotImplementedError()
+
+    #region dict-like methods
+
+    def __len__(self):
+        return len(self._sublevels)
+
+    def __getitem__(self, key):
+        return self._sublevels[key]
+
+    def __setitem__(self, key, level):
+        level.parent = self
+        self._sublevels[key] = level
+
+    def __delitem__(self, key):
+        del self._sublevels[key]
+
+    def __iter__(self):
+        return iter(self._sublevels)
+
+    def values(self):
+        return self._sublevels.values()
+
+    def sublevels(self):
+        return self._sublevels.values()
+
+    def keys(self):
+        return self._sublevels.keys()
+
+    # endregion
+
+
+class EnergyLevel(BaseLevel):
+    def __init__(self, term: Term, level: pint.Quantity, lande: float = None, parent=None,
                  hfA=Q_(0.0, 'gigahertz'), hfB=Q_(0.0, 'gigahertz'), hfC=Q_(0.0, 'gigahertz')):
         """
         An EnergyLevel represents a single fine-structure manifold in an atom. It contains a number of sublevels,
@@ -286,10 +340,11 @@ class EnergyLevel:
         EnergyLevel
             HFLevel
                 ZLevel
-                ZLevel
+                (...)
             HFLevel
                 ZLevel
-                ZLevel
+                (...)
+            (...)
         EnergyLevels serve as the nodes in the internal graph of an Atom object. Its level can be shifted to be
         consistent with a transition that the level participates in
 
@@ -297,17 +352,12 @@ class EnergyLevel:
         :param level: the energy of the (center of mass of) the level
         :param lande: the lande-g value of the level
         :param parent: the atom that the level is contained in
-        :param atom: the atom that the level is contained in
         :param hfA: the hyperfine A-coefficient
         :param hfB: the hyperfine B-coefficient
         :param hfC: the hyperfine C-coefficient
         """
-        self.parent = parent
-        self.manifold = self.get_manifold()
-        self.atom = atom
-        self.term = term
+        super().__init__(term, parent)
         self._level_Hz = level.to(Hz).magnitude
-        self.name = self.term.name
         self.hfA, self.hfB, self.hfC = hfA, hfB, hfC
         self.hfA_Hz, self.hfB_Hz, self.hfC_Hz = hfA.to(Hz).magnitude, hfB.to(Hz).magnitude, hfB.to(Hz).magnitude
         if lande is None:
@@ -317,10 +367,15 @@ class EnergyLevel:
                 self.lande = 0  # TODO: think about a placeholder value instead?
         else:
             self.lande = lande
-        self._sublevels = {}
 
     def get_manifold(self):
         return self
+
+    def get_atom(self):
+        if self.parent is not None:
+            return self.parent
+        else:
+            return None
 
     def populate_sublevels(self):
         """
@@ -329,9 +384,7 @@ class EnergyLevel:
         if isinstance(self.parent, Atom):
             for f in np.arange(abs(self.term.J - self.atom.I), self.term.J + self.atom.I + 1):
                 t = Term(self.term.conf, self.term.term, self.term.J, F=f)
-                e = HFLevel(t, self.level, lande=self.lande,
-                            parent=self, atom=self.atom,
-                            hfA=self.hfA, hfB=self.hfB, hfC=self.hfC)
+                e = HFLevel(term=t, parent=self)
                 self[f'F={f}'] = e
 
     @property
@@ -383,39 +436,9 @@ class EnergyLevel:
         t = Term.from_dataframe(df, i)
         return EnergyLevel(t, df["Level (cm-1)"][i], lande=df["Lande"][i])
 
-    # region dict-like methods
 
-    def __len__(self):
-        return len(self._sublevels)
-
-    def __getitem__(self, key):
-        return self._sublevels[key]
-
-    def __setitem__(self, key, level):
-        level.parent = self
-        self._sublevels[key] = level
-
-    def __delitem__(self, key):
-        del self._sublevels[key]
-
-    def __iter__(self):
-        return iter(self._sublevels)
-
-    def values(self):
-        return self._sublevels.values()
-
-    def sublevels(self):
-        return self._sublevels.values()
-
-    def keys(self):
-        return self._sublevels.keys()
-
-    # endregion
-
-
-class HFLevel(EnergyLevel):
-    def __init__(self, term: Term, level: pint.Quantity, lande: float = None, parent=None, atom=None,
-                 hfA=0.0, hfB=0.0, hfC=0.0):
+class HFLevel(BaseLevel):
+    def __init__(self, term: Term, parent=None):
         """
         An HFLevel represents a hyperfine sublevel of an energy level. It lives inside an EnergyLevel,
         and contains Zeeman-sublevel ZLevel objects.
@@ -423,28 +446,23 @@ class HFLevel(EnergyLevel):
         is based on its shift relative to its parent level
 
         :param term: a Term object containing the level's quantum numbers
-        :param level: the energy of the (center of mass of) the level
-        :param lande: the lande-g value of the level
         :param parent: the atom that the level is contained in
-        :param atom: the atom that the level is contained in
-        :param hfA: the hyperfine A-coefficient
-        :param hfB: the hyperfine B-coefficient
-        :param hfC: the hyperfine C-coefficient
         """
-        super(HFLevel, self).__init__(term, level, lande, parent, atom, hfA, hfB, hfC)
+        super().__init__(term, parent)
         self.gF = self.compute_gF()
 
     def get_manifold(self):
         return self.parent
+
+    def get_atom(self):
+        return self.parent.atom
 
     def populate_sublevels(self):
         """Populates the sublevels dict with the appropriate Zeeman sublevels"""
         if isinstance(self.parent, EnergyLevel):
             for mf in np.arange(-self.term.F, self.term.F + 1):
                 t = Term(self.term.conf, self.term.term, self.term.J, F=self.term.F, mF=mf)
-                e = ZLevel(t, self.level, lande=self.lande,
-                           parent=self, atom=self.atom,
-                           hfA=self.hfA, hfB=self.hfB, hfC=self.hfC)
+                e = ZLevel(term=t, parent=self)
                 self[f'mF={mf}'] = e
 
     def compute_hf_shift(self):
@@ -512,7 +530,7 @@ class HFLevel(EnergyLevel):
         J = self.term.J
         I = self.atom.I
         if F != 0:
-            return self.lande * (F * (F + 1) + J * (J + 1) - I * (I + 1)) / (2 * F * (F + 1))
+            return self.manifold.lande * (F * (F + 1) + J * (J + 1) - I * (I + 1)) / (2 * F * (F + 1))
         return 0.0
 
 
@@ -582,7 +600,7 @@ class Transition:
 
     @property
     def freq_Hz(self):
-        return abs(self.E_1.leve_Hz - self.E_2.level_Hz)
+        return abs(self.E_1.level_Hz - self.E_2.level_Hz)
 
     @property
     def freq(self):
