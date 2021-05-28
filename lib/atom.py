@@ -373,7 +373,6 @@ class EnergyLevel(BaseLevel):
         """
         super().__init__(term, parent)
         self._level_Hz = level.to(Hz).magnitude
-        self.hfA, self.hfB, self.hfC = hfA, hfB, hfC
         self.hfA_Hz, self.hfB_Hz, self.hfC_Hz = hfA.to(Hz).magnitude, hfB.to(Hz).magnitude, hfB.to(Hz).magnitude
         if lande is None:
             try:
@@ -413,6 +412,34 @@ class EnergyLevel(BaseLevel):
     @property
     def shift_Hz(self):
         return self.level_Hz
+
+    #region HF coefficients
+
+    @property
+    def hfA(self):
+        return self.hfA_Hz * Hz
+
+    @hfA.setter
+    def hfA(self, value):
+        self.hfA_Hz = value.to(Hz).magnitude
+
+    @property
+    def hfB(self):
+        return self.hfB_Hz * Hz
+
+    @hfB.setter
+    def hfB(self, value):
+        self.hfB_Hz = value.to(Hz).magnitude
+
+    @property
+    def hfC(self):
+        return self.hfC_Hz * Hz
+
+    @hfC.setter
+    def hfC(self, value):
+        self.hfC_Hz = value.to(Hz).magnitude
+
+    #endregion
 
     def compute_gJ(self):
         """
@@ -929,11 +956,8 @@ class Atom:
                 try:
                     name, hfA, hfB, hfC = row
                     self.levels[name].hfA = Q_(hfA)
-                    self.levels[name].hfA_Hz = Q_(hfA).to(Hz).magnitude
                     self.levels[name].hfB = Q_(hfB)
-                    self.levels[name].hfB_Hz = Q_(hfB).to(Hz).magnitude
                     self.levels[name].hfC = Q_(hfC)
-                    self.levels[name].hfC_Hz = Q_(hfC).to(Hz).magnitude
                 except KeyError:
                     pass
 
