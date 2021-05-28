@@ -297,8 +297,24 @@ class BaseLevel:
         raise NotImplementedError()
 
     @property
-    def level(self):
+    def level_Hz(self):
         raise NotImplementedError()
+
+    @property
+    def level(self):
+        return self.level_Hz * Hz
+
+    @level.setter
+    def level(self, value:pint.Quantity):
+        self.level_Hz = value.to(Hz).magnitude
+
+    @property
+    def shift_Hz(self):
+        raise NotImplementedError()
+
+    @property
+    def shift(self):
+        return self.shift_Hz * Hz
 
     #region dict-like methods
 
@@ -395,12 +411,8 @@ class EnergyLevel(BaseLevel):
         self._level_Hz = value
 
     @property
-    def level(self):
-        return self.level_Hz * Hz
-
-    @level.setter
-    def level(self, value: pint.Quantity):
-        self.level_Hz = value.to(Hz).magnitude
+    def shift_Hz(self):
+        return self.level_Hz
 
     def compute_gJ(self):
         """
@@ -492,10 +504,6 @@ class HFLevel(BaseLevel):
         return self.manifold.hfA_Hz * FM1 + self.manifold.hfB_Hz * FE2 + self.manifold.hfC_Hz * FM3
 
     @property
-    def shift(self):
-        return self.compute_hf_shift() * Hz
-
-    @property
     def shift_Hz(self):
         return self.compute_hf_shift()
 
@@ -542,20 +550,6 @@ class ZLevel(HFLevel):
     @property
     def shift_Hz(self):
         return self.gF * self.term.mF * 1.39962449361e6 * self.atom.B_gauss
-
-    @property
-    def shift(self):
-        return self.shift_Hz * Hz
-
-    @property
-    def level_Hz(self):
-        return self.parent.level_Hz + self.shift_Hz
-
-    @property
-    def level(self):
-        """When asked, sublevels calculate their position relative to their parent level"""
-        # 1.39962449361e6 is the Bohr magneton in Hz/G
-        return (self.parent.level_Hz + self.shift_Hz) * Hz
 
 
 class Transition:

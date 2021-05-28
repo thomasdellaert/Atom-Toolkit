@@ -4,7 +4,7 @@ matplotlib.use('Qt5Agg')
 import matplotlib.pyplot as plt
 from networkx import draw
 
-from config import ureg, Q_
+from config import *
 from atom import Atom
 
 if __name__ == '__main__':
