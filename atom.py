@@ -14,6 +14,7 @@ from config import Q_, ureg
 
 Hz = ureg.hertz
 
+
 class Term:
     def __init__(self,
                  conf: str, term: str, J: float or str,
@@ -37,10 +38,6 @@ class Term:
         self.percentage = percentage
         self.parity = (1 if '*' in self.term else 0)
 
-        self.J_frac = self.float_to_frac(J)
-        self.F_frac = self.float_to_frac(F)
-        self.mF_frac = self.float_to_frac(mF)
-
         self.J = self.frac_to_float(J)
         self.F = self.frac_to_float(F)
         self.mF = self.frac_to_float(mF)
@@ -56,6 +53,34 @@ class Term:
         self.coupling = self.get_coupling()
 
         self.lc, self.sc, self.lo, self.so, self.jc, self.jo, self.l, self.s, self.k = self.get_quantum_nums()
+
+    # region frac properties
+
+    @property
+    def J_frac(self):
+        return self.float_to_frac(self.J)
+
+    @J_frac.setter
+    def J_frac(self, value):
+        self.J = self.frac_to_float(value)
+
+    @property
+    def F_frac(self):
+        return self.float_to_frac(self.F)
+
+    @F_frac.setter
+    def F_frac(self, value):
+        self.F = self.frac_to_float(value)
+
+    @property
+    def mF_frac(self):
+        return self.float_to_frac(self.mF)
+
+    @mF_frac.setter
+    def mF_frac(self, value):
+        self.mF = self.frac_to_float(value)
+
+    # endregion
 
     def get_quantum_nums(self):
         """
@@ -73,7 +98,7 @@ class Term:
             lc, sc, lo, so, l, k = self.parse_LK_term()
         return lc, sc, lo, so, jc, jo, l, s, k
 
-    # region parsing function
+    # region parsing functions
 
     def get_coupling(self):
         """
@@ -278,7 +303,7 @@ class Term:
 
 class BaseLevel:
 
-    def __init__(self, term:Term, parent):
+    def __init__(self, term: Term, parent):
         self.parent = parent
         self.term = term
         self.atom = self.get_atom()
@@ -305,7 +330,7 @@ class BaseLevel:
         return self.level_Hz * Hz
 
     @level.setter
-    def level(self, value:pint.Quantity):
+    def level(self, value: pint.Quantity):
         self.level_Hz = value.to(Hz).magnitude
 
     @property
@@ -316,7 +341,7 @@ class BaseLevel:
     def shift(self):
         return self.shift_Hz * Hz
 
-    #region dict-like methods
+    # region dict-like methods
 
     def __len__(self):
         return len(self._sublevels)
@@ -373,7 +398,7 @@ class EnergyLevel(BaseLevel):
         """
         super().__init__(term, parent)
         self._level_Hz = level.to(Hz).magnitude
-        self.hfA_Hz, self.hfB_Hz, self.hfC_Hz = hfA.to(Hz).magnitude, hfB.to(Hz).magnitude, hfB.to(Hz).magnitude
+        self.hfA_Hz, self.hfB_Hz, self.hfC_Hz = hfA.to(Hz).magnitude, hfB.to(Hz).magnitude, hfC.to(Hz).magnitude
         if lande is None:
             try:
                 self.lande = self.compute_gJ()
@@ -413,7 +438,7 @@ class EnergyLevel(BaseLevel):
     def shift_Hz(self):
         return self.level_Hz
 
-    #region HF coefficients
+    # region HF coefficients
 
     @property
     def hfA(self):
@@ -439,7 +464,7 @@ class EnergyLevel(BaseLevel):
     def hfC(self, value):
         self.hfC_Hz = value.to(Hz).magnitude
 
-    #endregion
+    # endregion
 
     def compute_gJ(self):
         """
@@ -681,6 +706,7 @@ class Transition:
                 ret |= 0b100 * sum([wigner3j(F1, 2, F0, -mF1, q, mF0) for q in [-2, -1, 0, 1, 2]]) != 0.0
             return ret
 
+
 # noinspection PyPropertyDefinition
 class Atom:
     def __init__(self, name: str, I: float = 0.0, B=Q_(0.0, 'G'),
@@ -766,7 +792,7 @@ class Atom:
         return self.B_gauss * ureg.gauss
 
     @B.setter
-    def B(self, value:pint.Quantity):
+    def B(self, value: pint.Quantity):
         self.B_gauss = value.to(ureg.gauss).magnitude
 
     # region levels property methods
@@ -940,10 +966,12 @@ class Atom:
         if filename is None:
             filename = f'{self.name}_Hyperfine.csv'
         if not blank:
-            rows_to_write = [[level.name, (level.hfA if level.hfA != Q_(0.0, 'gigahertz') else def_A), level.hfB, level.hfC]
-                             for level in list(self.levels.values())]
+            rows_to_write = [
+                [level.name, (level.hfA if level.hfA != Q_(0.0, 'gigahertz') else def_A), level.hfB, level.hfC]
+                for level in list(self.levels.values())]
         else:
-            rows_to_write = [[level.name, Q_(0.0, 'GHz'), Q_(0.0, 'GHz'), Q_(0.0, 'GHz')] for level in list(self.levels.values())]
+            rows_to_write = [[level.name, Q_(0.0, 'GHz'), Q_(0.0, 'GHz'), Q_(0.0, 'GHz')] for level in
+                             list(self.levels.values())]
         with open(filename, 'w', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
             writer.writerows(rows_to_write)
@@ -961,7 +989,7 @@ class Atom:
                 except KeyError:
                     pass
 
-    def generate_transition_csv(self, filename=None, blank=False):
+    def generate_transition_csv(self, filename=None):
         if filename is None:
             filename = f'{self.name}_Transitions.csv'
         pass
