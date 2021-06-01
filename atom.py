@@ -1003,14 +1003,15 @@ class Atom:
         # TODO
 
     def linked_transitions(self, level):
-        return self.levelsModel.adj[level]
+        adjacent = self.levelsModel.adj[level]
+        return {k: t['transition'] for k, t in adjacent.items()}
 
     def compute_branching_ratios(self, key):
         transitions = self.linked_transitions(key)
         A_coeffs = {}
         for n, t in transitions.items():
-            if t['transition'].E_upper.name == key:
-                A_coeffs[n] = t['transition'].A
+            if t.E_upper.name == key:
+                A_coeffs[n] = t.A
         totalAs = np.sum(list(A_coeffs.values()))
         ratios = {k: t/totalAs for k, t in A_coeffs.items()}
         return ratios
