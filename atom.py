@@ -778,13 +778,13 @@ class Atom:
             if subtransitions:
                 add_subtransitions(transition, subtransitions=subtransitions)
         elif type(transition.E_1) == HFLevel:
-            self.levelsModel.add_edge(transition.E_1.manifold.name, transition.E_2.manifold.name, transition=transition)
+            # self.levelsModel.add_edge(transition.E_1.manifold.name, transition.E_2.manifold.name, transition=transition)
             self.hfModel.add_edge(transition.E_1.name, transition.E_2.name, transition=transition)
             if subtransitions:
                 add_subtransitions(transition, subtransitions=0b000)
         elif type(transition.E_1) == ZLevel:
-            self.levelsModel.add_edge(transition.E_1.manifold.name, transition.E_2.manifold.name, transition=transition)
-            self.hfModel.add_edge(transition.E_1.parent.name, transition.E_2.parent.name, transition=transition)
+            # self.levelsModel.add_edge(transition.E_1.manifold.name, transition.E_2.manifold.name, transition=transition)
+            # self.hfModel.add_edge(transition.E_1.parent.name, transition.E_2.parent.name, transition=transition)
             self.zModel.add_edge(transition.E_1.name, transition.E_2.name, transition=transition)
 
     @property
@@ -860,6 +860,11 @@ class Atom:
     @transitions.iter
     def transitions(self):
         return nx.get_edge_attributes(self.levelsModel, 'transition').__iter__()
+
+    @transitions.keys
+    def transitions(self):
+        return nx.get_edge_attributes(self.levelsModel, 'transition').keys()
+
 
     # endregion
 
@@ -997,3 +1002,13 @@ class Atom:
     def apply_transition_csv(self, filename):
         pass
         # TODO
+
+    def linked_transitions(self, level):
+        return self.levelsModel.adj[level]
+
+    def compute_branching_ratios(self, key):
+        transitions = self.linked_transitions(key)
+        A_coeffs = {n: t['transition'].A for n, t in transitions.items()}
+        totalAs = np.sum(list(A_coeffs.values()))
+        ratios = {k: t/totalAs for k, t in A_coeffs.items()}
+        return ratios

@@ -49,10 +49,13 @@ if __name__ == '__main__':
     #     for s in list(l.values()):
     #         print('    SUB:', s.term.term_name, s.shift)
 
+    print(a.compute_branching_ratios('4f14.6s 2S1/2'))
+
     posdict = {l.name:(l.term.J, l.level_Hz) for l in a.levels.values()}
 
-    draw(a.levelsModel, pos=posdict, with_labels=True, font_size=8, node_size=100)
-    plt.show()
+    # draw(a.levelsModel, pos=posdict, with_labels=True, font_size=8, node_size=100)
+    # plt.show()
+
     #
     # draw(a.hfModel, with_labels=True, font_size=8, node_size=100)
     # plt.show()
