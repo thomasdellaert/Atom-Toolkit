@@ -49,7 +49,8 @@ if __name__ == '__main__':
     #     for s in list(l.values()):
     #         print('    SUB:', s.term.term_name, s.shift)
 
-    print(a.compute_branching_ratios('4f14.6s 2S1/2'))
+    print(a.compute_branching_ratios('4f14.6p 2P*1/2'))
+    print(sorted(list(a.compute_branching_ratios('4f14.6p 2P*1/2').values()), reverse=True))
 
     posdict = {l.name:(l.term.J, l.level_Hz) for l in a.levels.values()}
 

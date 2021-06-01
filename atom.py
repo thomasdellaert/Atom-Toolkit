@@ -865,7 +865,6 @@ class Atom:
     def transitions(self):
         return nx.get_edge_attributes(self.levelsModel, 'transition').keys()
 
-
     # endregion
 
     # region loading/unloading methods
@@ -1008,7 +1007,10 @@ class Atom:
 
     def compute_branching_ratios(self, key):
         transitions = self.linked_transitions(key)
-        A_coeffs = {n: t['transition'].A for n, t in transitions.items()}
+        A_coeffs = {}
+        for n, t in transitions.items():
+            if t['transition'].E_upper.name == key:
+                A_coeffs[n] = t['transition'].A
         totalAs = np.sum(list(A_coeffs.values()))
         ratios = {k: t/totalAs for k, t in A_coeffs.items()}
         return ratios
