@@ -923,23 +923,28 @@ class Atom:
         if 'transitions_csv' in kwargs:
             a.apply_transition_csv(kwargs['transitions_csv'])
         elif 'transitions_df' in kwargs:
-            a.populate_transitions_df(kwargs['transitions_df'], **kwargs)
+            if kwargs['transitions_df'] is not None:
+                a.populate_transitions_df(kwargs['transitions_df'], **kwargs)
+            else:
+                a.populate_transitions(**kwargs)
         else:
-            a.populate_transitions(**kwargs)
+            a.populate_transitions(allowed=0b001, **kwargs)
         a.populate_internal_transitions()
         return a
 
     # endregion
 
-    def populate_transitions(self, allowed=0b111, subtransitions=False, **kwargs):
+    def populate_transitions(self, allowed=0b111, subtransitions=True, **kwargs):
         level_pairs = tqdm(list(combinations(list(self.levels.values()), 2)))
         for pair in level_pairs:
-            t = Transition(pair[0], pair[1])
-            level_pairs.set_description(f'processing transition {t.name:100}')
-            if t.allowed_types & allowed == 0:
-                del t
-            else:
-                self.add_transition(t, subtransitions)
+            if ((pair[0].name, pair[1].name) not in self.transitions.keys()) and \
+                    ((pair[0].name, pair[1].name) not in self.transitions.keys()):
+                t = Transition(pair[0], pair[1])
+                if t.allowed_types & allowed == 0:
+                    del t
+                else:
+                    level_pairs.set_description(f'processing transition {t.name:100}')
+                    self.add_transition(t, subtransitions)
 
     def populate_internal_transitions(self):
         levels = tqdm(list(self.levels.values()))
