@@ -35,7 +35,7 @@ if __name__ == '__main__':
                                                   B=B,
                                                   hf_csv=f'resources/{species}_Hyperfine.csv',
                                                   transitions_df=trans_df,
-                                                  allowed=0b001)
+                                                  allowed=0b101)
             if save:
                 a.to_pickle(f'atoms/{species}.atom')
                 a.generate_hf_csv(filename=f'resources/{species}_Hyperfine.csv')
@@ -43,6 +43,7 @@ if __name__ == '__main__':
 
     speciesdict = {
         '171Yb': {'species': 'Yb II', 'I': 0.5, 'trans_path': "resources/Yb_II_Oscillator_Strengths.csv"},
+        '171Yb_2': {'species': 'Yb II', 'I': 0.5},
         '173Yb': {'species': 'Yb II', 'I': 2.5, 'trans_path': "resources/Yb_II_Oscillator_Strengths.csv"},
         '138Ba': {'species': 'Ba II', 'I': 0.0},
         '133Ba': {'species': 'Ba II', 'I': 0.5},
@@ -57,7 +58,7 @@ if __name__ == '__main__':
     # Name of the atom
     species = '171Yb'
     # Number of levels to generate
-    num_levels = 200
+    num_levels = None
     # Magnetic field
     B = Q_(5.0, 'G')
 

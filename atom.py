@@ -1,7 +1,8 @@
 import csv
 import pickle
 import re
-from itertools import combinations, product
+import itertools
+import math
 from typing import List
 
 import networkx as nx
@@ -11,6 +12,7 @@ from indexedproperty import indexedproperty
 from tqdm import tqdm
 
 from config import Q_, ureg
+from transition_strengths import wigner3j, wigner6j
 
 Hz = ureg.hertz
 
@@ -481,7 +483,7 @@ class EnergyLevel(BaseLevel):
     def populate_internal_transitions(self, include_zeeman=True):
         if self.atom is None:
             raise RuntimeError('EnergyLevel needs to be contained in an atom to add transitions')
-        hf_pairs = list(combinations(list(self.values()), 2))
+        hf_pairs = list(itertools.product(list(self.values()), repeat=2))
         for pair in hf_pairs:
             # TODO: Think about a way to implement relative transition strengths in an elegant way
             # TODO: Check that there aren't any wacky selection rules here
@@ -628,7 +630,7 @@ class Transition:
         self.E_2 = E2
         self.A = A
         self.parent = parent
-        self.allowed_types = self.transition_allowed(self.E_1, self.E_2)
+        self.allowed_types = self.transition_allowed()
         if self.E_2.level > self.E_1.level:
             self.E_upper = self.E_2
             self.E_lower = self.E_1
@@ -639,19 +641,6 @@ class Transition:
         if self.name is None:
             self.name = f'{self.E_1.name} -> {self.E_2.name}'
         self.set_freq = freq
-        if freq is not None:
-            # TODO: move this stuff to the Atom. The atom should enforce consistency between
-            #  the levels and transitions, not the EnergyLevel
-            # if self.E_1.level_constrained or self.E_2.level_constrained:
-            #     raise RuntimeWarning('This level has been set by another transition')
-            if update_mode == 'upper':
-                self.E_upper.level = self.E_lower.level + freq.to('Hz')
-            elif update_mode == 'lower':
-                self.E_lower.level = self.E_upper.level - freq.to('Hz')
-            elif update_mode == 'ignore':
-                pass
-            else:
-                raise ValueError('Accepted arguments to update_mode are "upper", "lower", and "ignore"')
 
     @property
     def freq_Hz(self):
@@ -665,47 +654,44 @@ class Transition:
     def wl(self):
         return self.freq.to(ureg.nanometer)
 
-    def transition_allowed(self, level_0, level_1):
-        from transition_strengths import wigner3j, wigner6j
-        I = level_0.atom.I
-        J0, J1 = level_0.term.J, level_1.term.J
-        p0, p1 = level_0.term.parity, level_1.term.parity
-        if type(level_0) != type(level_1):
+    def transition_allowed(self):
+        I = self.E_1.atom.I
+        J0, J1 = self.E_1.term.J, self.E_2.term.J
+        p0, p1 = self.E_1.term.parity, self.E_2.term.parity
+        if type(self.E_1) != type(self.E_2):
             return 0b000
-        if type(level_0) == EnergyLevel:
-            return 0b001 * (np.abs(J1 - J0) <= 1.0 and p0 != p1) | \
-                   0b010 * (np.abs(J1 - J0) <= 1.0 and p0 == p1) | \
-                   0b100 * (np.abs(J1 - J0) <= 2.0 and p0 == p1)
-        if type(level_0) == HFLevel:
-            F0, F1 = level_0.term.F, level_1.term.F
-            if self.parent is None:
-                init = self.transition_allowed(level_0.manifold, level_1.manifold)
-            else:
-                init = self.parent.allowed_types
-            ret = 0b000
-            if init & 1:
-                ret |= 0b001 * wigner6j(J0, J1, 1, F1, F0, I) != 0.0
-            if (init >> 1) & 1:
-                ret |= 0b010 * wigner6j(J0, J1, 1, F1, F0, I) != 0.0
-            if (init >> 2) & 1:
-                ret |= 0b100 * wigner6j(J0, J1, 2, F1, F0, I) != 0.0
-            return ret
-        if type(level_0) == ZLevel:
-            F0, F1 = level_0.term.F, level_1.term.F
-            mF0, mF1 = level_0.term.mF, level_1.term.mF
-            if self.parent is None:
-                init = self.transition_allowed(level_0.parent, level_1.parent)
-            else:
-                init = self.parent.allowed_types
-            ret = 0b000
-            if init & 1:
-                ret |= 0b001 * sum([wigner3j(F1, 1, F0, -mF1, q, mF0) for q in [-1, 0, 1]]) != 0.0
-            if (init >> 1) & 1:
-                ret |= 0b010 * sum([wigner3j(F1, 1, F0, -mF1, q, mF0) for q in [-1, 0, 1]]) != 0.0
-            if (init >> 2) & 1:
-                ret |= 0b100 * sum([wigner3j(F1, 2, F0, -mF1, q, mF0) for q in [-2, -1, 0, 1, 2]]) != 0.0
-            return ret
+        return 0b001 * (np.abs(J1 - J0) <= 1.0 and p0 != p1) | \
+               0b010 * (np.abs(J1 - J0) <= 1.0 and p0 == p1) | \
+               0b100 * (np.abs(J1 - J0) <= 2.0 and p0 == p1)
 
+class HFTransition(Transition):
+    def transition_allowed(self):
+        I = self.E_1.atom.I
+        J0, J1 = self.E_1.term.J, self.E_2.term.J
+        F0, F1 = self.E_1.term.F, self.E_2.term.F
+        init = self.parent.allowed_types
+        ret = 0b000
+        if init & 1:
+            ret |= 0b001 * wigner6j(J0, J1, 1, F1, F0, I) != 0.0
+        if (init >> 1) & 1:
+            ret |= 0b010 * wigner6j(J0, J1, 1, F1, F0, I) != 0.0
+        if (init >> 2) & 1:
+            ret |= 0b100 * wigner6j(J0, J1, 2, F1, F0, I) != 0.0
+        return ret
+
+class ZTransition(Transition):
+    def transition_allowed(self):
+        F0, F1 = self.E_1.term.F, self.E_2.term.F
+        mF0, mF1 = self.E_1.term.mF, self.E_2.term.mF
+        init = self.parent.allowed_types
+        ret = 0b000
+        if init & 1:
+            ret |= 0b001 * sum([wigner3j(F1, 1, F0, -mF1, q, mF0) for q in [-1, 0, 1]]) != 0.0
+        if (init >> 1) & 1:
+            ret |= 0b010 * sum([wigner3j(F1, 1, F0, -mF1, q, mF0) for q in [-1, 0, 1]]) != 0.0
+        if (init >> 2) & 1:
+            ret |= 0b100 * sum([wigner3j(F1, 2, F0, -mF1, q, mF0) for q in [-2, -1, 0, 1, 2]]) != 0.0
+        return ret
 
 # noinspection PyPropertyDefinition
 class Atom:
@@ -766,25 +752,23 @@ class Atom:
         :param subtransitions: what types of sub-transitions to add
         :return:
         """
-
-        def add_subtransitions(transition, subtransitions):
-            for pair in list(product(list(transition.E_1.values()), list(transition.E_2.values()))):
-                t = Transition(pair[0], pair[1], parent=transition)
-                if t.allowed_types & transition.allowed_types:
-                    self.add_transition(t, subtransitions=subtransitions)
+        #TODO: when adding a transition with a fixed freq, move the energy levels appropriately
 
         if type(transition.E_1) == EnergyLevel:
             self.levelsModel.add_edge(transition.E_1.name, transition.E_2.name, transition=transition)
             if subtransitions:
-                add_subtransitions(transition, subtransitions=subtransitions)
+                for pair in list(itertools.product(list(transition.E_1.sublevels()), list(transition.E_2.sublevels()))):
+                    t = HFTransition(pair[0], pair[1], parent=transition)
+                    if t.allowed_types & transition.allowed_types:
+                        self.add_transition(t, subtransitions=subtransitions)
         elif type(transition.E_1) == HFLevel:
-            # self.levelsModel.add_edge(transition.E_1.manifold.name, transition.E_2.manifold.name, transition=transition)
             self.hfModel.add_edge(transition.E_1.name, transition.E_2.name, transition=transition)
             if subtransitions:
-                add_subtransitions(transition, subtransitions=0b000)
+                for pair in list(itertools.product(list(transition.E_1.sublevels()), list(transition.E_2.sublevels()))):
+                    t = ZTransition(pair[0], pair[1], parent=transition)
+                    if t.allowed_types & transition.allowed_types:
+                        self.add_transition(t, subtransitions=subtransitions)
         elif type(transition.E_1) == ZLevel:
-            # self.levelsModel.add_edge(transition.E_1.manifold.name, transition.E_2.manifold.name, transition=transition)
-            # self.hfModel.add_edge(transition.E_1.parent.name, transition.E_2.parent.name, transition=transition)
             self.zModel.add_edge(transition.E_1.name, transition.E_2.name, transition=transition)
 
     @property
@@ -947,6 +931,9 @@ class Atom:
                     self.add_transition(t, subtransitions)
 
     def populate_internal_transitions(self):
+        """
+        Iterates over each energy level and populates the internal M1 transitions of each one
+        """
         levels = tqdm(list(self.levels.values()))
         for level in levels:
             level.populate_internal_transitions()
