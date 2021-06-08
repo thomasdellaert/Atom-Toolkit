@@ -919,16 +919,36 @@ class Atom:
     # endregion
 
     def populate_transitions(self, allowed=0b111, subtransitions=True, **kwargs):
-        level_pairs = tqdm(list(combinations(list(self.levels.values()), 2)))
-        for pair in level_pairs:
-            if ((pair[0].name, pair[1].name) not in self.transitions.keys()) and \
-                    ((pair[0].name, pair[1].name) not in self.transitions.keys()):
-                t = Transition(pair[0], pair[1])
-                if t.allowed_types & allowed == 0:
-                    del t
-                else:
-                    level_pairs.set_description(f'processing transition {t.name:100}')
-                    self.add_transition(t, subtransitions)
+        """
+        Iterate through every pair of levels in the atom, checking whether a given transition is 'allowed'
+        and adding it if it is. Since this involves calculating Clebsch-Gordan coefficients for every possible
+        pair of levels, it's slow and scales horribly with atom size. When possible, give a dataframe of transitions.
+
+        :param allowed: a bit string. 0b[E2][M1][E1]
+                        also accepts the following formats:  #TODO make this true
+                            - a tuple of bools:  ([E1][M1][E2])
+                            - a dict: {'E1': [E1], 'M1': [M1], 'E2': [E2]}
+        :param subtransitions: whether to generate subtransitions when the transitions are added
+        :param kwargs: none
+        """
+        max_to_try = 20
+
+        js = {J: [lvl for lvl in self.levels.values() if lvl.term.J == J]
+              for J in np.arange(0, max_to_try+1, 0.5)}
+        for delta_j in np.arange(0, int(math.log(allowed, 2)/2)+2):  # (len(allowed)+2)/2): #FIXME
+            set0 = (js[j] for j in list(js.keys()))
+            set1 = (js[j+delta_j] for j in list(js.keys())[:int(-(delta_j*2+1))])
+            j_pairs = zip(set0, set1)
+            level_pairs = tqdm(list(itertools.chain.from_iterable([itertools.product(j1, j2) for j1, j2 in j_pairs])))
+            for pair in level_pairs:
+                if ((pair[0].name, pair[1].name) not in self.transitions.keys()) and \
+                        ((pair[0].name, pair[1].name) not in self.transitions.keys()):
+                    t = Transition(pair[0], pair[1])
+                    if t.allowed_types & allowed == 0:
+                        del t
+                    else:
+                        level_pairs.set_description(f'processing ΔJ={delta_j:3} transition {t.name:93}')
+                        self.add_transition(t, subtransitions)
 
     def populate_internal_transitions(self):
         """
