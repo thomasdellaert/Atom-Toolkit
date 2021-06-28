@@ -372,7 +372,6 @@ class BaseLevel:
 
     # endregion
 
-
 class EnergyLevel(BaseLevel):
     def __init__(self, term: Term, level: pint.Quantity, lande: float = None, parent=None,
                  hfA=Q_(0.0, 'gigahertz'), hfB=Q_(0.0, 'gigahertz'), hfC=Q_(0.0, 'gigahertz')):
@@ -501,7 +500,6 @@ class EnergyLevel(BaseLevel):
         t = Term.from_dataframe(df, i)
         return EnergyLevel(t, df["Level (cm-1)"][i], lande=df["Lande"][i])
 
-
 class HFLevel(BaseLevel):
     def __init__(self, term: Term, parent=None):
         """
@@ -592,7 +590,6 @@ class HFLevel(BaseLevel):
             return self.manifold.lande * (F * (F + 1) + J * (J + 1) - I * (I + 1)) / (2 * F * (F + 1))
         return 0.0
 
-
 class ZLevel(HFLevel):
     def get_manifold(self):
         return self.parent.parent
@@ -626,10 +623,11 @@ class Transition:
             lower: move the lower level
             ignore: ignore the conflict
         """
+        self.parent = parent
         self.E_1 = E1
         self.E_2 = E2
-        self.A = A
-        self.parent = parent
+        self._A = A
+        self.A = self.compute_linewidth()
         self.allowed_types = self.transition_allowed()
         if self.E_2.level > self.E_1.level:
             self.E_upper = self.E_2
@@ -655,14 +653,13 @@ class Transition:
         return self.freq.to(ureg.nanometer)
 
     def transition_allowed(self):
-        I = self.E_1.atom.I
         J0, J1 = self.E_1.term.J, self.E_2.term.J
         p0, p1 = self.E_1.term.parity, self.E_2.term.parity
         if type(self.E_1) != type(self.E_2):
-            return 0b000
-        return 0b001 * (np.abs(J1 - J0) <= 1.0 and p0 != p1) | \
-               0b010 * (np.abs(J1 - J0) <= 1.0 and p0 == p1) | \
-               0b100 * (np.abs(J1 - J0) <= 2.0 and p0 == p1)
+            return (False, False, False)
+        return ((np.abs(J1 - J0) <= 1.0 and p0 != p1),
+                (np.abs(J1 - J0) <= 1.0 and p0 == p1),
+                (np.abs(J1 - J0) <= 2.0 and p0 == p1))
 
 class HFTransition(Transition):
     def transition_allowed(self):
@@ -670,27 +667,27 @@ class HFTransition(Transition):
         J0, J1 = self.E_1.term.J, self.E_2.term.J
         F0, F1 = self.E_1.term.F, self.E_2.term.F
         init = self.parent.allowed_types
-        ret = 0b000
-        if init & 1:
-            ret |= 0b001 * wigner6j(J0, J1, 1, F1, F0, I) != 0.0
-        if (init >> 1) & 1:
-            ret |= 0b010 * wigner6j(J0, J1, 1, F1, F0, I) != 0.0
-        if (init >> 2) & 1:
-            ret |= 0b100 * wigner6j(J0, J1, 2, F1, F0, I) != 0.0
-        return ret
+        ret = [False, False, False]
+        if init[0]:
+            ret[0] = wigner6j(J0, J1, 1, F1, F0, I) != 0.0
+        if init[1]:
+            ret[1] = wigner6j(J0, J1, 1, F1, F0, I) != 0.0
+        if init[2]:
+            ret[2] = wigner6j(J0, J1, 2, F1, F0, I) != 0.0
+        return tuple(ret)
 
 class ZTransition(Transition):
     def transition_allowed(self):
         F0, F1 = self.E_1.term.F, self.E_2.term.F
         mF0, mF1 = self.E_1.term.mF, self.E_2.term.mF
         init = self.parent.allowed_types
-        ret = 0b000
-        if init & 1:
-            ret |= 0b001 * sum([wigner3j(F1, 1, F0, -mF1, q, mF0) for q in [-1, 0, 1]]) != 0.0
-        if (init >> 1) & 1:
-            ret |= 0b010 * sum([wigner3j(F1, 1, F0, -mF1, q, mF0) for q in [-1, 0, 1]]) != 0.0
-        if (init >> 2) & 1:
-            ret |= 0b100 * sum([wigner3j(F1, 2, F0, -mF1, q, mF0) for q in [-2, -1, 0, 1, 2]]) != 0.0
+        ret = [False, False, False]
+        if init[0]:
+            ret[0] = sum([wigner3j(F1, 1, F0, -mF1, q, mF0) for q in [-1, 0, 1]]) != 0.0
+        if init[1]:
+            ret[1] = sum([wigner3j(F1, 1, F0, -mF1, q, mF0) for q in [-1, 0, 1]]) != 0.0
+        if init[2]:
+            ret[2] = sum([wigner3j(F1, 2, F0, -mF1, q, mF0) for q in [-2, -1, 0, 1, 2]]) != 0.0
         return ret
 
 # noinspection PyPropertyDefinition
@@ -759,14 +756,14 @@ class Atom:
             if subtransitions:
                 for pair in list(itertools.product(list(transition.E_1.sublevels()), list(transition.E_2.sublevels()))):
                     t = HFTransition(pair[0], pair[1], parent=transition)
-                    if t.allowed_types & transition.allowed_types:
+                    if np.any(np.array(t.allowed_types) & np.array(transition.allowed_types)):
                         self.add_transition(t, subtransitions=subtransitions)
         elif type(transition.E_1) == HFLevel:
             self.hfModel.add_edge(transition.E_1.name, transition.E_2.name, transition=transition)
             if subtransitions:
                 for pair in list(itertools.product(list(transition.E_1.sublevels()), list(transition.E_2.sublevels()))):
                     t = ZTransition(pair[0], pair[1], parent=transition)
-                    if t.allowed_types & transition.allowed_types:
+                    if np.any(np.array(t.allowed_types) & np.array(transition.allowed_types)):
                         self.add_transition(t, subtransitions=subtransitions)
         elif type(transition.E_1) == ZLevel:
             self.zModel.add_edge(transition.E_1.name, transition.E_2.name, transition=transition)
@@ -912,22 +909,19 @@ class Atom:
             else:
                 a.populate_transitions(**kwargs)
         else:
-            a.populate_transitions(allowed=0b001, **kwargs)
+            a.populate_transitions(allowed=(True, False, False), **kwargs)
         a.populate_internal_transitions()
         return a
 
     # endregion
 
-    def populate_transitions(self, allowed=0b111, subtransitions=True, **kwargs):
+    def populate_transitions(self, allowed=(True, True, True), subtransitions=True, **kwargs):
         """
         Iterate through every pair of levels in the atom, checking whether a given transition is 'allowed'
         and adding it if it is. Since this involves calculating Clebsch-Gordan coefficients for every possible
         pair of levels, it's slow and scales horribly with atom size. When possible, give a dataframe of transitions.
 
-        :param allowed: a bit string. 0b[E2][M1][E1]
-                        also accepts the following formats:  #TODO make this true
-                            - a tuple of bools:  ([E1][M1][E2])
-                            - a dict: {'E1': [E1], 'M1': [M1], 'E2': [E2]}
+        :param allowed: a tuple of bools:  ([E1],[M1],[E2])
         :param subtransitions: whether to generate subtransitions when the transitions are added
         :param kwargs: none
         """
@@ -936,15 +930,15 @@ class Atom:
         js = {J: [lvl for lvl in self.levels.values() if lvl.term.J == J]
               for J in np.arange(0, max_to_try+1, 0.5)}
         for delta_j in np.arange(0, int(math.log(allowed, 2)/2)+2):  # (len(allowed)+2)/2): #FIXME
-            set0 = (js[j] for j in list(js.keys()))
-            set1 = (js[j+delta_j] for j in list(js.keys())[:int(-(delta_j*2+1))])
+            set0 = [js[j] for j in list(js.keys())]
+            set1 = [js[j+delta_j] for j in list(js.keys())[:int(-(delta_j*2+1))]]
             j_pairs = zip(set0, set1)
             level_pairs = tqdm(list(itertools.chain.from_iterable([itertools.product(j1, j2) for j1, j2 in j_pairs])))
             for pair in level_pairs:
                 if ((pair[0].name, pair[1].name) not in self.transitions.keys()) and \
                         ((pair[0].name, pair[1].name) not in self.transitions.keys()):
                     t = Transition(pair[0], pair[1])
-                    if t.allowed_types & allowed == 0:
+                    if not np.any(np.array(t.allowed_types) & np.array(allowed)):
                         del t
                     else:
                         level_pairs.set_description(f'processing ΔJ={delta_j:3} transition {t.name:93}')
