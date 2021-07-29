@@ -652,6 +652,9 @@ class Transition:
     def wl(self):
         return self.freq.to(ureg.nanometer)
 
+    def compute_linewidth(self):
+        return self._A
+
     def transition_allowed(self):
         J0, J1 = self.E_1.term.J, self.E_2.term.J
         p0, p1 = self.E_1.term.parity, self.E_2.term.parity
@@ -662,6 +665,18 @@ class Transition:
                 (np.abs(J1 - J0) <= 2.0 and p0 == p1))
 
 class HFTransition(Transition):
+    def compute_linewidth(self):
+        if self.parent.A is None:
+            return None
+        I = self.E_1.atom.I
+        J1, J2 = self.E_1.term.J, self.E_2.term.J
+        F1, F2 = self.E_1.term.F, self.E_2.term.F
+        if self.parent.allowed_types[0] or self.parent.allowed_types[1]:
+            return self.parent.A * ((2*F1+1)*(2*F2+1)) * wigner6j(J2, F2, I, F1, J1, 1)**2
+        elif self.parent.allowed_types[2]:
+            return self.parent.A * ((2*F1+1)*(2*F2+1)) * wigner6j(J2, F2, I, F1, J1, 2)**2
+        return 0.0
+
     def transition_allowed(self):
         I = self.E_1.atom.I
         J0, J1 = self.E_1.term.J, self.E_2.term.J
@@ -677,6 +692,19 @@ class HFTransition(Transition):
         return tuple(ret)
 
 class ZTransition(Transition):
+    def compute_linewidth(self):
+        if self.parent.A is None:
+            return None
+        F1, F2 = self.E_1.term.F, self.E_2.term.F
+        M1, M2 = self.E_1.term.mF, self.E_2.term.mF
+        J1 = self.E_1.term.J
+        #TODO: CHECK THIS MATH
+        if self.parent.allowed_types[0] or self.parent.allowed_types[1]:
+            return self.parent.A * wigner3j(F1, 1, F2, M1, J1, M2)**2
+        elif self.parent.allowed_types[2]:
+            return self.parent.A * wigner3j(F1, 2, F2, M1, J1, M2)**2
+        return 0.0
+
     def transition_allowed(self):
         F0, F1 = self.E_1.term.F, self.E_2.term.F
         mF0, mF1 = self.E_1.term.mF, self.E_2.term.mF
@@ -929,7 +957,7 @@ class Atom:
 
         js = {J: [lvl for lvl in self.levels.values() if lvl.term.J == J]
               for J in np.arange(0, max_to_try+1, 0.5)}
-        for delta_j in np.arange(0, int(math.log(allowed, 2)/2)+2):  # (len(allowed)+2)/2): #FIXME
+        for delta_j in range(int(len(allowed)+2/2)): #FIXME
             set0 = [js[j] for j in list(js.keys())]
             set1 = [js[j+delta_j] for j in list(js.keys())[:int(-(delta_j*2+1))]]
             j_pairs = zip(set0, set1)
