@@ -637,8 +637,9 @@ class Transition:
             self.E_lower = self.E_2
         self.name = name
         if self.name is None:
-            self.name = f'{self.E_1.name} -> {self.E_2.name}'
+            self.name = f'{self.E_1.name} → {self.E_2.name}'
         self.set_freq = freq
+        self.subtransitions={}
 
     @property
     def freq_Hz(self):
@@ -786,6 +787,7 @@ class Atom:
                     t = HFTransition(pair[0], pair[1], parent=transition)
                     if np.any(np.array(t.allowed_types) & np.array(transition.allowed_types)):
                         self.add_transition(t, subtransitions=subtransitions)
+                        transition.subtransitions[t.name] = t
         elif type(transition.E_1) == HFLevel:
             self.hfModel.add_edge(transition.E_1.name, transition.E_2.name, transition=transition)
             if subtransitions:
@@ -793,6 +795,7 @@ class Atom:
                     t = ZTransition(pair[0], pair[1], parent=transition)
                     if np.any(np.array(t.allowed_types) & np.array(transition.allowed_types)):
                         self.add_transition(t, subtransitions=subtransitions)
+                        transition.subtransitions[t.name] = t
         elif type(transition.E_1) == ZLevel:
             self.zModel.add_edge(transition.E_1.name, transition.E_2.name, transition=transition)
 
