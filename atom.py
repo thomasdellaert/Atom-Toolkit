@@ -605,7 +605,7 @@ class ZLevel(HFLevel):
 
 class Transition:
     def __init__(self, E1: EnergyLevel, E2: EnergyLevel, freq=None, A: pint.Quantity = None,
-                 name=None, update_mode='upper', parent=None):
+                 name=None, parent=None):
         """
         A transition contains information about the transition between two EnergyLevels. When instantiated
         with a set frequency, it can move one of the EnergyLevels in order to make the energy difference
@@ -618,12 +618,9 @@ class Transition:
                      convert to a frequency, such as a wavenumber or a wavelength)
         :param A: The Einstein A coefficient of the transition, corresponding to the natural linewidth
         :param name: the name of the transition
-        :param update_mode: how the transition should deal with moving EnergyLevels to resolve inconsistencies:
-            upper: move the upper level
-            lower: move the lower level
-            ignore: ignore the conflict
         """
         self.parent = parent
+        self.subtransitions = {}
         self.E_1 = E1
         self.E_2 = E2
         self._A = A
@@ -639,7 +636,6 @@ class Transition:
         if self.name is None:
             self.name = f'{self.E_1.name} → {self.E_2.name}'
         self.set_freq = freq
-        self.subtransitions={}
 
     @property
     def freq_Hz(self):
