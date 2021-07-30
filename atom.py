@@ -16,6 +16,9 @@ from transition_strengths import wigner3j, wigner6j
 
 Hz = ureg.hertz
 
+############################################
+########            Term            ########
+############################################
 
 class Term:
     def __init__(self,
@@ -302,6 +305,9 @@ class Term:
         else:
             return str(int(f * 2)) + '/2'
 
+############################################
+########        Energylevel         ########
+############################################
 
 class BaseLevel:
 
@@ -602,6 +608,9 @@ class ZLevel(HFLevel):
     def shift_Hz(self):
         return self.gF * self.term.mF * 1.39962449361e6 * self.atom.B_gauss
 
+############################################
+########        Transition          ########
+############################################
 
 class Transition:
     def __init__(self, E1: EnergyLevel, E2: EnergyLevel, freq=None, A: pint.Quantity = None,
@@ -714,6 +723,10 @@ class ZTransition(Transition):
         if init[2]:
             ret[2] = sum([wigner3j(F1, 2, F0, -mF1, q, mF0) for q in [-2, -1, 0, 1, 2]]) != 0.0
         return ret
+
+############################################
+########            Atom            ########
+############################################
 
 # noinspection PyPropertyDefinition
 class Atom:
