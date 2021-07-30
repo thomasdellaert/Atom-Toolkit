@@ -21,8 +21,8 @@ def plot_spectrum(transition: Transition, laserwidth=0.01, colorbyupper=False):
     for line in lines:
         fGHz = line.freq.to("GHz").magnitude
         totwidth = laserwidth + line.A/(1e6*2*np.pi)
-        x_vals = np.linspace(fGHz - 20*totwidth, fGHz + 20*totwidth, 1000)
-        y_vals = np.array([lorentzian(x_vals[i], fGHz, 1, totwidth) for i in range(len(x_vals))])
+        x_vals = np.linspace(float(fGHz - 20*totwidth), float(fGHz + 20*totwidth), 1000)
+        y_vals = np.array([float(lorentzian(x_vals[i], fGHz, 1, totwidth)) for i in range(len(x_vals))])
         all_x.append(x_vals)
         all_y.append(y_vals)
 
