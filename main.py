@@ -1,11 +1,11 @@
 from IO import load_NIST_data, load_transition_data
 import matplotlib
-matplotlib.use('Qt5Agg')
 import matplotlib.pyplot as plt
 import networkx as nx
-
 from config import *
 from atom import Atom
+import graphers
+matplotlib.use('Qt5Agg')
 
 if __name__ == '__main__':
     def draw_levels(atom, plot_type='norm', **kwargs):
@@ -52,13 +52,13 @@ if __name__ == '__main__':
     }
 
     # whether to load from pickle
-    pickleq = True
-    #whether to save the ion
+    pickleq = False
+    # whether to save the ion
     save = False
     # Name of the atom
-    species = '171Yb'
+    species = '173Yb'
     # Number of levels to generate
-    num_levels = None
+    num_levels = 30
     # Magnetic field
     B = Q_(5.0, 'G')
 
@@ -68,8 +68,14 @@ if __name__ == '__main__':
     #     print('MAIN:', l.name, l.level.to('THz'), l.hfA)
     #     for s in list(l.values()):
     #         print('    SUB:', s.term.term_name, s.shift)
+    print(a.transitions.keys())
+
+    print(a.levels['4f13.(2F*<7/2>).5d.6s.(3D) 3[3/2]*1/2'].hfA, a.levels['4f13.(2F*<7/2>).5d.6s.(3D) 3[3/2]*1/2'].hfB, a.levels['4f13.(2F*<7/2>).5d.6s.(3D) 3[3/2]*1/2'].hfC)
+
+    graphers.plot_spectrum(a.transitions[('4f14.5d 2D3/2', '4f13.(2F*<7/2>).5d.6s.(3D) 3[3/2]*1/2')], laserwidth=.05)
+    plt.show()
 
     # print(sorted(list(a.compute_branching_ratios('4f14.6p 2P*1/2').values()), reverse=True))
     # print(a.compute_branching_ratios('4f14.6p 2P*1/2'))
 
-    draw_levels(a, edge_color=(0.0, 0.0, 0.0, 0.1), node_size=400)
+    # draw_levels(a, edge_color=(0.0, 0.0, 0.0, 0.1), node_size=400)

@@ -695,7 +695,7 @@ class ZTransition(Transition):
         F1, F2 = self.E_1.term.F, self.E_2.term.F
         M1, M2 = self.E_1.term.mF, self.E_2.term.mF
         J1 = self.E_1.term.J
-        #TODO: CHECK THIS MATH
+        # TODO: CHECK THIS MATH
         if self.parent.allowed_types[0] or self.parent.allowed_types[1]:
             return self.parent.A * wigner3j(F1, 1, F2, M1, J1, M2)**2
         elif self.parent.allowed_types[2]:
@@ -785,6 +785,7 @@ class Atom:
                         self.add_transition(t, subtransitions=subtransitions)
                         transition.subtransitions[t.name] = t
         elif type(transition.E_1) == HFLevel:
+            # self.levelsModel.add_edge(transition.E_1.manifold.name, transition.E_2.manifold.name, transition=transition)
             self.hfModel.add_edge(transition.E_1.name, transition.E_2.name, transition=transition)
             if subtransitions:
                 for pair in list(itertools.product(list(transition.E_1.sublevels()), list(transition.E_2.sublevels()))):
