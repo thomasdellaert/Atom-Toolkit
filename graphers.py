@@ -1,20 +1,25 @@
 import numpy as np
 from matplotlib import pyplot as plt
+import matplotlib.colors
 from atom import Transition
+import colorsys
 
 def plot_spectrum(transition: Transition, laserwidth=0.01, colorbyupper=False):
     def lorentzian(x, x0, ampl, gamma):
         return ampl * gamma**2 / (4 * (x - x0)**2 + gamma**2)
 
     lines = transition.subtransitions.values()
-    freqs, lo_Fs, hi_Fs, widths = [], [], [], []
+    lo_Fs, hi_Fs = [], []
     for t in lines:
-        freqs.append(t.freq_Hz/1e9)
+        lo_Fs.append(t.E_lower.term.F)
+        hi_Fs.append(t.E_upper.term.F)
+    num_lo_Fs = {F:lo_Fs.count(F) for F in np.unique(lo_Fs)}
+    num_hi_Fs = {F:hi_Fs.count(F) for F in np.unique(hi_Fs)}
+    F_pairs = list(zip(lo_Fs, hi_Fs))
+    min_hi_Fs = {Flo:min([Fp[1] for Fp in F_pairs if Fp[0] == Flo]) for Flo in lo_Fs}
+    min_lo_Fs = {Fhi:min([Fp[0] for Fp in F_pairs if Fp[1] == Fhi]) for Fhi in hi_Fs}
 
-    if colorbyupper:
-        pass  # TODO color by upper
-
-    plt.figure(figsize=(16, 9))
+    cmap = plt.get_cmap("tab10")
 
     all_x, all_y = [], []
 
@@ -26,7 +31,27 @@ def plot_spectrum(transition: Transition, laserwidth=0.01, colorbyupper=False):
         all_x.append(x_vals)
         all_y.append(y_vals)
 
-        plt.plot(x_vals, y_vals, label=f"{line.E_lower.term.F_frac} → {line.E_upper.term.F_frac}")
+        # depending on coloring by upper/lower, one ser of Fs determines color, while the other determines shade
+        if not colorbyupper:
+            color_num_Fs = num_lo_Fs
+            color_F = line.E_lower.term.F
+            shade_F = line.E_upper.term.F
+            min_shade_Fs = min_hi_Fs
+        else:
+            color_num_Fs = num_hi_Fs
+            color_F = line.E_upper.term.F
+            shade_F = line.E_lower.term.F
+            min_shade_Fs = min_lo_Fs
+
+        # pick a color depending on the color F
+        col = cmap(list(color_num_Fs.keys()).index(color_F))
+        # convert it to HLS
+        col = colorsys.rgb_to_hls(*matplotlib.colors.to_rgb(col))
+        # set the lightness depending on the shade F and convert back to RGB
+        lightness = 0.2+0.6*(shade_F-min_shade_Fs[color_F]+1)/(color_num_Fs[color_F]+1)
+        col = colorsys.hls_to_rgb(col[0], lightness, col[2])
+
+        plt.plot(x_vals, y_vals, label=f"{line.E_lower.term.F_frac} → {line.E_upper.term.F_frac}", c=col)
 
     x_vals = []
     for x in all_x:
