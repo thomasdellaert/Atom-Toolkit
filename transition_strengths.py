@@ -22,7 +22,10 @@ def wignerPicker(func):
     def wrapper(*args):
         if nj:
             # py3nj takes the arguments doubled, and requires them to be integers
-            return func(*map(lambda x: int(x * 2), args))
+            try:
+                return func(*map(lambda x: int(x * 2), args))
+            except ValueError:
+                return 0.0
         else:
             # sympy throws an error when selection rules are violated, but it needs to return 0
             try:
@@ -32,6 +35,7 @@ def wignerPicker(func):
 
     return wrapper
 
+
 wigner3j = (functools.lru_cache(maxsize=None))(wignerPicker(wigner3j))
 wigner6j = (functools.lru_cache(maxsize=None))(wignerPicker(wigner6j))
 
@@ -39,9 +43,8 @@ wigner6j = (functools.lru_cache(maxsize=None))(wignerPicker(wigner6j))
 @functools.lru_cache(maxsize=None)
 def tkq_transition_strength(I, k, q, J0, F0, M0, J1, F1, M1):
     prod = 1
-    prod *= (2 * F0 + 1) * (2 * F1 + 2) * \
-            wigner6j(J0, J1, k,
-                     F1, F0, I) ** 2
+    prod *= (2 * F0 + 1) * (2 * F1 + 2) * wigner6j(J0, J1, k,
+                                                   F1, F0, I) ** 2
     prod *= wigner3j(F1, k, F0,
                      -M1, q, M0) ** 2
     return prod
