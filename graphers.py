@@ -11,23 +11,32 @@ def plot_spectrum(transition: Transition, laserwidth=0.01, colorbyupper=False):
     for t in lines:
         freqs.append(t.freq_Hz/1e9)
 
-    num_points = int(max(freqs) - min(freqs) + 2 * 100 / laserwidth)
-    x_vals_tot = np.linspace(min(freqs) - 1, max(freqs) + 1, num_points)
-    tot = np.zeros(num_points)
-
     if colorbyupper:
-        pass #TODO color by upper
+        pass  # TODO color by upper
 
     plt.figure(figsize=(16, 9))
+
+    all_x, all_y = [], []
+
     for line in lines:
         fGHz = line.freq.to("GHz").magnitude
         totwidth = laserwidth + line.A/(1e6*2*np.pi)
-        x_vals = np.linspace([fGHz - 15*totwidth], [fGHz + 15*totwidth], 200)
-        y_vals = [lorentzian(x_vals[i], fGHz, 1, totwidth) for i in range(len(x_vals))]
-        # tot = tot + y_vals
-        #TODO: Figure out how to add the multiple lorentzians into a total.
+        x_vals = np.linspace(fGHz - 20*totwidth, fGHz + 20*totwidth, 1000)
+        y_vals = np.array([lorentzian(x_vals[i], fGHz, 1, totwidth) for i in range(len(x_vals))])
+        all_x.append(x_vals)
+        all_y.append(y_vals)
+
         plt.plot(x_vals, y_vals, label=f"{line.E_lower.term.F_frac} → {line.E_upper.term.F_frac}")
-    # plt.plot(x_vals, tot, "k:", label="Total", alpha=0.5)
+
+    x_vals = []
+    for x in all_x:
+        x_vals.append(x)
+    x_vals = np.sort(np.array(x_vals).flatten())
+    y_vals = np.zeros_like(x_vals)
+    for curve, x in zip(all_y, all_x):
+        y_vals += np.interp(x_vals, x, curve)
+
+    plt.plot(x_vals, y_vals, "k:", label="Total", alpha=0.5)
     plt.ylim(0, None)
     plt.xlabel("Frequency (GHz)")
     plt.legend()
