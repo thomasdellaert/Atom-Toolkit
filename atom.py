@@ -844,7 +844,10 @@ class Atom:
 
     @indexedproperty
     def transitions(self, key):
-        return nx.get_edge_attributes(self.levelsModel, 'transition')[key]
+        try:
+            return nx.get_edge_attributes(self.levelsModel, 'transition')[(key[1], key[0])]
+        except KeyError:
+            return nx.get_edge_attributes(self.levelsModel, 'transition')[key]
 
     @transitions.setter
     def transitions(self, value):
