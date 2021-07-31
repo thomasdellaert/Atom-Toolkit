@@ -2,7 +2,7 @@ import csv
 import pickle
 import re
 import itertools
-import math
+import pprint
 from typing import List
 
 import networkx as nx
@@ -1065,3 +1065,11 @@ class Atom:
         totalAs = np.sum(list(A_coeffs.values()))
         ratios = {k: t/totalAs for k, t in A_coeffs.items()}
         return ratios
+
+    def list_transitions(self):
+        pprint.pprint(list(self.transitions.keys()))
+
+    def list_levels(self):
+        pprint.pprint(list(self.levels.keys()))
+
+    # TODO: search_levels? search_transitions?
