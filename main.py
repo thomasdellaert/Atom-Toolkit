@@ -68,12 +68,16 @@ if __name__ == '__main__':
     #     print('MAIN:', l.name, l.level.to('THz'), l.hfA)
     #     for s in list(l.values()):
     #         print('    SUB:', s.term.term_name, s.shift)
-    print(a.transitions.keys())
 
-    print(a.levels['4f13.(2F*<7/2>).5d.6s.(3D) 3[3/2]*1/2'].hfA, a.levels['4f13.(2F*<7/2>).5d.6s.(3D) 3[3/2]*1/2'].hfB, a.levels['4f13.(2F*<7/2>).5d.6s.(3D) 3[3/2]*1/2'].hfC)
+    # a.list_levels()
 
-    graphers.plot_spectrum(a.transitions[('4f14.5d 2D3/2', '4f13.(2F*<7/2>).5d.6s.(3D) 3[3/2]*1/2')], laserwidth=.05)
+    a.list_transitions()
+
+    graphers.plot_spectrum(a.transitions[('4f14.5d 2D3/2', '4f14.6p 2P*3/2')], laserwidth=.1, colorbyupper=True)
     plt.show()
+
+    # ('4f14.5d 2D5/2', '4f13.(2F*<7/2>).5d.6s.(1D) 1[7/2]*7/2')
+    # ('4f13.(2F*<7/2>).5d.6s.(3D) 3[3/2]*1/2', '4f14.5d 2D3/2')
 
     # print(sorted(list(a.compute_branching_ratios('4f14.6p 2P*1/2').values()), reverse=True))
     # print(a.compute_branching_ratios('4f14.6p 2P*1/2'))
