@@ -26,6 +26,8 @@ def wignerPicker(func):
                 return func(*map(lambda x: int(x * 2), args))
             except ValueError:
                 return 0.0
+            except IndexError:
+                return 0.0
         else:
             # sympy throws an error when selection rules are violated, but it needs to return 0
             try:

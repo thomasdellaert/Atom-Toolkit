@@ -17,7 +17,7 @@ from transition_strengths import wigner3j, wigner6j
 Hz = ureg.hertz
 
 ############################################
-########            Term            ########
+#                   Term                   #
 ############################################
 
 class Term:
@@ -306,7 +306,7 @@ class Term:
             return str(int(f * 2)) + '/2'
 
 ############################################
-########        Energylevel         ########
+#               EnergyLevel                #
 ############################################
 
 class BaseLevel:
@@ -609,7 +609,7 @@ class ZLevel(HFLevel):
         return self.gF * self.term.mF * 1.39962449361e6 * self.atom.B_gauss
 
 ############################################
-########        Transition          ########
+#               Transition                 #
 ############################################
 
 class Transition:
@@ -664,7 +664,7 @@ class Transition:
     def transition_allowed(self):
         J0, J1 = self.E_1.term.J, self.E_2.term.J
         p0, p1 = self.E_1.term.parity, self.E_2.term.parity
-        if type(self.E_1) != type(self.E_2):
+        if not isinstance(self.E_1, type(self.E_2)):
             return (False, False, False)
         return ((np.abs(J1 - J0) <= 1.0 and p0 != p1),
                 (np.abs(J1 - J0) <= 1.0 and p0 == p1),
@@ -725,7 +725,7 @@ class ZTransition(Transition):
         return ret
 
 ############################################
-########            Atom            ########
+#                   Atom                   #
 ############################################
 
 # noinspection PyPropertyDefinition
@@ -787,7 +787,8 @@ class Atom:
         :param subtransitions: what types of sub-transitions to add
         :return:
         """
-        #TODO: when adding a transition with a fixed freq, move the energy levels appropriately
+        # TODO: when adding a transition with a fixed freq, move the energy levels appropriately
+        # TODO: move this logic to the transitions. It's weird to do it in the atom.
 
         if type(transition.E_1) == EnergyLevel:
             self.levelsModel.add_edge(transition.E_1.name, transition.E_2.name, transition=transition)
@@ -931,7 +932,6 @@ class Atom:
     @classmethod
     def generate_full_from_dataframe(cls, df, name, I=0.0, **kwargs):
         """
-
         :param df:
         :param name:
         :param I:
@@ -973,7 +973,7 @@ class Atom:
 
         js = {J: [lvl for lvl in self.levels.values() if lvl.term.J == J]
               for J in np.arange(0, max_to_try+1, 0.5)}
-        for delta_j in range(int(len(allowed)+2/2)): #FIXME
+        for delta_j in range(int(len(allowed)+2/2)):  # FIXME
             set0 = [js[j] for j in list(js.keys())]
             set1 = [js[j+delta_j] for j in list(js.keys())[:int(-(delta_j*2+1))]]
             j_pairs = zip(set0, set1)
