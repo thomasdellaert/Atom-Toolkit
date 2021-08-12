@@ -864,9 +864,12 @@ class Atom:
     @indexedproperty
     def transitions(self, key):
         try:
-            return nx.get_edge_attributes(self.levelsModel, 'transition')[(key[1], key[0])]
+            try:
+                return nx.get_edge_attributes(self.levelsModel, 'transition')[(key[1], key[0])]
+            except KeyError:
+                return nx.get_edge_attributes(self.levelsModel, 'transition')[key]
         except KeyError:
-            return nx.get_edge_attributes(self.levelsModel, 'transition')[key]
+            return None
 
     @transitions.setter
     def transitions(self, value):
@@ -976,16 +979,17 @@ class Atom:
         """
         max_to_try = 20
 
+        # The keys of js are J values, and the values are lists of levels with that J value
         js = {J: [lvl for lvl in self.levels.values() if lvl.term.J == J]
               for J in np.arange(0, max_to_try+1, 0.5)}
-        for delta_j in range(int(len(allowed)+2/2)):  # FIXME
+        for delta_j in range(int(len(allowed)+2/2)):  # FIXME this is fucked
             set0 = [js[j] for j in list(js.keys())]
+            # don't include the last several j values to avoid IndexErrors
             set1 = [js[j+delta_j] for j in list(js.keys())[:int(-(delta_j*2+1))]]
             j_pairs = zip(set0, set1)
             level_pairs = tqdm(list(itertools.chain.from_iterable([itertools.product(j1, j2) for j1, j2 in j_pairs])))
             for pair in level_pairs:
-                if ((pair[0].name, pair[1].name) not in self.transitions.keys()) and \
-                        ((pair[0].name, pair[1].name) not in self.transitions.keys()):
+                if self.transitions[(pair[0].name, pair[1].name)] is not None:
                     t = Transition(pair[0], pair[1])
                     if not np.any(np.array(t.allowed_types) & np.array(allowed)):
                         del t
