@@ -979,10 +979,16 @@ class Atom:
         """
         max_to_try = 20
 
+        allowed_deltas = [0]
+        # since the ordering of the list is potentially E1, M1, E2, M2, etc... and the allowed deltas are 1, 1, 2, 2, etc
+        for i in range(len(allowed)):
+            if allowed[2*i] or allowed[2*i+1]:
+                allowed_deltas.append(i+1)
+
         # The keys of js are J values, and the values are lists of levels with that J value
         js = {J: [lvl for lvl in self.levels.values() if lvl.term.J == J]
               for J in np.arange(0, max_to_try+1, 0.5)}
-        for delta_j in range(int(len(allowed)+2/2)):  # FIXME this is fucked
+        for delta_j in allowed_deltas:  # range(int(len(allowed)+2/2)):
             set0 = [js[j] for j in list(js.keys())]
             # don't include the last several j values to avoid IndexErrors
             set1 = [js[j+delta_j] for j in list(js.keys())[:int(-(delta_j*2+1))]]
