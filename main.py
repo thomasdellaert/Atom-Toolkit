@@ -74,11 +74,11 @@ if __name__ == '__main__':
 
     # a.list_levels()
 
-    a.list_transitions()
-
-    plt.figure(figsize=(20, 9))
-    graphers.plot_spectrum(a.transitions[('4f14.6s 2S1/2', '4f14.6p 2P*3/2')], laser_width=.3, coloring='l')
-    plt.show()
+    # a.list_transitions()
+    #
+    # plt.figure(figsize=(20, 9))
+    # graphers.plot_spectrum(a.transitions[('4f14.6s 2S1/2', '4f14.6p 2P*3/2')], laser_width=.3, coloring='l')
+    # plt.show()
 
     # ('4f14.5d 2D5/2', '4f13.(2F*<7/2>).5d.6s.(1D) 1[7/2]*7/2')
     # ('4f13.(2F*<7/2>).5d.6s.(3D) 3[3/2]*1/2', '4f14.5d 2D3/2')

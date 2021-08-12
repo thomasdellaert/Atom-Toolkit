@@ -596,9 +596,8 @@ class ZLevel(HFLevel):
 #               Transition                 #
 ############################################
 
-class Transition:
-    def __init__(self, E1: EnergyLevel, E2: EnergyLevel, freq=None, A: pint.Quantity = None,
-                 name=None, parent=None):
+class BaseTransition:
+    def __init__(self, E1: EnergyLevel, E2: EnergyLevel, freq=None, A: pint.Quantity = None, name=None, parent=None):
         """
         A transition contains information about the transition between two EnergyLevels. When instantiated
         with a set frequency, it can move one of the EnergyLevels in order to make the energy difference
@@ -612,13 +611,10 @@ class Transition:
         :param A: The Einstein A coefficient of the transition, corresponding to the natural linewidth
         :param name: the name of the transition
         """
+
         self.parent = parent
         self.subtransitions = {}
-        self.E_1 = E1
-        self.E_2 = E2
-        self._A = A
-        self.A = self.compute_linewidth()
-        self.allowed_types = self.transition_allowed()
+        self.E_1, self.E_2 = E1, E2
         if self.E_2.level > self.E_1.level:
             self.E_upper = self.E_2
             self.E_lower = self.E_1
@@ -628,6 +624,9 @@ class Transition:
         self.name = name
         if self.name is None:
             self.name = f'{self.E_1.name} → {self.E_2.name}'
+        self._A = A
+        self.A = self.compute_linewidth()
+        self.allowed_types = self.transition_allowed()
         self.set_freq = freq
         self.populate_subtransitions()
 
@@ -642,6 +641,20 @@ class Transition:
     @property
     def wl(self):
         return self.freq.to(ureg.nanometer)
+
+    def compute_linewidth(self):
+        return self._A
+
+    def transition_allowed(self):
+        raise NotImplementedError
+
+    def add_to_atom(self, atom):
+        raise NotImplementedError
+
+    def populate_subtransitions(self):
+        raise NotImplementedError
+
+class Transition(BaseTransition):
 
     def compute_linewidth(self):
         return self._A
@@ -669,7 +682,7 @@ class Transition:
             else:
                 del t
 
-class HFTransition(Transition):
+class HFTransition(BaseTransition):
     def compute_linewidth(self):
         if self.parent is None:
             return None
@@ -714,7 +727,7 @@ class HFTransition(Transition):
             else:
                 del t
 
-class ZTransition(Transition):
+class ZTransition(BaseTransition):
     def compute_linewidth(self):
         if self.parent is None:
             return None
