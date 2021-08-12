@@ -485,22 +485,6 @@ class EnergyLevel(BaseLevel):
         S = self.term.s
         return 1 + (J * (J + 1) + S * (S + 1) - L * (L + 1)) / (2 * J * (J + 1))
 
-    def populate_internal_transitions(self, include_zeeman=True):
-        if self.atom is None:
-            raise RuntimeError('EnergyLevel needs to be contained in an atom to add transitions')
-        hf_pairs = list(itertools.product(list(self.values()), repeat=2))
-        for pair in hf_pairs:
-            # TODO: Think about a way to implement relative transition strengths in an elegant way
-            # TODO: Check that there aren't any wacky selection rules here
-            transition = Transition(pair[0], pair[1])
-            self.atom.add_transition(transition)
-            if include_zeeman:
-                for z0 in list(pair[0].values()):
-                    for z1 in list(pair[1].values()):
-                        if abs(z0.term.mF - z1.term.mF) <= 1:
-                            transition = Transition(z0, z1)
-                            self.atom.add_transition(transition)
-
     @classmethod
     def from_dataframe(cls, df, i=0):
         t = Term.from_dataframe(df, i)
@@ -645,6 +629,7 @@ class Transition:
         if self.name is None:
             self.name = f'{self.E_1.name} → {self.E_2.name}'
         self.set_freq = freq
+        self.populate_subtransitions()
 
     @property
     def freq_Hz(self):
@@ -665,13 +650,29 @@ class Transition:
         J0, J1 = self.E_1.term.J, self.E_2.term.J
         p0, p1 = self.E_1.term.parity, self.E_2.term.parity
         if not isinstance(self.E_1, type(self.E_2)):
-            return (False, False, False)
+            return [False, False, False]
+        # for now I'm assuming that E2 transitions within a manifold are impossible. Correct me if I'm wrong!
         return ((np.abs(J1 - J0) <= 1.0 and p0 != p1),
                 (np.abs(J1 - J0) <= 1.0 and p0 == p1),
-                (np.abs(J1 - J0) <= 2.0 and p0 == p1))
+                (np.abs(J1 - J0) <= 2.0 and p0 == p1 and not (self.E_1 is self.E_2)))
+
+    def add_to_atom(self, atom):
+        atom.levelsModel.add_edge(self.E_1.name, self.E_2.name, transition=self)
+        for subtransition in self.subtransitions.values():
+            subtransition.add_to_atom(atom)
+
+    def populate_subtransitions(self):
+        for pair in list(itertools.product(list(self.E_1.sublevels()), list(self.E_2.sublevels()))):
+            t = HFTransition(pair[0], pair[1], parent=self)
+            if np.any(np.array(t.allowed_types)):
+                self.subtransitions[t.name] = t
+            else:
+                del t
 
 class HFTransition(Transition):
     def compute_linewidth(self):
+        if self.parent is None:
+            return None
         if self.parent.A is None:
             return None
         I = self.E_1.atom.I
@@ -687,7 +688,10 @@ class HFTransition(Transition):
         I = self.E_1.atom.I
         J0, J1 = self.E_1.term.J, self.E_2.term.J
         F0, F1 = self.E_1.term.F, self.E_2.term.F
-        init = self.parent.allowed_types
+        if self.parent:
+            init = self.parent.allowed_types
+        else:
+            init = [True, True, True]
         ret = [False, False, False]
         if init[0]:
             ret[0] = wigner6j(J0, J1, 1, F1, F0, I) != 0.0
@@ -696,9 +700,24 @@ class HFTransition(Transition):
         if init[2]:
             ret[2] = wigner6j(J0, J1, 2, F1, F0, I) != 0.0
         return tuple(ret)
+    
+    def add_to_atom(self, atom):
+        atom.hfModel.add_edge(self.E_1.name, self.E_2.name, transition=self)
+        for subtransition in self.subtransitions.values():
+            subtransition.add_to_atom(atom)
+            
+    def populate_subtransitions(self):
+        for pair in list(itertools.product(list(self.E_1.sublevels()), list(self.E_2.sublevels()))):
+            t = ZTransition(pair[0], pair[1], parent=self)
+            if np.any(np.array(t.allowed_types)):
+                self.subtransitions[t.name] = t
+            else:
+                del t
 
 class ZTransition(Transition):
     def compute_linewidth(self):
+        if self.parent is None:
+            return None
         if self.parent.A is None:
             return None
         F1, F2 = self.E_1.term.F, self.E_2.term.F
@@ -723,6 +742,12 @@ class ZTransition(Transition):
         if init[2]:
             ret[2] = sum([wigner3j(F1, 2, F0, -mF1, q, mF0) for q in [-2, -1, 0, 1, 2]]) != 0.0
         return ret
+    
+    def add_to_atom(self, atom):
+        atom.zModel.add_edge(self.E_1.name, self.E_2.name, transition=self)
+    
+    def populate_subtransitions(self):
+        pass
 
 ############################################
 #                   Atom                   #
@@ -788,27 +813,8 @@ class Atom:
         :return:
         """
         # TODO: when adding a transition with a fixed freq, move the energy levels appropriately
-        # TODO: move this logic to the transitions. It's weird to do it in the atom.
 
-        if type(transition.E_1) == EnergyLevel:
-            self.levelsModel.add_edge(transition.E_1.name, transition.E_2.name, transition=transition)
-            if subtransitions:
-                for pair in list(itertools.product(list(transition.E_1.sublevels()), list(transition.E_2.sublevels()))):
-                    t = HFTransition(pair[0], pair[1], parent=transition)
-                    if np.any(np.array(t.allowed_types) & np.array(transition.allowed_types)):
-                        self.add_transition(t, subtransitions=subtransitions)
-                        transition.subtransitions[t.name] = t
-        elif type(transition.E_1) == HFLevel:
-            # self.levelsModel.add_edge(transition.E_1.manifold.name, transition.E_2.manifold.name, transition=transition)
-            self.hfModel.add_edge(transition.E_1.name, transition.E_2.name, transition=transition)
-            if subtransitions:
-                for pair in list(itertools.product(list(transition.E_1.sublevels()), list(transition.E_2.sublevels()))):
-                    t = ZTransition(pair[0], pair[1], parent=transition)
-                    if np.any(np.array(t.allowed_types) & np.array(transition.allowed_types)):
-                        self.add_transition(t, subtransitions=subtransitions)
-                        transition.subtransitions[t.name] = t
-        elif type(transition.E_1) == ZLevel:
-            self.zModel.add_edge(transition.E_1.name, transition.E_2.name, transition=transition)
+        transition.add_to_atom(self)
 
     @property
     def B(self):
@@ -994,7 +1000,8 @@ class Atom:
         """
         levels = tqdm(list(self.levels.values()))
         for level in levels:
-            level.populate_internal_transitions()
+            t = Transition(level, level)
+            t.add_to_atom(self)
             levels.set_description(f'adding internal transitions to {level.name:91}')
 
     def populate_transitions_df(self, df, subtransitions=True, **kwargs):
@@ -1066,8 +1073,11 @@ class Atom:
         ratios = {k: t/totalAs for k, t in A_coeffs.items()}
         return ratios
 
-    def list_transitions(self):
-        pprint.pprint(list(self.transitions.keys()))
+    def list_transitions(self, hide_self_transitions=True):
+        if not hide_self_transitions:
+            pprint.pprint(list(self.transitions.keys()))
+        else:
+            pprint.pprint([key for key in self.transitions.keys() if key[0] != key[1]])
 
     def list_levels(self):
         pprint.pprint(list(self.levels.keys()))
