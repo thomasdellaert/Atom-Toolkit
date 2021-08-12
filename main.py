@@ -76,7 +76,7 @@ if __name__ == '__main__':
 
     a.list_transitions()
 
-    # plt.figure(figsize=(20, 9))
+    plt.figure(figsize=(20, 9))
     graphers.plot_spectrum(a.transitions[('4f14.6s 2S1/2', '4f14.6p 2P*3/2')], laser_width=.3, coloring='l')
     plt.show()
 

@@ -1,45 +1,7 @@
 import numpy as np
 import warnings
 import functools
-
-try:
-    # py3nj is a pain to install, and requires a fortran compiler among other things. Therefore it's optional,
-    # and everything can work with sympy if it needs to. Py3nj is a bit faster, and it supports vectorized inputs,
-    # so it's preferred.
-    from py3nj import wigner3j, wigner6j, wigner9j
-
-    nj = True
-except ImportError:
-    from sympy.physics.wigner import wigner_3j as wigner3j
-    from sympy.physics.wigner import wigner_6j as wigner6j
-    from sympy.physics.wigner import wigner_9j as wigner9j
-    from sympy import N
-
-    nj = False
-
-
-def wignerPicker(func):
-    def wrapper(*args):
-        if nj:
-            # py3nj takes the arguments doubled, and requires them to be integers
-            try:
-                return func(*map(lambda x: int(x * 2), args))
-            except ValueError:
-                return 0.0
-            except IndexError:
-                return 0.0
-        else:
-            # sympy throws an error when selection rules are violated, but it needs to return 0
-            try:
-                return N(func(*args))
-            except ValueError:
-                return 0.0
-
-    return wrapper
-
-
-wigner3j = (functools.lru_cache(maxsize=None))(wignerPicker(wigner3j))
-wigner6j = (functools.lru_cache(maxsize=None))(wignerPicker(wigner6j))
+from wigner import *
 
 # noinspection PyTypeChecker
 @functools.lru_cache(maxsize=None)
@@ -50,7 +12,6 @@ def tkq_transition_strength(I, k, q, J0, F0, M0, J1, F1, M1):
     prod *= wigner3j(F1, k, F0,
                      -M1, q, M0) ** 2
     return prod
-
 
 # The tensor math for E2 (and somewhat E1) transitions is adapted from Tony's thesis (Ransford 2020)
 @functools.lru_cache(maxsize=None)
@@ -64,11 +25,7 @@ def E1_transition_strength_geom(eps, I, J0, F0, M0, J1, F1, M1):
 
 @functools.lru_cache(maxsize=None)
 def E1_transition_strength_avg(I, J0, F0, M0, J1, F1, M1):
-    tot = 0
-    tot += tkq_transition_strength(I, 1, -1, J0, F0, M0, J1, F1, M1) * (1.0 / 3.0)
-    tot += tkq_transition_strength(I, 1, 0, J0, F0, M0, J1, F1, M1) * (1.0 / 3.0)
-    tot += tkq_transition_strength(I, 1, 1, J0, F0, M0, J1, F1, M1) * (1.0 / 3.0)
-    return tot
+    return sum([tkq_transition_strength(I, 1, q, J0, F0, M0, J1, F1, M1) for q in [-1, 0, 1]])/3.0
 
 @functools.lru_cache(maxsize=None)
 def M1_transition_strength_geom(eps, I, J0, F0, M0, J1, F1, M1):
@@ -83,11 +40,7 @@ def M1_transition_strength_geom(eps, I, J0, F0, M0, J1, F1, M1):
 
 @functools.lru_cache(maxsize=None)
 def M1_transition_strength_avg(I, J0, F0, M0, J1, F1, M1):
-    tot = 0
-    tot += tkq_transition_strength(I, 1, -1, J0, F0, M0, J1, F1, M1) * (1.0 / 3.0)
-    tot += tkq_transition_strength(I, 1, 0, J0, F0, M0, J1, F1, M1) * (1.0 / 3.0)
-    tot += tkq_transition_strength(I, 1, 1, J0, F0, M0, J1, F1, M1) * (1.0 / 3.0)
-    return tot
+    return sum([tkq_transition_strength(I, 1, q, J0, F0, M0, J1, F1, M1) for q in [-1, 0, 1]])/3.0
 
 @functools.lru_cache(maxsize=None)
 def E2_transition_strength_geom(eps, k, I, J0, F0, M0, J1, F1, M1):

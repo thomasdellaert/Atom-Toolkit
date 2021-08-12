@@ -12,7 +12,7 @@ from indexedproperty import indexedproperty
 from tqdm import tqdm
 
 from config import Q_, ureg
-from transition_strengths import wigner3j, wigner6j
+from wigner import wigner3j, wigner6j
 
 Hz = ureg.hertz
 
@@ -803,13 +803,12 @@ class Atom:
             for z_level in list(sublevel.values()):
                 self.zModel.add_node(z_level.name, level=z_level)
 
-    def add_transition(self, transition: Transition, subtransitions=False):
+    def add_transition(self, transition: Transition):
         """
         Add a transition between two EnergyLevels in the atom. If either of the referenced levels aren't in the atom
         yet, they will be added.
         TODO: accept a list of Transitions
         :param transition: the Transition to be added
-        :param subtransitions: what types of sub-transitions to add
         :return:
         """
         # TODO: when adding a transition with a fixed freq, move the energy levels appropriately
@@ -971,7 +970,7 @@ class Atom:
         and adding it if it is. Since this involves calculating Clebsch-Gordan coefficients for every possible
         pair of levels, it's slow and scales horribly with atom size. When possible, give a dataframe of transitions.
 
-        :param allowed: a tuple of bools:  ([E1],[M1],[E2])
+        :param allowed: a tuple of booleans:  ([E1],[M1],[E2])
         :param subtransitions: whether to generate subtransitions when the transitions are added
         :param kwargs: none
         """
@@ -992,7 +991,7 @@ class Atom:
                         del t
                     else:
                         level_pairs.set_description(f'processing ΔJ={delta_j:3} transition {t.name:93}')
-                        self.add_transition(t, subtransitions)
+                        self.add_transition(t)
 
     def populate_internal_transitions(self):
         """
@@ -1019,7 +1018,7 @@ class Atom:
                 A = row["A"]
                 t = Transition(e1, e2, freq=freq, A=A)
                 rows.set_description(f'adding transition {t.name:104}')
-                self.add_transition(t, subtransitions=subtransitions)
+                self.add_transition(t)
             except KeyError:
                 pass
 
