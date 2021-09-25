@@ -53,9 +53,9 @@ class ModLorentzianLineShape(LineShape):
         if 'A_coeff' in kwargs:
             width += kwargs['A_coeff'] / (1e6 * 2 * np.pi)
         tot = 0.
-        tot += lorentzian(x, x0, width, ampl=self.ampl*float(jv(0, self.depth)))
+        tot += lorentzian(x, x0, width, ampl=self.ampl*float(jv(0, self.depth)**2))
         for i in range(1, self.num_sidebands+1):
-            mod_ampl = self.ampl*float(jv(i, self.depth))
+            mod_ampl = self.ampl*float(jv(i, self.depth)**2)
             tot += lorentzian(x, x0+i*self.mod_freq_GHz, width, ampl=mod_ampl)
             tot += lorentzian(x, x0-i*self.mod_freq_GHz, width, ampl=mod_ampl)
         return tot
