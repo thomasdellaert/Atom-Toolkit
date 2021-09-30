@@ -3,6 +3,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import networkx as nx
 from config import *
+import lineshapes
 from atom import Atom
 import graphers
 
@@ -61,7 +62,7 @@ if __name__ == '__main__':
     # Name of the atom
     species = '173Yb'
     # Number of levels to generate
-    num_levels = 30
+    num_levels = 20
     # Magnetic field
     B = Q_(5.0, 'G')
 
@@ -74,14 +75,21 @@ if __name__ == '__main__':
 
     # a.list_levels()
 
-    # a.list_transitions()
-    #
-    # plt.figure(figsize=(20, 9))
-    # graphers.plot_spectrum(a.transitions[('4f14.6s 2S1/2', '4f14.6p 2P*3/2')], laser_width=.3, coloring='l')
-    # plt.show()
+    a.list_transitions()
+
+    plt.figure(figsize=(20, 9))
+
+    lineshape = lineshapes.LorentzianLineShape(gamma=0.2, ampl=1.0)
+    mod_lineshape = lineshapes.ModLorentzianLineShape(gamma=0.1, ampl=1.0, depth=7.8, num_sidebands=15, mod_freq_GHz=0.8)
+
+    graphers.plot_spectrum(a.transitions[('4f14.5d 2D3/2', '4f13.(2F*<7/2>).5d.6s.(3D) 3[3/2]*1/2')],
+                           lineshape=mod_lineshape, coloring='l')
+    plt.show()
 
     # ('4f14.5d 2D5/2', '4f13.(2F*<7/2>).5d.6s.(1D) 1[7/2]*7/2')
     # ('4f13.(2F*<7/2>).5d.6s.(3D) 3[3/2]*1/2', '4f14.5d 2D3/2')
+    # ('4f14.5d 2D5/2', '4f13.(2F*<7/2>).5d.6s.(1D) 1[7/2]*7/2')
+    # ('4f13.(2F*<7/2>).5d.6s.(3D) 3[3/2]*5/2', )
 
     # print(sorted(list(a.compute_branching_ratios('4f14.6p 2P*1/2').values()), reverse=True))
     # print(a.compute_branching_ratios('4f14.6p 2P*1/2'))

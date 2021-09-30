@@ -1,9 +1,9 @@
 import numpy as np
 from matplotlib import pyplot as plt
 import matplotlib.colors
-from atom import Transition
+from .atom import Transition
 import colorsys
-from lineshapes import LineShape
+from .lineshapes import LineShape
 
 def plot_spectrum(transition: Transition, lineshape: LineShape, coloring='l'):
     lines = transition.subtransitions.values()
