@@ -5,7 +5,7 @@ from .atom import Transition
 import colorsys
 from .lineshapes import LineShape
 
-def plot_spectrum(transition: Transition, lineshape: LineShape, coloring='l'):
+def plot_spectrum(transition: Transition, lineshape: LineShape, coloring='l', **kwargs):
     lines = transition.subtransitions.values()
     lo_Fs, hi_Fs = [], []
     for t in lines:
@@ -22,8 +22,7 @@ def plot_spectrum(transition: Transition, lineshape: LineShape, coloring='l'):
     all_x, all_y = [], []
     for line in lines:
         fGHz = line.freq.to("GHz").magnitude
-        x_values = np.linspace(float(fGHz - lineshape.width_func()), float(fGHz + lineshape.width_func()), 1000)
-        y_values = np.array([lineshape.shape_func(x_values[i], x0=fGHz, A_coeff=line.A) for i in range(len(x_values))])
+        x_values, y_values = lineshape.compute(fGHz, **kwargs)
         all_x.append(x_values)
         all_y.append(y_values)
 
