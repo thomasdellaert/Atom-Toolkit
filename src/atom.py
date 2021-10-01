@@ -1096,12 +1096,11 @@ class Atom:
         return ratios
 
     def list_transitions(self, hide_self_transitions=True):
-        if not hide_self_transitions:
-            pprint.pprint(list(self.transitions.keys()))
-        else:
-            pprint.pprint([key for key in self.transitions.keys() if key[0] != key[1]])
+        if hide_self_transitions:
+            return [key for key in self.transitions.keys() if key[0] != key[1]]
+        return list(self.transitions.keys())
 
     def list_levels(self):
-        pprint.pprint(list(self.levels.keys()))
+        return list(self.levels.keys())
 
     # TODO: search_levels? search_transitions?
