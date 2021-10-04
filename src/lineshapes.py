@@ -40,7 +40,7 @@ class LineShape:
         return x_values, y_values
 
 class LorentzianLineShape(LineShape):
-    def __init__(self, gamma, ampl):
+    def __init__(self, gamma, ampl: float=1.0):
         super().__init__()
         self.gamma = gamma
         self.ampl = ampl
@@ -57,7 +57,7 @@ class LorentzianLineShape(LineShape):
         return padding * self.gamma
 
 class ModLorentzianLineShape(LineShape):
-    def __init__(self, gamma, ampl, depth, mod_freq_GHz, num_sidebands=None):
+    def __init__(self, gamma, depth, mod_freq_GHz, ampl: float = 1.0, num_sidebands=None):
         super().__init__()
         self.gamma = gamma
         self.ampl = ampl
