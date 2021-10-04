@@ -46,7 +46,10 @@ class LorentzianLineShape(LineShape):
         self.ampl = ampl
 
     def shape_func(self, x, x0, **kwargs):
-        return lorentzian(x, x0, self.gamma + kwargs['A_coeff'] / (1e6 * 2 * np.pi), self.ampl)
+        width = self.gamma
+        if 'A_coeff' in kwargs:
+            width += kwargs['A_coeff']
+        return lorentzian(x, x0, width, self.ampl)
 
     def width_func(self, padding=20.0, **kwargs):
         if 'A_coeff' in kwargs:
@@ -62,7 +65,7 @@ class ModLorentzianLineShape(LineShape):
         self.depth = depth
         self.num_sidebands = 0
         if num_sidebands is None:
-            while (self.depth/2)**self.num_sidebands > 0.001 * np.math.factorial(self.num_sidebands):
+            while (self.depth/2)**self.num_sidebands > 0.01 * np.math.factorial(self.num_sidebands):
                 self.num_sidebands += 1
         else:
             self.num_sidebands = num_sidebands
