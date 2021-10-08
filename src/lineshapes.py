@@ -40,16 +40,18 @@ class LineShape:
         return x_values, y_values
 
 class LorentzianLineShape(LineShape):
-    def __init__(self, gamma, ampl: float=1.0):
+    def __init__(self, gamma, ampl: float = 1.0):
         super().__init__()
         self.gamma = gamma
-        self.ampl = ampl
 
     def shape_func(self, x, x0, **kwargs):
         width = self.gamma
         if 'A_coeff' in kwargs:
             width += kwargs['A_coeff']
-        return lorentzian(x, x0, width, self.ampl)
+        ampl = 1.0
+        if 'ampl' in kwargs:
+            ampl = kwargs['ampl']
+        return lorentzian(x, x0, width, ampl=ampl)
 
     def width_func(self, padding=20.0, **kwargs):
         if 'A_coeff' in kwargs:
@@ -60,7 +62,6 @@ class ModLorentzianLineShape(LineShape):
     def __init__(self, gamma, depth, mod_freq_GHz, ampl: float = 1.0, num_sidebands=None):
         super().__init__()
         self.gamma = gamma
-        self.ampl = ampl
         self.mod_freq_GHz = mod_freq_GHz
         self.depth = depth
         self.num_sidebands = 0
@@ -71,13 +72,17 @@ class ModLorentzianLineShape(LineShape):
             self.num_sidebands = num_sidebands
 
     def shape_func(self, x, x0, **kwargs):
+        if 'ampl' not in kwargs:
+            ampl = 1.0
+        else:
+            ampl = kwargs['ampl']
         width = self.gamma
         if 'A_coeff' in kwargs:
             width += kwargs['A_coeff'] / (1e6 * 2 * np.pi)
         tot = np.zeros_like(x)
-        tot += lorentzian(x, x0, width, ampl=self.ampl*float(jv(0, self.depth)**2))
+        tot += lorentzian(x, x0, width, ampl=ampl*float(jv(0, self.depth)**2))
         for i in range(1, self.num_sidebands+1):
-            mod_ampl = self.ampl*float(jv(i, self.depth)**2)
+            mod_ampl = ampl*float(jv(i, self.depth)**2)
             tot += lorentzian(x, x0+i*self.mod_freq_GHz, width, ampl=mod_ampl)
             tot += lorentzian(x, x0-i*self.mod_freq_GHz, width, ampl=mod_ampl)
         return tot

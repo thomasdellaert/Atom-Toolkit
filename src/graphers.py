@@ -22,7 +22,10 @@ def plot_spectrum(transition: Transition, lineshape: LineShape, coloring='l', **
     all_x, all_y = [], []
     for line in lines:
         fGHz = line.freq.to("GHz").magnitude
-        x_values, y_values = lineshape.compute(fGHz, **kwargs)
+        ampl = line.rel_strength
+        if 'ampl_dict' in kwargs:
+            ampl *= kwargs['ampl_dict'][line.name]
+        x_values, y_values = lineshape.compute(fGHz, ampl=ampl, **kwargs)
         all_x.append(x_values)
         all_y.append(y_values)
 

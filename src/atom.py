@@ -2,7 +2,6 @@ import csv
 import pickle
 import re
 import itertools
-import pprint
 from typing import List
 
 import networkx as nx
@@ -625,7 +624,7 @@ class BaseTransition:
         if self.name is None:
             self.name = f'{self.E_1.name} → {self.E_2.name}'
         self._A = A
-        self.A = self.compute_linewidth()
+        self.A, self.rel_strength = self.compute_linewidth()
         self.allowed_types = self.transition_allowed()
         self.set_freq = freq
         self.populate_subtransitions()
@@ -643,7 +642,9 @@ class BaseTransition:
         return self.freq.to(ureg.nanometer)
 
     def compute_linewidth(self):
-        return self._A
+        if self._A is None:
+            return None, 1.0
+        return float(self._A), 1.0
 
     def transition_allowed(self):
         raise NotImplementedError
@@ -655,9 +656,6 @@ class BaseTransition:
         raise NotImplementedError
 
 class Transition(BaseTransition):
-
-    def compute_linewidth(self):
-        return self._A
 
     def transition_allowed(self):
         J0, J1 = self.E_1.term.J, self.E_2.term.J
@@ -685,17 +683,19 @@ class Transition(BaseTransition):
 class HFTransition(BaseTransition):
     def compute_linewidth(self):
         if self.parent is None:
-            return None
+            return None, 1.0
         if self.parent.A is None:
-            return None
+            return None, 1.0
         I = self.E_1.atom.I
         J1, J2 = self.E_1.term.J, self.E_2.term.J
         F1, F2 = self.E_1.term.F, self.E_2.term.F
         if self.parent.allowed_types[0] or self.parent.allowed_types[1]:
-            return self.parent.A * ((2*F1+1)*(2*F2+1)) * wigner6j(J2, F2, I, F1, J1, 1)**2
+            factor = ((2*F1+1)*(2*F2+1)) * wigner6j(J2, F2, I, F1, J1, 1)**2
         elif self.parent.allowed_types[2]:
-            return self.parent.A * ((2*F1+1)*(2*F2+1)) * wigner6j(J2, F2, I, F1, J1, 2)**2
-        return 0.0
+            factor = ((2*F1+1)*(2*F2+1)) * wigner6j(J2, F2, I, F1, J1, 2)**2
+        else:
+            factor = 0.0
+        return float(self.parent.A * factor), float(factor)
 
     def transition_allowed(self):
         I = self.E_1.atom.I
@@ -730,18 +730,20 @@ class HFTransition(BaseTransition):
 class ZTransition(BaseTransition):
     def compute_linewidth(self):
         if self.parent is None:
-            return None
+            return None, 1.0
         if self.parent.A is None:
-            return None
+            return None, 1.0
         F1, F2 = self.E_1.term.F, self.E_2.term.F
         M1, M2 = self.E_1.term.mF, self.E_2.term.mF
         J1 = self.E_1.term.J
         # TODO: CHECK THIS MATH
         if self.parent.allowed_types[0] or self.parent.allowed_types[1]:
-            return self.parent.A * wigner3j(F1, 1, F2, M1, J1, M2)**2
+            factor = wigner3j(F1, 1, F2, M1, J1, M2)**2
         elif self.parent.allowed_types[2]:
-            return self.parent.A * wigner3j(F1, 2, F2, M1, J1, M2)**2
-        return 0.0
+            factor = wigner3j(F1, 2, F2, M1, J1, M2)**2
+        else:
+            factor = 0.0
+        return float(self.parent.A * factor), float(factor)
 
     def transition_allowed(self):
         F0, F1 = self.E_1.term.F, self.E_2.term.F
