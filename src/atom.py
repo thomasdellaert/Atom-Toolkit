@@ -10,7 +10,7 @@ import pint
 from indexedproperty import indexedproperty
 from tqdm import tqdm
 
-from .config import Q_, ureg
+from . import Q_, ureg
 from .wigner import wigner3j, wigner6j
 
 Hz = ureg.hertz

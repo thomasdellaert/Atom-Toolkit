@@ -2,7 +2,7 @@ import re
 import warnings
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
-from .config import *
+from . import *
 
 import pandas as pd
 from tqdm import tqdm

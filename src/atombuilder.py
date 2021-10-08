@@ -1,4 +1,4 @@
-from config import *
+from . import *
 from main import Term, EnergyLevel, Atom
 
 # def energy_level_from_df(df, i):
