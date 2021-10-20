@@ -8,11 +8,11 @@ from typing import List
 import networkx as nx
 import numpy as np
 import pint
-from indexedproperty import indexedproperty
 from tqdm import tqdm
 
 from . import Q_, ureg
 from .wigner import wigner3j, wigner6j
+from .atom_helpers import LevelStructure, TransitionStructure
 
 Hz = ureg.hertz
 
@@ -825,6 +825,15 @@ class Atom:
         self.levelsModel = nx.Graph()
         self.hfModel = nx.Graph()
         self.zModel = nx.Graph()
+
+        self.levels = LevelStructure(self, self.levelsModel)
+        self.hflevels = LevelStructure(self, self.hfModel)
+        self.zlevels = LevelStructure(self, self.zModel)
+
+        self.transitions = TransitionStructure(self, self.levelsModel)
+        self.hftransitions = TransitionStructure(self, self.hfModel)
+        self.ztransitions = TransitionStructure(self, self.zModel)
+
         if levels is not None:
             for level in levels:
                 self.add_level(level)
@@ -874,82 +883,6 @@ class Atom:
     @B.setter
     def B(self, value: pint.Quantity):
         self.B_gauss = value.to(ureg.gauss).magnitude
-
-    # region levels property methods
-
-    @indexedproperty
-    def levels(self, key):
-        return nx.get_node_attributes(self.levelsModel, 'level')[key]
-
-    @levels.deleter
-    def levels(self, key):
-        self.levelsModel.remove_node(key)
-
-    @levels.setter
-    def levels(self, key, value):
-        self.add_level(value, key=key)
-
-    @levels.append
-    def levels(self, value):
-        self.add_level(value)
-
-    @levels.values
-    def levels(self):
-        return nx.get_node_attributes(self.levelsModel, 'level').values()
-
-    @levels.keys
-    def levels(self):
-        return nx.get_node_attributes(self.levelsModel, 'level').keys()
-
-    @levels.iter
-    def levels(self):
-        return nx.get_node_attributes(self.levelsModel, 'level').__iter__()
-
-    @levels.len
-    def levels(self):
-        return len(nx.get_node_attributes(self.levelsModel, 'level'))
-
-    # endregion
-
-    # region transitions property methods
-
-    @indexedproperty
-    def transitions(self, key):
-        try:
-            try:
-                return nx.get_edge_attributes(self.levelsModel, 'transition')[(key[1], key[0])]
-            except KeyError:
-                return nx.get_edge_attributes(self.levelsModel, 'transition')[key]
-        except KeyError:
-            return None
-
-    @transitions.setter
-    def transitions(self, value):
-        self.add_transition(value)
-
-    @transitions.deleter
-    def transitions(self, level1, level2):
-        self.levelsModel.remove_edge(level1, level2)
-
-    @transitions.append
-    def transitions(self, value):
-        self.add_transition(value)
-
-    @transitions.len
-    def transitions(self):
-        return len(nx.get_edge_attributes(self.levelsModel, 'transition'))
-
-    @transitions.values
-    def transitions(self):
-        return nx.get_edge_attributes(self.levelsModel, 'transition').values()
-
-    @transitions.iter
-    def transitions(self):
-        return nx.get_edge_attributes(self.levelsModel, 'transition').__iter__()
-
-    @transitions.keys
-    def transitions(self):
-        return nx.get_edge_attributes(self.levelsModel, 'transition').keys()
 
     # endregion
 
