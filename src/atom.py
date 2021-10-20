@@ -1111,12 +1111,4 @@ class Atom:
         ratios = {k: t/totalAs for k, t in A_coeffs.items()}
         return ratios
 
-    def list_transitions(self, hide_self_transitions=True):
-        if hide_self_transitions:
-            return [key for key in self.transitions.keys() if key[0] != key[1]]
-        return list(self.transitions.keys())
-
-    def list_levels(self):
-        return list(self.levels.keys())
-
     # TODO: search_levels? search_transitions?

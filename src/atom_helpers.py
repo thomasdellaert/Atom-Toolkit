@@ -3,7 +3,7 @@ import networkx as nx
 class ModelFrontEnd:
     def __init__(self, atom, model: nx.Graph):
         self.atom = atom
-        self.model = atom.levelsModel
+        self.model = model
 
 class LevelStructure(ModelFrontEnd):
 
@@ -33,6 +33,9 @@ class LevelStructure(ModelFrontEnd):
 
     def append(self, value):
         self.atom.add_level(value)
+
+    def list_names(self):
+        return list(self.keys())
 
 class TransitionStructure(ModelFrontEnd):
 
@@ -66,3 +69,8 @@ class TransitionStructure(ModelFrontEnd):
 
     def append(self, value):
         self.atom.add_transition(value)
+
+    def list_names(self, hide_self_transitions=True):
+        if hide_self_transitions:
+            return [key for key in self.keys() if key[0] != key[1]]
+        return list(self.keys())
