@@ -1,11 +1,9 @@
 import networkx as nx
 
-class ModelFrontEnd:
+class LevelStructure:
     def __init__(self, atom, model: nx.Graph):
         self.atom = atom
         self.model = model
-
-class LevelStructure(ModelFrontEnd):
 
     def __getitem__(self, key):
         return nx.get_node_attributes(self.model, 'level')[key]
@@ -37,7 +35,10 @@ class LevelStructure(ModelFrontEnd):
     def list_names(self):
         return list(self.keys())
 
-class TransitionStructure(ModelFrontEnd):
+class TransitionStructure:
+    def __init__(self, atom, model: nx.Graph):
+        self.atom = atom
+        self.model = model
 
     def __getitem__(self, key):
         try:

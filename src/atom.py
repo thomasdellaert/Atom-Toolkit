@@ -15,6 +15,7 @@ from .wigner import wigner3j, wigner6j
 from .atom_helpers import LevelStructure, TransitionStructure
 
 Hz = ureg.hertz
+mu_B = 1.39962449361e6
 
 ############################################
 #                   Term                   #
@@ -616,7 +617,7 @@ class ZLevel(HFLevel):
 
     @property
     def shift_Hz(self):
-        return self.gF * self.term.mF * 1.39962449361e6 * self.atom.B_gauss
+        return self.gF * self.term.mF * mu_B * self.atom.B_gauss
 
 ############################################
 #               Transition                 #
@@ -822,6 +823,7 @@ class Atom:
         self.name = name
         self.I = Term.frac_to_float(I)
         self.B_gauss = B.to(ureg.gauss).magnitude
+
         self.levelsModel = nx.Graph()
         self.hfModel = nx.Graph()
         self.zModel = nx.Graph()
@@ -1090,24 +1092,23 @@ class Atom:
         pass
         # TODO: apply_transition_csv
 
-    def linked_transitions(self, level):
-        # TODO test the linked_transitions function
-        """:return: a dict of transitions that touch level indicated"""
-        level = self.levelsModel[level]
-        return {e: e.transition for e in nx.edges(level)}
-
     def linked_levels(self, level):
         """:return: a dict of levels that are connected level indicated by a transition"""
         adjacent = self.levelsModel.adj[level]
         return {k: t['transition'] for k, t in adjacent.items()}
 
     def compute_branching_ratios(self, key):
-        transitions = self.linked_transitions(key)
+        transitions = self.linked_levels(key)
         A_coeffs = {}
         for n, t in transitions.items():
             if t.E_upper.name == key:
                 A_coeffs[n] = t.A
-        totalAs = np.sum(list(A_coeffs.values()))
+        try:
+            totalAs = np.sum(list(A_coeffs.values()))
+        except TypeError:
+            # TODO: make a custom exception for this? Maybe a whole slew of exceptions to throw
+            raise TypeError("At least one transition leading from the given level has no valid A coefficient")
+
         ratios = {k: t/totalAs for k, t in A_coeffs.items()}
         return ratios
 
