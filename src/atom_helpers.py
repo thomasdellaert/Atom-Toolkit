@@ -5,6 +5,9 @@ class LevelStructure:
         self.atom = atom
         self.model = model
 
+    def __repr__(self):
+        return f'LevelStructure containing {len(self)} levels of type {type(list(self.values())[0]).__name__}'
+
     def __getitem__(self, key):
         return nx.get_node_attributes(self.model, 'level')[key]
 
@@ -39,6 +42,9 @@ class TransitionStructure:
     def __init__(self, atom, model: nx.Graph):
         self.atom = atom
         self.model = model
+
+    def __repr__(self):
+        return f'TransitionStructure containing {len(self)} transitions of type {type(list(self.values())[0]).__name__}'
 
     def __getitem__(self, key):
         try:

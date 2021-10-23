@@ -60,6 +60,12 @@ class Term:
 
         self.lc, self.sc, self.lo, self.so, self.jc, self.jo, self.l, self.s, self.k = self.get_quantum_nums()
 
+    def __str__(self):
+        return self.term_name
+
+    def __repr__(self):
+        return f'Term({self.name})'
+
     # region frac properties
 
     @property
@@ -333,6 +339,12 @@ class BaseLevel:
         self.name = self.term.name
 
         self._sublevels = dict()
+
+    def __str__(self):
+        return self.name
+
+    def __repr__(self):
+        return f'{type(self).__name__}(name = {self.name}, level={str(self.level)}, {len(self._sublevels)} sublevels)'
 
     def get_atom(self):
         raise NotImplementedError()
@@ -657,6 +669,12 @@ class BaseTransition:
         self.set_freq = freq
         self.populate_subtransitions()
 
+    def __str__(self):
+        return self.name
+
+    def __repr__(self):
+        return f'{type(self).__name__}({self.name}, freq={str(self.freq)}, A={str(self.A)}'
+
     @property
     def freq_Hz(self):
         return abs(self.E_1.level_Hz - self.E_2.level_Hz)
@@ -843,6 +861,17 @@ class Atom:
             for transition in transitions:
                 self.add_transition(transition)
 
+    def __str__(self):
+        return self.name
+
+    def __repr__(self):
+        if len(self.levels) <= 100:
+            l = str(list(self.levels.values()))
+        else:
+            l = str(list(self.levels[:5])) + "..." + str(list(self.levels[-5:]))
+
+        return f'Atom(name={self.name}, I={self.I}, levels={l})'
+
     def add_level(self, level: EnergyLevel, key=None):
         """
         Adds a level to the internal graph model. When the level is added, it calculates its sublevels.
@@ -885,8 +914,6 @@ class Atom:
     @B.setter
     def B(self, value: pint.Quantity):
         self.B_gauss = value.to(ureg.gauss).magnitude
-
-    # endregion
 
     # region loading/unloading methods
 
