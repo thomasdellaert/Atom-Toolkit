@@ -15,7 +15,7 @@ from .wigner import wigner3j, wigner6j
 from .atom_helpers import LevelStructure, TransitionStructure
 
 Hz = ureg.hertz
-mu_B = 1.39962449361e6
+mu_B = 1.39962449361e6  #MHz/G
 
 ############################################
 #                   Term                   #
@@ -422,7 +422,7 @@ class EnergyLevel(BaseLevel):
         consistent with a transition that the level participates in
 
         :param term: a Term object containing the level's quantum numbers
-        :param level: the energy of the (center of mass of) the level
+        :param level: the energy of the centroid of the level
         :param lande: the lande-g value of the level
         :param parent: the atom that the level is contained in
         :param hfA: the hyperfine A-coefficient
@@ -728,6 +728,15 @@ class Transition(BaseTransition):
             else:
                 del t
 
+    def set_frequency(self, freq, move_lower=False):
+        """Set the frequency of the transition. Useful for adding in things like isotope shifts"""
+        current = self.freq_Hz
+        self.set_freq = freq
+        if move_lower:
+            self.E_lower.level_Hz -= freq.to(Hz).magnitude - current
+        else:
+            self.E_upper.level_Hz += freq.to(Hz).magnitude - current
+
 class HFTransition(BaseTransition):
     """
     An HFTransition connects two HFLevels. It scales its linewidth and strength relative
@@ -824,7 +833,6 @@ class ZTransition(BaseTransition):
 #                   Atom                   #
 ############################################
 
-# noinspection PyPropertyDefinition
 class Atom:
     def __init__(self, name: str, I: float = 0.0, B=Q_(0.0, 'G'),
                  levels: List[EnergyLevel] = None, transitions: List[Transition] = None):
@@ -972,7 +980,7 @@ class Atom:
                 pass
         return a
 
-    @classmethod
+    @classmethod  #TODO: Consider moving this out of the atom?
     def generate_full_from_dataframe(cls, df, name, I=0.0, **kwargs):
         """
         Generate the atom from a dataframe, formatted like the output from the IO module.
@@ -1120,7 +1128,10 @@ class Atom:
         # TODO: apply_transition_csv
 
     def linked_levels(self, level):
-        """:return: a dict of levels that are connected level indicated by a transition"""
+        """
+        returns a set of levels connected to the current level and the transitions connecting them
+        :return: dict(Level: transition)
+        """
         adjacent = self.levelsModel.adj[level]
         return {k: t['transition'] for k, t in adjacent.items()}
 
@@ -1138,5 +1149,20 @@ class Atom:
 
         ratios = {k: t/totalAs for k, t in A_coeffs.items()}
         return ratios
+
+    def enforce(self):
+        set_edges = [(u,v) for u,v,e in self.levelsModel.edges(data=True) if e['transition'].set_freq is not None]
+        set_graph = self.levelsModel.edge_subgraph(set_edges)
+        subgraphs = (set_graph.subgraph(c) for c in nx.connected_components(set_graph))
+        for sg in subgraphs:
+            # find the lowest lying level in the subgraph
+            nodes = sg.nodes(data='level')
+            lowest = nodes[0][1]
+            for n in nodes[1:]:
+                if n[1].level_Hz < lowest.level_Hz:
+                    lowest = n[1]
+
+
+
 
     # TODO: search_levels? search_transitions?
