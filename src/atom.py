@@ -661,6 +661,7 @@ class BaseTransition:
         else:
             self.E_upper = self.E_1
             self.E_lower = self.E_2
+        self.model_name = (self.E_1.name, self.E_2.name)
         self.name = name
         if self.name is None:
             self.name = f'{self.E_1.name} → {self.E_2.name}'
@@ -731,8 +732,11 @@ class Transition(BaseTransition):
 
     def set_frequency(self, freq):
         """Set the frequency of the transition. Useful for adding in things like isotope shifts"""
+        if self.set_freq:  # unlock the upper level if the transition is already constrained
+            if self.E_upper.fixed and self.E_lower.fixed:
+                self.E_upper.fixed = False
         self.set_freq = freq
-        self.E_1.atom.enforce()
+        self.E_1.atom.enforce(node_or_trans=self.model_name)
 
 class HFTransition(BaseTransition):
     """
@@ -1149,32 +1153,41 @@ class Atom:
         ratios = {k: t/totalAs for k, t in A_coeffs.items()}
         return ratios
 
-    def enforce(self):
+    def enforce(self, node_or_trans=None):
+        """Enforces consistency of the Atom's internal levelsModel. It does this by traversing all the
+        fixed transitions, and moving the energylevels to be consistent with the transition frequencies.
+        TODO: this currently only warns on cycles. Eventually, uncertainty math could make cycles that
+         are self-consistent within a given error.
+
+         :param node_or_trans: the node or transition that called the enforce function. It is used to restrict
+         the enforcement to the subgraph in which the change happened
+        """
         # make a subgraph of the full model containing only the fixed edges
         set_edges = [(u,v) for u,v,e in self.levelsModel.edges(data=True) if e['transition'].set_freq is not None]
         set_graph = self.levelsModel.edge_subgraph(set_edges)
         subgraphs = (set_graph.subgraph(c) for c in nx.connected_components(set_graph))
         for sg in subgraphs:
+            if node_or_trans:
+                if not (node_or_trans in sg or node_or_trans in sg.edges()):
+                    continue
             # find the lowest lying level in the subgraph
             nodes = sg.nodes(data='level')
-            lowest = None
+            l, kl = None, None
             for k, n in nodes:
-                if lowest is None:
+                if l is None:
                     l, kl = n, k
-                elif n.level_Hz < lowest.level_Hz:
+                elif n.level_Hz < l.level_Hz:
                     l, kl = n, k
             # perform a depth first search starting from the lowest energy node in the subgraph,
             # setting subsequent levels one at a time
             search = nx.dfs_edges(sg, source=kl)
             for edge in search:
                 t = sg.edges()[edge]['transition']
-                # TODO: This is a bit of a bodge right now. Ideally the atom only needs to care about the subgraph that got
-                #  changed, and the system currently doesn't tolerate setting a transition that has previously been set
-                if t.E_lower.fixed and t.E_upper.fixed and t.set_freq.to(Hz).magnitude != abs(t.E_lower.level_Hz - t.E_upper.level_Hz):
-                    raise ValueError('Constraint problem') # TODO: make this a custom error?
-                elif t.E_upper.fixed:
-                    t.E_lower.level_Hz = t.E_upper.level_Hz - t.set_freq.to(Hz).magnitude
+                el, eu, freq = t.E_lower, t.E_upper, t.set_freq.to(Hz).magnitude
+                if el.fixed and eu.fixed and freq != abs(el.level_Hz - eu.level_Hz):
+                    warnings.warn('Constraint problem. Perhaps there is a loop of fixed transitions?')
+                elif eu.fixed:
+                    el.level_Hz = eu.level_Hz - freq
                 else:
-                    t.E_upper.level_Hz = t.E_lower.level_Hz + t.set_freq.to(Hz).magnitude
-                t.E_upper.fixed = t.E_lower.fixed = True
-                # TODO: Cycle finding and reconciliation
+                    eu.level_Hz = el.level_Hz + freq
+                eu.fixed = el.fixed = True
