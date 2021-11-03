@@ -15,7 +15,7 @@ from .wigner import wigner3j, wigner6j
 from .atom_helpers import LevelStructure, TransitionStructure
 
 Hz = ureg.hertz
-mu_B = 1.39962449361e6  #MHz/G
+mu_B = 1.39962449361e6  # MHz/G
 
 ############################################
 #                   Term                   #
@@ -337,6 +337,7 @@ class BaseLevel:
         self.atom = self.get_atom()
         self.manifold = self.get_manifold()
         self.name = self.term.name
+        self.fixed = False
 
         self._sublevels = dict()
 
@@ -728,14 +729,10 @@ class Transition(BaseTransition):
             else:
                 del t
 
-    def set_frequency(self, freq, move_lower=False):
+    def set_frequency(self, freq):
         """Set the frequency of the transition. Useful for adding in things like isotope shifts"""
-        current = self.freq_Hz
         self.set_freq = freq
-        if move_lower:
-            self.E_lower.level_Hz -= freq.to(Hz).magnitude - current
-        else:
-            self.E_upper.level_Hz += freq.to(Hz).magnitude - current
+        self.E_1.atom.enforce()
 
 class HFTransition(BaseTransition):
     """
@@ -914,6 +911,8 @@ class Atom:
         # TODO: when adding a transition with a fixed freq, move the energy levels appropriately
 
         transition.add_to_atom(self)
+        if transition.set_freq is not None:
+            self.enforce()
 
     @property
     def B(self):
@@ -1151,18 +1150,31 @@ class Atom:
         return ratios
 
     def enforce(self):
+        # make a subgraph of the full model containing only the fixed edges
         set_edges = [(u,v) for u,v,e in self.levelsModel.edges(data=True) if e['transition'].set_freq is not None]
         set_graph = self.levelsModel.edge_subgraph(set_edges)
         subgraphs = (set_graph.subgraph(c) for c in nx.connected_components(set_graph))
         for sg in subgraphs:
             # find the lowest lying level in the subgraph
             nodes = sg.nodes(data='level')
-            lowest = nodes[0][1]
-            for n in nodes[1:]:
-                if n[1].level_Hz < lowest.level_Hz:
-                    lowest = n[1]
-
-
-
-
-    # TODO: search_levels? search_transitions?
+            lowest = None
+            for k, n in nodes:
+                if lowest is None:
+                    l, kl = n, k
+                elif n.level_Hz < lowest.level_Hz:
+                    l, kl = n, k
+            # perform a depth first search starting from the lowest energy node in the subgraph,
+            # setting subsequent levels one at a time
+            search = nx.dfs_edges(sg, source=kl)
+            for edge in search:
+                t = sg.edges()[edge]['transition']
+                # TODO: This is a bit of a bodge right now. Ideally the atom only needs to care about the subgraph that got
+                #  changed, and the system currently doesn't tolerate setting a transition that has previously been set
+                if t.E_lower.fixed and t.E_upper.fixed and t.set_freq.to(Hz).magnitude != abs(t.E_lower.level_Hz - t.E_upper.level_Hz):
+                    raise ValueError('Constraint problem') # TODO: make this a custom error?
+                elif t.E_upper.fixed:
+                    t.E_lower.level_Hz = t.E_upper.level_Hz - t.set_freq.to(Hz).magnitude
+                else:
+                    t.E_upper.level_Hz = t.E_lower.level_Hz + t.set_freq.to(Hz).magnitude
+                t.E_upper.fixed = t.E_lower.fixed = True
+                # TODO: Cycle finding and reconciliation
