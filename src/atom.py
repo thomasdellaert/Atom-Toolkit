@@ -705,11 +705,10 @@ class BaseTransition:
     
     def _compute_sublevel_pairs(self, attr: str):
         if True not in self.allowed_types:
-            return itertools.product(list(self.E_1.sublevels()), list(self.E_2.sublevels()))
-        max_delta = (2 if self.allowed_types[2] else 1)
-        return ((l1, l2) for l1, l2 in itertools.product(list(self.E_1.sublevels()), list(self.E_2.sublevels()))
+            return itertools.product(self.E_1.sublevels(), self.E_2.sublevels())
+        max_delta = (2 if (self.allowed_types[2] and not self.allowed_types[1]) else 1)
+        return ((l1, l2) for l1, l2 in itertools.product(self.E_1.sublevels(), self.E_2.sublevels())
                 if abs(l1.term.__getattribute__(attr) - l2.term.__getattribute__(attr)) <= max_delta)
-
 
 class Transition(BaseTransition):
     """
