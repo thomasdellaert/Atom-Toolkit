@@ -702,6 +702,16 @@ class BaseTransition:
 
     def populate_subtransitions(self):
         raise NotImplementedError
+    
+    def _compute_sublevel_pairs(self, attr: str):
+        if self.allowed_types[0] or self.allowed_types[1]:
+            return ((l1, l2) for l1, l2 in itertools.product(list(self.E_1.sublevels()), list(self.E_2.sublevels()))
+                    if abs(l1.term.__getattribute__(attr) - l2.term.__getattribute__(attr)) <= 1)
+        elif self.allowed_types[2]:
+            return ((l1, l2) for l1, l2 in itertools.product(list(self.E_1.sublevels()), list(self.E_2.sublevels()))
+                    if abs(l1.term.__getattribute__(attr) - l2.term.__getattribute__(attr)) <= 2)
+        else:
+            return itertools.product(list(self.E_1.sublevels()), list(self.E_2.sublevels()))
 
 class Transition(BaseTransition):
     """
@@ -723,7 +733,8 @@ class Transition(BaseTransition):
             subtransition.add_to_atom(atom)
 
     def populate_subtransitions(self):
-        for pair in list(itertools.product(list(self.E_1.sublevels()), list(self.E_2.sublevels()))):
+        pairs = self._compute_sublevel_pairs('F')
+        for pair in pairs:
             t = HFTransition(pair[0], pair[1], parent=self)
             if np.any(np.array(t.allowed_types)):
                 self.subtransitions[t.name] = t
@@ -782,7 +793,8 @@ class HFTransition(BaseTransition):
             subtransition.add_to_atom(atom)
             
     def populate_subtransitions(self):
-        for pair in list(itertools.product(list(self.E_1.sublevels()), list(self.E_2.sublevels()))):
+        pairs = self._compute_sublevel_pairs('mF')
+        for pair in pairs:
             t = ZTransition(pair[0], pair[1], parent=self)
             if np.any(np.array(t.allowed_types)):
                 self.subtransitions[t.name] = t
