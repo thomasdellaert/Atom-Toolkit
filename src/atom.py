@@ -435,7 +435,6 @@ class EnergyLevel(BaseLevel):
         self.hfA_Hz, self.hfB_Hz, self.hfC_Hz = hfA.to(Hz).magnitude, hfB.to(Hz).magnitude, hfC.to(Hz).magnitude
         if lande is None:
             self.lande = self.compute_gJ()
-
         else:
             self.lande = lande
 
@@ -504,7 +503,8 @@ class EnergyLevel(BaseLevel):
 
     def compute_gJ(self):
         """
-        Computes the Lande g-value of an LS-coupled term.
+        Computes the Lande g-value of a term. This is only an estimate,
+        and many terms with intermediate coupling will be well off from the true value
         :return: gJ
         """
         from .transition_strengths import JJ_to_LS, JK_to_LS, LK_to_LS
@@ -522,7 +522,7 @@ class EnergyLevel(BaseLevel):
         J = self.term.J
         ls, ss, percs = terms
 
-        return sum(percs*(1 + (J * (J + 1) + ss * (ss + 1) - ls * (ls + 1)) / (2 * J * (J + 1))))
+        return sum(percs*(1 + 1.0023 * (J * (J + 1) + ss * (ss + 1) - ls * (ls + 1)) / (2 * J * (J + 1))))
 
     @classmethod
     def from_dataframe(cls, df, i=0):
