@@ -434,10 +434,8 @@ class EnergyLevel(BaseLevel):
         self._level_Hz = level.to(Hz).magnitude
         self.hfA_Hz, self.hfB_Hz, self.hfC_Hz = hfA.to(Hz).magnitude, hfB.to(Hz).magnitude, hfC.to(Hz).magnitude
         if lande is None:
-            try:
-                self.lande = self.compute_gJ()
-            except NotImplementedError:
-                self.lande = 0  # TODO: think about a placeholder value instead?
+            self.lande = self.compute_gJ()
+
         else:
             self.lande = lande
 
@@ -509,12 +507,22 @@ class EnergyLevel(BaseLevel):
         Computes the Lande g-value of an LS-coupled term.
         :return: gJ
         """
-        if self.term.coupling != 'LS':
-            raise NotImplementedError("Unable to compute g_J for non-LS-coupled terms")
+        from .transition_strengths import JJ_to_LS, JK_to_LS, LK_to_LS
+        if self.term.coupling == 'LS':
+            terms = np.array([[self.term.l], [self.term.s], [1.0]])
+        elif self.term.coupling == 'JJ':
+            terms = JJ_to_LS(self.term.J, self.term.jc, self.term.jo, self.term.lc, self.term.sc, self.term.lo, self.term.so)
+        elif self.term.coupling == 'JK':
+            terms = JK_to_LS(self.term.J, self.term.jc, self.term.k, self.term.lc, self.term.sc, self.term.lo, self.term.so)
+        elif self.term.coupling == 'LK':
+            terms = LK_to_LS(self.term.J, self.term.l, self.term.k, self.term.sc, self.term.so)
+        else:
+            return 0.0
+
         J = self.term.J
-        L = self.term.l
-        S = self.term.s
-        return 1 + (J * (J + 1) + S * (S + 1) - L * (L + 1)) / (2 * J * (J + 1))
+        ls, ss, percs = terms
+
+        return sum(percs*(1 + (J * (J + 1) + ss * (ss + 1) - ls * (ls + 1)) / (2 * J * (J + 1))))
 
     @classmethod
     def from_dataframe(cls, df, i=0):

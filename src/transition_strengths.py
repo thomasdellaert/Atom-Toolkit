@@ -1,7 +1,7 @@
 import numpy as np
 import warnings
-import functools
-from wigner import *
+from .wigner import *
+
 
 # noinspection PyTypeChecker
 @functools.lru_cache(maxsize=None)
@@ -13,6 +13,7 @@ def tkq_transition_strength(I, k, q, J0, F0, M0, J1, F1, M1):
                      -M1, q, M0) ** 2
     return prod
 
+
 # The tensor math for E2 (and somewhat E1) transitions is adapted from Tony's thesis (Ransford 2020)
 @functools.lru_cache(maxsize=None)
 def E1_transition_strength_geom(eps, I, J0, F0, M0, J1, F1, M1):
@@ -23,9 +24,11 @@ def E1_transition_strength_geom(eps, I, J0, F0, M0, J1, F1, M1):
     tot += tkq_transition_strength(I, 1, 1, J0, F0, M0, J1, F1, M1) * 0.5 * (eps[0] + eps[1]) ** 2
     return tot
 
+
 @functools.lru_cache(maxsize=None)
 def E1_transition_strength_avg(I, J0, F0, M0, J1, F1, M1):
-    return sum([tkq_transition_strength(I, 1, q, J0, F0, M0, J1, F1, M1) for q in [-1, 0, 1]])/3.0
+    return sum([tkq_transition_strength(I, 1, q, J0, F0, M0, J1, F1, M1) for q in [-1, 0, 1]]) / 3.0
+
 
 @functools.lru_cache(maxsize=None)
 def M1_transition_strength_geom(eps, I, J0, F0, M0, J1, F1, M1):
@@ -38,9 +41,11 @@ def M1_transition_strength_geom(eps, I, J0, F0, M0, J1, F1, M1):
            0.5 * (eps[0] ** 2 + eps[1] ** 2)
     return tot
 
+
 @functools.lru_cache(maxsize=None)
 def M1_transition_strength_avg(I, J0, F0, M0, J1, F1, M1):
-    return sum([tkq_transition_strength(I, 1, q, J0, F0, M0, J1, F1, M1) for q in [-1, 0, 1]])/3.0
+    return sum([tkq_transition_strength(I, 1, q, J0, F0, M0, J1, F1, M1) for q in [-1, 0, 1]]) / 3.0
+
 
 @functools.lru_cache(maxsize=None)
 def E2_transition_strength_geom(eps, k, I, J0, F0, M0, J1, F1, M1):
@@ -61,6 +66,7 @@ def E2_transition_strength_geom(eps, k, I, J0, F0, M0, J1, F1, M1):
            (eps[0] ** 2 + eps[1] ** 2) * (k[0] ** 2 + k[1] ** 2)
     return tot
 
+
 @functools.lru_cache(maxsize=None)
 def E2_transition_strength_avg(I, J0, F0, M0, J1, F1, M1):
     tot = 0
@@ -71,44 +77,45 @@ def E2_transition_strength_avg(I, J0, F0, M0, J1, F1, M1):
     tot += tkq_transition_strength(I, 2, 2, J0, F0, M0, J1, F1, M1) * (3.0 / 29.0)
     return tot
 
+
 @functools.lru_cache(maxsize=None)
 def JJ_to_LS(J, Jc, Jo, lc, sc, lo, so):
-    lsdict = {}
-    for L in np.arange(abs(lc - lo), abs(lc + lo) + 1):
-        for S in np.arange(abs(sc - so), abs(sc + so) + 1):
-            coeff = float(wigner9j(lc, sc, Jc,
-                                   lo, so, Jo,
-                                   L, S, J) * \
-                          np.sqrt((2 * Jc + 1) * (2 * Jo + 1) * (2 * L + 1) * (2 * S + 1)))
-            if coeff != 0:
-                lsdict[f'L={L} S={S}'] = coeff
-    return lsdict
+    ls = np.arange(abs(lc - lo), abs(lc + lo) + 1)
+    ss = np.arange(abs(sc - so), abs(sc + so) + 1)
+    outls = np.repeat(ls, len(ss))
+    outss = np.tile(ss, len(ls))
+    outpercs = np.array([float(wigner9j(lc, sc, Jc,
+                                        lo, so, Jo,
+                                        outls[i], outss[i], J) *
+                               np.sqrt((2 * Jc + 1) * (2 * Jo + 1) * (2 * outls[i] + 1) * (2 * outss[i] + 1)))
+                         for i in range(len(outls))])
+    return np.stack([outls, outss, outpercs])
+
 
 @functools.lru_cache(maxsize=None)
 def JK_to_LS(J, Jc, K, lc, sc, lo, so):
-    lsdict = {}
-    for L in np.arange(abs(lc - lo), abs(lc + lo) + 1):
-        for S in np.arange(abs(sc - so), abs(sc + so) + 1):
-            coeff = float((-1) ** (-lc - lo - 2 * sc - so - K - L - J) * \
-                          np.sqrt((2 * Jc + 1) * (2 * L + 1) * (2 * K + 1) * (2 * S + 1)) * \
-                          wigner6j(sc, lc, Jc,
-                                   lo, K, L) * \
-                          wigner6j(L, sc, K,
-                                   so, J, S))
-            if coeff != 0:
-                lsdict[f'L={L} S={S}'] = coeff
-    return lsdict
+    ls = np.arange(abs(lc - lo), abs(lc + lo) + 1)
+    ss = np.arange(abs(sc - so), abs(sc + so) + 1)
+    outls = np.repeat(ls, len(ss))
+    outss = np.tile(ss, len(ls))
+    outpercs = np.array([float((-1) ** (-lc - lo - 2 * sc - so - K - outls[i] - J) * \
+                               np.sqrt((2 * Jc + 1) * (2 * outls[i] + 1) * (2 * K + 1) * (2 * outss[i] + 1)) * \
+                               wigner6j(sc, lc, Jc,
+                                        lo, K, outls[i]) * \
+                               wigner6j(outls[i], sc, K,
+                                        so, J, outss[i])) for i in range(len(outls))])
+    return np.stack([outls, outss, outpercs])
+
 
 @functools.lru_cache(maxsize=None)
 def LK_to_LS(J, L, K, sc, so):
-    lsdict = {}
-    for S in np.arange(abs(sc - so), abs(sc + so) + 1):
-        coeff = np.sqrt((2 * K + 1) * (2 * S + 1)) * \
-                wigner6j(L, sc, K,
-                         so, J, S)
-        if coeff != 0:
-            lsdict[f'L={L} S={S}'] = coeff
-    return lsdict
+    ls = [L]
+    ss = np.arange(abs(sc - so), abs(sc + so) + 1)
+    outls = np.repeat(ls, len(ss))
+    outss = np.tile(ss, len(ls))
+    outpercs = np.array([np.sqrt((2 * K + 1) * (2 * outss[i] + 1)) * wigner6j(L, sc, K,
+                                                                              so, J, outss[i]) for i in range(len(outls))])
+    return np.stack([outls, outss, outpercs])
 
 
 if __name__ == '__main__':
@@ -147,5 +154,3 @@ if __name__ == '__main__':
     print(JJ_to_LS(3.5, 3.5, 0, 3, 0.5, 1, 1))
 
     print(JK_to_LS(0.5, 3.5, 1.5, 3, 0.5, 2, 1))
-
-    print(4 / np.sqrt(21), np.sqrt(6) / np.sqrt(63), 1 / np.sqrt(7))
