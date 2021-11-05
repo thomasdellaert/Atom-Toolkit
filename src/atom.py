@@ -921,7 +921,6 @@ class Atom:
         :param transition: the Transition to be added
         :return:
         """
-        # TODO: when adding a transition with a fixed freq, move the energy levels appropriately
 
         transition.add_to_atom(self)
         if transition.set_freq is not None:
@@ -1029,7 +1028,7 @@ class Atom:
         """
         Iterate through every pair of levels in the atom, checking whether a given transition is 'allowed'
         and adding it if it is. Since this involves calculating Clebsch-Gordan coefficients for every possible
-        pair of levels, it's slow and scales horribly with atom size. When possible, give a dataframe of transitions.
+        pair of levels, it's slow and scales poorly with atom size. When possible, give a dataframe of transitions.
 
         :param allowed: a tuple of booleans:  ([E1],[M1],[E2])
         :param subtransitions: whether to generate subtransitions when the transitions are added
@@ -1102,11 +1101,12 @@ class Atom:
             filename = f'{self.name}_Hyperfine.csv'
         if not blank:
             rows_to_write = [
-                [level.name, (level.hfA if level.hfA != Q_(0.0, 'gigahertz') else def_A), level.hfB, level.hfC]
+                [level.name, (level.hfA if level.hfA != Q_(0.0, 'GHz') else def_A), level.hfB, level.hfC]
                 for level in list(self.levels.values())]
         else:
-            rows_to_write = [[level.name, Q_(0.0, 'GHz'), Q_(0.0, 'GHz'), Q_(0.0, 'GHz')] for level in
-                             list(self.levels.values())]
+            rows_to_write = [
+                [level.name, Q_(0.0, 'GHz'), Q_(0.0, 'GHz'), Q_(0.0, 'GHz')]
+                for level in list(self.levels.values())]
         with open(filename, 'w', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
             writer.writerows(rows_to_write)
