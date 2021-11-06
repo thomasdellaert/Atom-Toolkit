@@ -529,9 +529,9 @@ class EnergyLevel(BaseLevel):
             return 0.0
 
         J = self.term.J
-        ls, ss, percs = terms
+        ls, ss, percents = terms
 
-        return sum(percs*(1 + 1.0023 * (J * (J + 1) + ss * (ss + 1) - ls * (ls + 1)) / (2 * J * (J + 1))))
+        return sum(percents*(1 + 1.0023 * (J * (J + 1) + ss * (ss + 1) - ls * (ls + 1)) / (2 * J * (J + 1))))
 
     @classmethod
     def from_dataframe(cls, df, i=0):
@@ -1024,14 +1024,13 @@ class Atom:
         return p
     # endregion
 
-    def populate_transitions(self, allowed=(True, True, True), subtransitions=True, **kwargs):
+    def populate_transitions(self, allowed=(True, True, True), **kwargs):
         """
         Iterate through every pair of levels in the atom, checking whether a given transition is 'allowed'
         and adding it if it is. Since this involves calculating Clebsch-Gordan coefficients for every possible
         pair of levels, it's slow and scales poorly with atom size. When possible, give a dataframe of transitions.
 
         :param allowed: a tuple of booleans:  ([E1],[M1],[E2])
-        :param subtransitions: whether to generate subtransitions when the transitions are added
         :param kwargs: none
         """
         max_to_try = 20
@@ -1070,7 +1069,7 @@ class Atom:
             t.add_to_atom(self)
             levels.set_description(f'adding internal transitions to {level.name:91}')
 
-    def populate_transitions_df(self, df, subtransitions=True, **kwargs):
+    def populate_transitions_df(self, df, **kwargs):
         """
         # TODO: mode this outside the atom class?
         Load transitions into the Atom from a dataframe generated from the IO module's load_transition_data function
@@ -1120,7 +1119,7 @@ class Atom:
 
     def enforce(self, node_or_trans=None):
         """Enforces consistency of the Atom's internal levelsModel. It does this by traversing all the
-        fixed transitions, and moving the energylevels to be consistent with the transition frequencies.
+        fixed transitions, and moving the EnergyLevels to be consistent with the transition frequencies.
         TODO: this currently only warns on cycles. Eventually, uncertainty math could make cycles that
          are self-consistent within a given error.
 
@@ -1128,7 +1127,7 @@ class Atom:
          the enforcement to the subgraph in which the change happened
         """
         # make a subgraph of the full model containing only the fixed edges
-        set_edges = [(u,v) for u,v,e in self.levelsModel.edges(data=True) if e['transition'].set_freq is not None]
+        set_edges = [(u, v) for u, v, e in self.levelsModel.edges(data=True) if e['transition'].set_freq is not None]
         set_graph = self.levelsModel.edge_subgraph(set_edges)
         subgraphs = (set_graph.subgraph(c) for c in nx.connected_components(set_graph))
         for sg in subgraphs:
