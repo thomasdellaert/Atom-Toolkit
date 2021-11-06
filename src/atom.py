@@ -993,7 +993,7 @@ class Atom:
 
     # region loading/unloading methods
 
-    def to_pickle(self, filename: str):
+    def save(self, filename: str):
         """
         Pickles the Atom to a .atom file for loading later
         :param filename: the filename
@@ -1010,7 +1010,7 @@ class Atom:
         file.close()
 
     @classmethod
-    def from_pickle(cls, filename):
+    def load(cls, filename):
         """
         Loads a pickled atom file.
         :param filename:
