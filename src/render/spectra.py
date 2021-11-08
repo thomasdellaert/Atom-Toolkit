@@ -1,9 +1,13 @@
+"""
+Tools for drawing transition spectra using matplotlib
+"""
+
 import numpy as np
 from matplotlib import pyplot as plt
 import matplotlib.colors
-from .atom import Transition
+from src.atom import Transition
 import colorsys
-from .lineshapes import LineShape
+from src.render.lineshapes import LineShape
 
 def plot_spectrum(transition: Transition, lineshape: LineShape, coloring='l', **kwargs):
     lines = transition.subtransitions.values()

@@ -1,3 +1,12 @@
+"""
+A set of lineshape functions meant to be used with the spectra module. The functions
+themselves are standard, and the LineShape class is meant as a container to encompass
+terms like 'width' and 'shape' in the unique terms of each lineshape.
+
+For instance, a LorentzianLineShape has a different meaning for its 'width' than a
+GaussianLineShape might
+"""
+
 import numpy as np
 from scipy.special import jv
 from scipy.special import voigt_profile
