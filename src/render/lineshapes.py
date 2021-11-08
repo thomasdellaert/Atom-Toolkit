@@ -101,3 +101,19 @@ class ModLorentzianLineShape(LineShape):
         if 'A_coeff' in kwargs:
             width += kwargs['A_coeff'] / (1e6 * 2 * np.pi)
         return self.mod_freq_GHz * self.num_sidebands + padding * width
+
+class GaussianLineShape(LineShape):
+    def __init__(self, sigma, ampl: float = 1.0):
+        super().__init__()
+        self.sigma = sigma
+
+    def shape_func(self, x, x0, **kwargs):
+        width = self.sigma * 2.355
+        # TODO: technically with a line/laser of finite linewidth this can broaden into a Voigt profile
+        ampl = 1.0
+        if 'ampl' in kwargs:
+            ampl = kwargs['ampl']
+        return gaussian(x, x0, self.sigma, ampl=ampl)
+
+    def width_func(self, padding=20.0, **kwargs):
+        return padding * self.sigma
