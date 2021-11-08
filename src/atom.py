@@ -31,7 +31,7 @@ class Term:
                  F: float or str = None, mF: float or str = None,
                  percentage=100.0):
         """
-        # TODO: Term symbols with multiple leading percentages.
+        # TODO: Term symbols with multiple leading percentages, for better calculation of g factors etc
         :param conf: the configuration of the term, formatted according to NIST's conventions
         :param term: The LS (Russell-Saunders), LK, JK, or JJ coupled term symbol, excluding the J value
         :param J: The J value for the term symbol
@@ -989,8 +989,6 @@ class Atom:
     def B(self, value: pint.Quantity):
         self.B_gauss = value.to(ureg.gauss).magnitude
 
-    # region loading/unloading methods
-
     def save(self, filename: str):
         """
         Pickles the Atom to a .atom file for loading later
@@ -1020,7 +1018,31 @@ class Atom:
         if not isinstance(p, Atom):
             raise IOError("The indicated file does not contain an Atom object")
         return p
-    # endregion
+
+    @classmethod
+    def from_dataframe(cls, df, name, I=0.0, num_levels=None, B=Q_(0.0, 'G'), **kwargs):
+        """
+        Generate the atom from a dataframe, formatted like the output from the IO module
+        :param df: the dataframe to read
+        :param name: the name of the atom
+        :param I: the nuclear spin quantum number of the atom
+        :param num_levels: the number of levels to load from the dataframe
+        :param B: the magnetic field
+        :param kwargs: None
+        :return: an instantiated atom
+        """
+        if num_levels is None:
+            num_levels = len(df)
+        a = Atom(name, I=I, B=B)
+        rows = tqdm(range(num_levels))
+        for i in rows:
+            try:
+                e = EnergyLevel.from_dataframe(df, i)
+                rows.set_description(f'adding level {e.name:109}')
+                a.add_level(e)
+            except KeyError:
+                pass
+        return a
 
     def populate_transitions(self, allowed=(True, True, True), **kwargs):
         """

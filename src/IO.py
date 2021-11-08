@@ -1,9 +1,9 @@
 import re
-import warnings
 import csv
 from . import *
-from .atom import Atom, EnergyLevel
+from .atom import Atom
 
+import warnings
 import pandas as pd
 from tqdm import tqdm
 
@@ -45,7 +45,7 @@ def load_NIST_data(species, term_ordered=False, save=False):
     df_clean['Term'] = df_clean['Term'].apply(lambda x: re.sub(r'[a-z] ', '', x))
     df_clean['J'] = df_clean['J'].astype('str')
     df_clean['Level (cm-1)'] = pd.to_numeric(df_clean['Level (cm-1)'], errors='coerce')
-    #    keep only the initial number of the leading percentage for now, replacing NaN with 100% I guess
+    #  keep only the initial number of the leading percentage for now, replacing NaN with 100% I guess
     if 'Leading percentages' not in df_clean.columns:
         df_clean['Leading percentages'] = '100'
     df_clean['Leading percentages'] = df_clean['Leading percentages'].apply(lambda x: re.sub(r' ?:.*', '', x))
@@ -117,15 +117,46 @@ def load_transition_data(filename: str, columns: dict = None, **kwargs):
     return df
 
 
+def load_level_data(filename: str, columns: dict = None, **kwargs):
+    """
+    :param filename: the name of the CSV to be imported
+    :param columns: a dict containing at least the following as keys, which defines the columns to use:
+        conf
+        term
+        j
+        level (cm-1)
+        lande
+        leading percentages
+    :return:
+    """
+    if columns is None:
+        columns = {i: i for i in ['configuration', 'term', 'j', 'level (cm-1)', 'lande', 'leading percentages']}
+
+    df_file = pd.read_csv(filename, **kwargs)
+    df_file.rename(str.lower, axis='columns')
+    df = pd.DataFrame(data={k: df_file[columns[k]] for k in columns})
+    try:
+        df['Level (cm-1)'] = df['Level (cm-1)'].astype(float)
+    except ValueError:
+        df['Level (cm-1)'] = df['Level (cm-1)'].str.replace(r'[^\d\.]+', '', regex=True)
+        df['Level (cm-1)'] = df['Level (cm-1)'].astype(float)
+    df['Level (cm-1)'] = df['Level (cm-1)'].astype('pint[cm**-1]')
+    df['Level (Hz)'] = df['Level (cm-1)'].pint.to('Hz')
+
+    # df['Level (Hz)'] = df['Level (cm-1)'].pint.to('Hz')
+
+    return df
+
+
 def generate_transition_csv(atom, filename):
     if filename is None:
         filename = f'{atom.name}_Transitions.csv'
-    pass
+    raise NotImplementedError
     # TODO: generate_transition_csv
 
 
 def apply_transition_csv(atom, filename):
-    pass
+    raise NotImplementedError
     # TODO: apply_transition_csv
 
 
@@ -172,31 +203,8 @@ def apply_hf_csv(atom, filename):
             except KeyError:
                 pass
 
-
-def from_dataframe(df, name, I=0.0, num_levels=None, B=Q_(0.0, 'G'), **kwargs):
-    """
-    Generate the atom from a dataframe, formatted like the output from the IO module
-    :param df: the dataframe to read
-    :param name: the name of the atom
-    :param I: the nuclear spin quantum number of the atom
-    :param num_levels: the number of levels to load from the dataframe
-    :param B: the magnetic field
-    :param kwargs: None
-    :return: an instantiated atom
-    """
-    if num_levels is None:
-        num_levels = len(df)
-    a = Atom(name, I=I, B=B)
-    rows = tqdm(range(num_levels))
-    for i in rows:
-        try:
-            e = EnergyLevel.from_dataframe(df, i)
-            rows.set_description(f'adding level {e.name:109}')
-            a.add_level(e)
-        except KeyError:
-            pass
-    return a
-
+# TODO: apply_levels_csv and apply_hf_csv kind of do the same thing. Really I only need two functions:
+#  one that iterates over levels, and one that iterates over transitions/pairs of levels
 
 def generate_full_from_dataframe(df, name, I=0.0, **kwargs):
     """
@@ -210,7 +218,7 @@ def generate_full_from_dataframe(df, name, I=0.0, **kwargs):
         'transitions_csv', 'transitions_df', 'hf_csv', 'subtransitions'
     :return: an instantiated atom
     """
-    a = from_dataframe(df, name, I, **kwargs)
+    a = Atom.from_dataframe(df, name, I, **kwargs)
     if 'hf_csv' in kwargs:
         try:
             apply_hf_csv(a, kwargs['hf_csv'])
@@ -227,16 +235,3 @@ def generate_full_from_dataframe(df, name, I=0.0, **kwargs):
         a.populate_transitions(allowed=(True, False, False), **kwargs)
     a.populate_internal_transitions()
     return a
-
-
-if __name__ == "__main__":
-    # df = load_transition_data("resources/Yb_II_Oscillator_Strengths.csv", columns={
-    #     "conf_l": "LConfiguration",
-    #     "conf_u": "UConfiguration",
-    #     "term_l": "LTerm",
-    #     "term_u": "UTerm",
-    #     "j_l": "LJ",
-    #     "j_u": "UJ",
-    #     "A": "A atlas"
-    # })
-    df = load_NIST_data("Yb II")
