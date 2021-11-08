@@ -3,7 +3,6 @@ import warnings
 from .wigner import *
 
 
-# noinspection PyTypeChecker
 @functools.lru_cache(maxsize=None)
 def tkq_transition_strength(I, k, q, J0, F0, M0, J1, F1, M1):
     prod = 1

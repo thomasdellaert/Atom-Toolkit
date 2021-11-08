@@ -1,13 +1,15 @@
 import re
 import warnings
-warnings.filterwarnings("ignore", category=RuntimeWarning)
-
+import csv
 from . import *
+from .atom import Atom, EnergyLevel
 
 import pandas as pd
 from tqdm import tqdm
 
-def load_NIST_data(species, term_ordered=False):
+warnings.filterwarnings("ignore", category=RuntimeWarning)
+
+def load_NIST_data(species, term_ordered=False, save=False):
     pbar = tqdm(total=7)
     pbar.update(1)
     pbar.set_description('loading data')
@@ -64,7 +66,8 @@ def load_NIST_data(species, term_ordered=False):
     pbar.update(1)
     pbar.set_description('pint quantities created')
 
-    df_clean = df_clean.loc[:(df_clean['Term'] == 'Limit').idxmax()-1] #remove any terms above ionization, and the ionization row
+    df_clean = df_clean.loc[
+               :(df_clean['Term'] == 'Limit').idxmax() - 1]  # remove any terms above ionization, and the ionization row
     df_clean = df_clean[df_clean.J.str.contains(",") == False]  # happens when J is unknown
     # reset the indices, since we may have dropped some rows
     df_clean.reset_index(drop=True, inplace=True)
@@ -73,10 +76,20 @@ def load_NIST_data(species, term_ordered=False):
     pbar.set_description('data finalized')
 
     pbar.close()
+
+    if save:
+        if type(save) == str:
+            if save[-4:] != '.csv':
+                save += '.csv'
+        else:
+            save = f'{species}_level_data.csv'
+        df_clean.to_csv(save)
+
     return df_clean
     #  TODO: uncertainty
 
-def load_transition_data(filename:str, columns:dict = None, **kwargs):
+
+def load_transition_data(filename: str, columns: dict = None, **kwargs):
     """
 
     :param filename: the name of the CSV to be imported
@@ -91,8 +104,8 @@ def load_transition_data(filename:str, columns:dict = None, **kwargs):
         columns["freq"] = columns["frequency"]
     if ("A" not in columns) and ("A_coeff" in columns):
         columns["A"] = columns["A_coeff"]
-    df = pd.DataFrame(data={k:df_file[columns[k]] for k in ["conf_l", "term_l", "j_l",
-                                                            "conf_u", "term_u", "j_u"]})
+    df = pd.DataFrame(data={k: df_file[columns[k]] for k in ["conf_l", "term_l", "j_l",
+                                                             "conf_u", "term_u", "j_u"]})
     if "freq" in columns:
         df["freq"] = df_file[columns["freq"]]
     else:
@@ -102,6 +115,119 @@ def load_transition_data(filename:str, columns:dict = None, **kwargs):
     else:
         df["A"] = None
     return df
+
+
+def generate_transition_csv(atom, filename):
+    if filename is None:
+        filename = f'{atom.name}_Transitions.csv'
+    pass
+    # TODO: generate_transition_csv
+
+
+def apply_transition_csv(atom, filename):
+    pass
+    # TODO: apply_transition_csv
+
+
+def generate_hf_csv(atom, filename=None, blank=False, def_A=Q_(0.0, 'gigahertz')):
+    """
+    Output the hyperfine coefficients of every energy level in the atom
+    :param atom: the atom from which to generate the csv
+    :param filename: the filename to output to
+    :param blank: whether to output a blank template file
+    :param def_A: the default A value to write for levels without an A value
+    :return:
+    """
+    if filename is None:
+        filename = f'{atom.name}_Hyperfine.csv'
+    if not blank:
+        rows_to_write = [
+            [level.name, (level.hfA if level.hfA != Q_(0.0, 'GHz') else def_A), level.hfB, level.hfC]
+            for level in list(atom.levels.values())]
+    else:
+        rows_to_write = [
+            [level.name, Q_(0.0, 'GHz'), Q_(0.0, 'GHz'), Q_(0.0, 'GHz')]
+            for level in list(atom.levels.values())]
+    with open(filename, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.writer(f)
+        writer.writerows(rows_to_write)
+
+
+def apply_hf_csv(atom, filename):
+    """
+        Apply the hyperfine data csv. CSV should be formatted like the output of generate_hf_csv
+        :param atom: the atom to apply the csv to
+        :param filename: the file to load
+        :return:
+        """
+    import csv
+    with open(filename, newline='', encoding='utf-8') as f:
+        reader = csv.reader(f)
+        for row in reader:
+            try:
+                name, hfA, hfB, hfC = row
+                atom.levels[name].hfA = Q_(hfA)
+                atom.levels[name].hfB = Q_(hfB)
+                atom.levels[name].hfC = Q_(hfC)
+            except KeyError:
+                pass
+
+
+def from_dataframe(df, name, I=0.0, num_levels=None, B=Q_(0.0, 'G'), **kwargs):
+    """
+    Generate the atom from a dataframe, formatted like the output from the IO module
+    :param df: the dataframe to read
+    :param name: the name of the atom
+    :param I: the nuclear spin quantum number of the atom
+    :param num_levels: the number of levels to load from the dataframe
+    :param B: the magnetic field
+    :param kwargs: None
+    :return: an instantiated atom
+    """
+    if num_levels is None:
+        num_levels = len(df)
+    a = Atom(name, I=I, B=B)
+    rows = tqdm(range(num_levels))
+    for i in rows:
+        try:
+            e = EnergyLevel.from_dataframe(df, i)
+            rows.set_description(f'adding level {e.name:109}')
+            a.add_level(e)
+        except KeyError:
+            pass
+    return a
+
+
+def generate_full_from_dataframe(df, name, I=0.0, **kwargs):
+    """
+    Generate the atom from a dataframe, formatted like the output from the IO module.
+    Also populate the internal transitions of the atom.
+    Also apply any csv's that are passed to it to the atom.
+    :param df: the dataframe
+    :param name: the atom's name
+    :param I: the nuclear spin quantum number of the atom
+    :param kwargs:
+        'transitions_csv', 'transitions_df', 'hf_csv', 'subtransitions'
+    :return: an instantiated atom
+    """
+    a = from_dataframe(df, name, I, **kwargs)
+    if 'hf_csv' in kwargs:
+        try:
+            apply_hf_csv(a, kwargs['hf_csv'])
+        except FileNotFoundError:
+            pass
+    if 'transitions_csv' in kwargs:
+        apply_transition_csv(a, kwargs['transitions_csv'])
+    elif 'transitions_df' in kwargs:
+        if kwargs['transitions_df'] is not None:
+            a.populate_transitions_df(kwargs['transitions_df'], **kwargs)
+        else:
+            a.populate_transitions(**kwargs)
+    else:
+        a.populate_transitions(allowed=(True, False, False), **kwargs)
+    a.populate_internal_transitions()
+    return a
+
 
 if __name__ == "__main__":
     # df = load_transition_data("resources/Yb_II_Oscillator_Strengths.csv", columns={
