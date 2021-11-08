@@ -1,13 +1,15 @@
-import re
 import csv
-from . import *
-from .atom import Atom
-
+import re
 import warnings
+
 import pandas as pd
 from tqdm import tqdm
 
+from . import *
+from .atom import Atom
+
 warnings.filterwarnings("ignore", category=RuntimeWarning)
+
 
 def load_NIST_data(species, term_ordered=False, save=False):
     pbar = tqdm(total=7)
@@ -202,6 +204,7 @@ def apply_hf_csv(atom, filename):
                 atom.levels[name].hfC = Q_(hfC)
             except KeyError:
                 pass
+
 
 # TODO: apply_levels_csv and apply_hf_csv kind of do the same thing. Really I only need two functions:
 #  one that iterates over levels, and one that iterates over transitions/pairs of levels

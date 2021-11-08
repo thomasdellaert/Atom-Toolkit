@@ -1,4 +1,9 @@
+"""
+Wigner functions used throughout the package, wrapped in a way that's convenient, and cached for speed.
+"""
+
 import functools
+
 try:
     # py3nj is a pain to install, and requires a fortran compiler among other things. Therefore it's optional,
     # and everything can work with sympy if it needs to. Py3nj is a bit faster, and it supports vectorized inputs,

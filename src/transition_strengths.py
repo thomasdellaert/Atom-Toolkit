@@ -1,5 +1,13 @@
-import numpy as np
+"""
+Tools for calculating the relative transition strengths and allowedness of transitions using angular momentum math.
+Currently also contains some other angular-momentum-heavy functions like converting between coupling schemes, but
+this may eventually get moved either into the Term class or into a module of its own.
+"""
+
 import warnings
+
+import numpy as np
+
 from .wigner import *
 
 
@@ -7,9 +15,9 @@ from .wigner import *
 def tkq_transition_strength(I, k, q, J0, F0, M0, J1, F1, M1):
     prod = 1
     prod *= (2 * F0 + 1) * (2 * F1 + 2) * wigner6j(J0, J1, k,
-                                                   F1, F0, I) ** 2
+                                                   F1, F0, I)**2
     prod *= wigner3j(F1, k, F0,
-                     -M1, q, M0) ** 2
+                     -M1, q, M0)**2
     return prod
 
 
@@ -18,9 +26,9 @@ def tkq_transition_strength(I, k, q, J0, F0, M0, J1, F1, M1):
 def E1_transition_strength_geom(eps, I, J0, F0, M0, J1, F1, M1):
     eps = eps / np.linalg.norm(eps)
     tot = 0
-    tot += tkq_transition_strength(I, 1, -1, J0, F0, M0, J1, F1, M1) * 0.5 * (eps[0] + eps[1]) ** 2
-    tot += tkq_transition_strength(I, 1, 0, J0, F0, M0, J1, F1, M1) * eps[2] ** 2
-    tot += tkq_transition_strength(I, 1, 1, J0, F0, M0, J1, F1, M1) * 0.5 * (eps[0] + eps[1]) ** 2
+    tot += tkq_transition_strength(I, 1, -1, J0, F0, M0, J1, F1, M1) * 0.5 * (eps[0] + eps[1])**2
+    tot += tkq_transition_strength(I, 1, 0, J0, F0, M0, J1, F1, M1) * eps[2]**2
+    tot += tkq_transition_strength(I, 1, 1, J0, F0, M0, J1, F1, M1) * 0.5 * (eps[0] + eps[1])**2
     return tot
 
 
@@ -34,10 +42,10 @@ def M1_transition_strength_geom(eps, I, J0, F0, M0, J1, F1, M1):
     eps = eps / np.linalg.norm(eps)
     tot = 0
     tot += tkq_transition_strength(I, 1, -1, J0, F0, M0, J1, F1, M1) * \
-           0.5 * (eps[0] ** 2 + eps[1] ** 2)
-    tot += tkq_transition_strength(I, 1, 0, J0, F0, M0, J1, F1, M1) * eps[2] ** 2
+           0.5 * (eps[0]**2 + eps[1]**2)
+    tot += tkq_transition_strength(I, 1, 0, J0, F0, M0, J1, F1, M1) * eps[2]**2
     tot += tkq_transition_strength(I, 1, 1, J0, F0, M0, J1, F1, M1) * \
-           0.5 * (eps[0] ** 2 + eps[1] ** 2)
+           0.5 * (eps[0]**2 + eps[1]**2)
     return tot
 
 
@@ -54,15 +62,15 @@ def E2_transition_strength_geom(eps, k, I, J0, F0, M0, J1, F1, M1):
         warnings.warn("k-vector and polarization are not orthogonal")
     tot = 0
     tot += tkq_transition_strength(I, 2, -2, J0, F0, M0, J1, F1, M1) * \
-           (eps[0] ** 2 + eps[1] ** 2) * (k[0] ** 2 + k[1] ** 2)
+           (eps[0]**2 + eps[1]**2) * (k[0]**2 + k[1]**2)
     tot += tkq_transition_strength(I, 2, -1, J0, F0, M0, J1, F1, M1) * \
-           (eps[2] * k[0] + eps[0] * k[2]) ** 2 + (eps[1] * k[0] + eps[0] * k[1]) ** 2
+           (eps[2] * k[0] + eps[0] * k[2])**2 + (eps[1] * k[0] + eps[0] * k[1])**2
     tot += tkq_transition_strength(I, 2, 0, J0, F0, M0, J1, F1, M1) * \
-           (2. / 3.) * (3 * k[0] * eps[0] + 3 * k[1] * eps[1] + 2 * k[2] * eps[2]) ** 2
+           (2. / 3.) * (3 * k[0] * eps[0] + 3 * k[1] * eps[1] + 2 * k[2] * eps[2])**2
     tot += tkq_transition_strength(I, 2, 1, J0, F0, M0, J1, F1, M1) * \
-           (eps[2] * k[0] + eps[0] * k[2]) ** 2 + (eps[1] * k[0] + eps[0] * k[1]) ** 2
+           (eps[2] * k[0] + eps[0] * k[2])**2 + (eps[1] * k[0] + eps[0] * k[1])**2
     tot += tkq_transition_strength(I, 2, 2, J0, F0, M0, J1, F1, M1) * \
-           (eps[0] ** 2 + eps[1] ** 2) * (k[0] ** 2 + k[1] ** 2)
+           (eps[0]**2 + eps[1]**2) * (k[0]**2 + k[1]**2)
     return tot
 
 
@@ -97,7 +105,7 @@ def JK_to_LS(J, Jc, K, lc, sc, lo, so):
     ss = np.arange(abs(sc - so), abs(sc + so) + 1)
     outls = np.repeat(ls, len(ss))
     outss = np.tile(ss, len(ls))
-    outpercs = np.array([float((-1) ** (-lc - lo - 2 * sc - so - K - outls[i] - J) * \
+    outpercs = np.array([float((-1)**(-lc - lo - 2 * sc - so - K - outls[i] - J) * \
                                np.sqrt((2 * Jc + 1) * (2 * outls[i] + 1) * (2 * K + 1) * (2 * outss[i] + 1)) * \
                                wigner6j(sc, lc, Jc,
                                         lo, K, outls[i]) * \
@@ -113,7 +121,8 @@ def LK_to_LS(J, L, K, sc, so):
     outls = np.repeat(ls, len(ss))
     outss = np.tile(ss, len(ls))
     outpercs = np.array([np.sqrt((2 * K + 1) * (2 * outss[i] + 1)) * wigner6j(L, sc, K,
-                                                                              so, J, outss[i]) for i in range(len(outls))])
+                                                                              so, J, outss[i]) for i in
+                         range(len(outls))])
     return np.stack([outls, outss, outpercs])
 
 

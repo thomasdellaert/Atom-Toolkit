@@ -1,6 +1,6 @@
+import itertools
 import pickle
 import re
-import itertools
 import warnings
 from typing import List
 
@@ -10,11 +10,12 @@ import pint
 from tqdm import tqdm
 
 from . import Q_, ureg
-from .wigner import wigner3j, wigner6j
 from .atom_helpers import LevelStructure, TransitionStructure
+from .wigner import wigner3j, wigner6j
 
 Hz = ureg.hertz
 mu_B = 1.39962449361e6  # MHz/G
+
 
 ############################################
 #                   Term                   #
@@ -26,6 +27,7 @@ class Term:
     extracted from the configuration. These ancestor terms can (sometimes? often?) be used to convert between
     different couplings, among other things.
     """
+
     def __init__(self,
                  conf: str, term: str, J: float or str,
                  F: float or str = None, mF: float or str = None,
@@ -311,6 +313,7 @@ class Term:
         else:
             return str(int(f * 2)) + '/2'
 
+
 ############################################
 #               EnergyLevel                #
 ############################################
@@ -327,6 +330,7 @@ class BaseLevel:
     Classes that inherit from BaseLevel have dict-like access to their sublevels, meaning that you
     can directly index them using sublevel names
     """
+
     def __init__(self, term: Term, parent):
         """
         Initialize the level
@@ -411,6 +415,7 @@ class BaseLevel:
 
     # endregion
 
+
 class EnergyLevel(BaseLevel):
     """
     An EnergyLevel represents a single fine-structure manifold in an atom. It contains a number of sublevels,
@@ -426,6 +431,7 @@ class EnergyLevel(BaseLevel):
         EnergyLevels serve as the nodes in the internal graph of an Atom object. Its level can be shifted to be
         consistent with a transition that the level participates in
     """
+
     def __init__(self, term: Term, level: pint.Quantity, lande: float = None, parent=None,
                  hfA=Q_(0.0, 'gigahertz'), hfB=Q_(0.0, 'gigahertz'), hfC=Q_(0.0, 'gigahertz')):
         """
@@ -520,9 +526,11 @@ class EnergyLevel(BaseLevel):
         if self.term.coupling == 'LS':
             terms = np.array([[self.term.l], [self.term.s], [1.0]])
         elif self.term.coupling == 'JJ':
-            terms = JJ_to_LS(self.term.J, self.term.jc, self.term.jo, self.term.lc, self.term.sc, self.term.lo, self.term.so)
+            terms = JJ_to_LS(self.term.J, self.term.jc, self.term.jo, self.term.lc, self.term.sc, self.term.lo,
+                             self.term.so)
         elif self.term.coupling == 'JK':
-            terms = JK_to_LS(self.term.J, self.term.jc, self.term.k, self.term.lc, self.term.sc, self.term.lo, self.term.so)
+            terms = JK_to_LS(self.term.J, self.term.jc, self.term.k, self.term.lc, self.term.sc, self.term.lo,
+                             self.term.so)
         elif self.term.coupling == 'LK':
             terms = LK_to_LS(self.term.J, self.term.l, self.term.k, self.term.sc, self.term.so)
         else:
@@ -531,7 +539,7 @@ class EnergyLevel(BaseLevel):
         J = self.term.J
         ls, ss, percents = terms
 
-        return sum(percents*(1 + 1.0023 * (J * (J + 1) + ss * (ss + 1) - ls * (ls + 1)) / (2 * J * (J + 1))))
+        return sum(percents * (1 + 1.0023 * (J * (J + 1) + ss * (ss + 1) - ls * (ls + 1)) / (2 * J * (J + 1))))
 
     @classmethod
     def from_dataframe(cls, df, i=0):
@@ -545,12 +553,14 @@ class EnergyLevel(BaseLevel):
         t = Term.from_dataframe(df, i)
         return EnergyLevel(t, df["Level (cm-1)"][i], lande=df["Lande"][i])
 
+
 class HFLevel(BaseLevel):
     """
     An HFLevel represents a hyperfine sublevel of a fine structure energy level. It lives inside an
     EnergyLevel,and contains Zeeman-sublevel ZLevel objects.
     An HFLevel defines where it is based on its shift relative to its parent level
     """
+
     def __init__(self, term: Term, parent=None):
         """
         :param term: a Term object containing the level's quantum numbers
@@ -592,13 +602,13 @@ class HFLevel(BaseLevel):
         if J <= 0.5 or I <= 0.5:
             FE2 = 0
         else:
-            FE2 = (3 * IdotJ ** 2 + 1.5 * IdotJ - I * (I + 1) * J * (J + 1)) / \
+            FE2 = (3 * IdotJ**2 + 1.5 * IdotJ - I * (I + 1) * J * (J + 1)) / \
                   (2.0 * I * (2.0 * I - 1.0) * J * (2.0 * J - 1.0))
 
         if J <= 1 or I <= 1:
             FM3 = 0
         else:
-            FM3 = (10 * IdotJ ** 3 + 20 * IdotJ ** 2 + 2 * IdotJ * (
+            FM3 = (10 * IdotJ**3 + 20 * IdotJ**2 + 2 * IdotJ * (
                     -3 * I * (I + 1) * J * (J + 1) + I * (I + 1) + J * (J + 1) + 3)
                    - 5 * I * (I + 1) * J * (J + 1)) / (I * (I - 1) * J * (J - 1) * (2 * J - 1))
         return self.manifold.hfA_Hz * FM1 + self.manifold.hfB_Hz * FE2 + self.manifold.hfC_Hz * FM3
@@ -638,11 +648,13 @@ class HFLevel(BaseLevel):
             return self.manifold.lande * (F * (F + 1) + J * (J + 1) - I * (I + 1)) / (2 * F * (F + 1))
         return 0.0
 
+
 class ZLevel(HFLevel):
     """
     A Zeeman sublevel (currently) is the lowest of the level hierarchy. It defines its position relative
     to a parent hyperfine sublevel, dependent on the atom's magnetic field. It has no sublevels.
     """
+
     def get_manifold(self):
         return self.parent.manifold
 
@@ -656,6 +668,7 @@ class ZLevel(HFLevel):
         # TODO: Breit-Rabi or at least second-order shifts?
         return self.gF * self.term.mF * mu_B * self.atom.B_gauss
 
+
 ############################################
 #               Transition                 #
 ############################################
@@ -667,6 +680,7 @@ class BaseTransition:
     between them consistent with the transition. This allows you to accommodate isotope shifts/more
     precise spectroscopy, etc.
     """
+
     def __init__(self, E1: EnergyLevel, E2: EnergyLevel, freq=None, A: pint.Quantity = None, name=None, parent=None):
         """
         :param E1: EnergyLevel 1
@@ -731,7 +745,7 @@ class BaseTransition:
     def populate_subtransitions(self):
         """Should generate the appropriate transitions between the sublevels of the transition's EnergyLevels"""
         raise NotImplementedError
-    
+
     def _compute_sublevel_pairs(self, attr: str):
         """Returns pairs of sublevels that are likely to have allowed transitions, given the type of transition"""
         if True not in self.allowed_types:
@@ -740,10 +754,12 @@ class BaseTransition:
         return ((l1, l2) for l1, l2 in itertools.product(self.E_1.sublevels(), self.E_2.sublevels())
                 if abs(l1.term.__getattribute__(attr) - l2.term.__getattribute__(attr)) <= max_delta)
 
+
 class Transition(BaseTransition):
     """
     A Transition connects two EnergyLevel objects
     """
+
     def transition_allowed(self):
         """Uses selection rules to figure out whether it's an E1, M1, or E2 transition"""
         J0, J1 = self.E_1.term.J, self.E_2.term.J
@@ -779,11 +795,13 @@ class Transition(BaseTransition):
         self.set_freq = freq
         self.E_1.atom.enforce(node_or_trans=self.model_name)
 
+
 class HFTransition(BaseTransition):
     """
     An HFTransition connects two HFLevels. It scales its linewidth and strength relative
     to its parents based on the clebsch-gordan coefficients etc associated with itself
     """
+
     def compute_linewidth(self):
         """Compute the amplitude/linewidth of the transition relative to others in its multiplet by Clebsch-Gordan math"""
         if self.parent is None or self.parent.A is None:
@@ -792,9 +810,9 @@ class HFTransition(BaseTransition):
         J1, J2 = self.E_1.term.J, self.E_2.term.J
         F1, F2 = self.E_1.term.F, self.E_2.term.F
         if self.parent.allowed_types[0] or self.parent.allowed_types[1]:
-            factor = ((2*F1+1)*(2*F2+1)) * wigner6j(J2, F2, I, F1, J1, 1)**2
+            factor = ((2 * F1 + 1) * (2 * F2 + 1)) * wigner6j(J2, F2, I, F1, J1, 1)**2
         elif self.parent.allowed_types[2]:
-            factor = ((2*F1+1)*(2*F2+1)) * wigner6j(J2, F2, I, F1, J1, 2)**2
+            factor = ((2 * F1 + 1) * (2 * F2 + 1)) * wigner6j(J2, F2, I, F1, J1, 2)**2
         else:
             factor = 0.0
         return float(self.parent.A * factor), float(factor)
@@ -816,13 +834,13 @@ class HFTransition(BaseTransition):
         if init[2]:
             ret[2] = wigner6j(J0, J1, 2, F1, F0, I) != 0.0
         return tuple(ret)
-    
+
     def add_to_atom(self, atom):
         """An HFTransition lives as an edge in the atom's hfModel graph"""
         atom.hfModel.add_edge(self.E_1.name, self.E_2.name, transition=self)
         for subtransition in self.subtransitions.values():
             subtransition.add_to_atom(atom)
-            
+
     def populate_subtransitions(self):
         """Creates ZTransitions for every allowed pair of Zeeman sublevels in the transition's HFLevels"""
         pairs = self._compute_sublevel_pairs('mF')
@@ -833,11 +851,13 @@ class HFTransition(BaseTransition):
             else:
                 del t
 
+
 class ZTransition(BaseTransition):
     """
      An ZTransition connects two ZLevels. It scales its linewidth and strength relative
      to its parents based on the clebsch-gordan coefficients etc associated with itself
      """
+
     def compute_linewidth(self):
         """Use the wigner-eckart theorem to figure out relative line strengths"""
         if self.parent is None or self.parent.A is None:
@@ -867,13 +887,14 @@ class ZTransition(BaseTransition):
         if init[2]:
             ret[2] = sum([wigner3j(F1, 2, F0, -mF1, q, mF0) for q in [-2, -1, 0, 1, 2]]) != 0.0
         return ret
-    
+
     def add_to_atom(self, atom):
         """A ZTransition lives as an edge in the atom's zModel"""
         atom.zModel.add_edge(self.E_1.name, self.E_2.name, transition=self)
-    
+
     def populate_subtransitions(self):
         pass
+
 
 ############################################
 #                   Atom                   #
@@ -901,6 +922,7 @@ class Atom:
     Lastly, the Atom contains a lot of ways to give it data, though the preferred method is via a dataframe
     generated by the IO module. This may get move to the atom-builder module in the future
     """
+
     def __init__(self, name: str, I: float = 0.0, B=Q_(0.0, 'G'),
                  levels: List[EnergyLevel] = None, transitions: List[Transition] = None):
         """
@@ -1058,16 +1080,16 @@ class Atom:
         allowed_deltas = [0]
         # since the ordering of the list is potentially E1, M1, E2, M2, etc... and the allowed deltas are 1, 1, 2, 2, etc
         for i in range(len(allowed)):
-            if allowed[2*i] or allowed[2*i+1]:
-                allowed_deltas.append(i+1)
+            if allowed[2 * i] or allowed[2 * i + 1]:
+                allowed_deltas.append(i + 1)
 
         # The keys of js are J values, and the values are lists of levels with that J value
         js = {J: [lvl for lvl in self.levels.values() if lvl.term.J == J]
-              for J in np.arange(0, max_to_try+1, 0.5)}
+              for J in np.arange(0, max_to_try + 1, 0.5)}
         for delta_j in allowed_deltas:  # range(int(len(allowed)+2/2)):
             set0 = [js[j] for j in list(js.keys())]
             # don't include the last several j values to avoid IndexErrors
-            set1 = [js[j+delta_j] for j in list(js.keys())[:int(-(delta_j*2+1))]]
+            set1 = [js[j + delta_j] for j in list(js.keys())[:int(-(delta_j * 2 + 1))]]
             j_pairs = zip(set0, set1)
             level_pairs = tqdm(list(itertools.chain.from_iterable([itertools.product(j1, j2) for j1, j2 in j_pairs])))
             for pair in level_pairs:
@@ -1120,7 +1142,7 @@ class Atom:
     def state_lifetime(self, level):
         ts = self.linked_levels(level).values()
         total_A = sum((t for t in ts if t.E_upper is level))
-        return 1/(total_A/(2*np.pi))
+        return 1 / (total_A / (2 * np.pi))
 
     def compute_branching_ratios(self, key):
         transitions = self.linked_levels(key)
@@ -1134,7 +1156,7 @@ class Atom:
             # TODO: make a custom exception for this? Maybe a whole slew of exceptions to throw
             raise TypeError("At least one transition leading from the given level has no valid A coefficient")
 
-        ratios = {k: t/totalAs for k, t in A_coeffs.items()}
+        ratios = {k: t / totalAs for k, t in A_coeffs.items()}
         return ratios
 
     def enforce(self, node_or_trans=None):

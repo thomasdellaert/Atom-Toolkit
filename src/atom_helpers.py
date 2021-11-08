@@ -1,5 +1,6 @@
 import networkx as nx
 
+
 class LevelStructure:
     def __init__(self, atom, model: nx.Graph):
         self.atom = atom
@@ -37,6 +38,7 @@ class LevelStructure:
 
     def list_names(self):
         return list(self.keys())
+
 
 class TransitionStructure:
     def __init__(self, atom, model: nx.Graph):
