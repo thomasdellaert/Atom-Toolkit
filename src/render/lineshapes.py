@@ -35,12 +35,10 @@ class LineShape:
 
     @staticmethod
     def shape_func(x, x0, **kwargs):
-        if x == x0:
-            return 1.0
-        return 0.0
+        raise NotImplementedError
 
     def width_func(self, **kwargs):
-        return 1.0
+        raise NotImplementedError
 
     def compute(self, x0, num_points: int = 1000, **kwargs):
         width = self.width_func(**kwargs)
