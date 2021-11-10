@@ -5,8 +5,9 @@ A python package that seeks to provide a convenient way to manipulate atomic phy
 	 - Hyperfine and Zeeman structure is automatically generated
  - create transitions between energy levels
 	 - transitions between any sublevels are also computed, with appropriate selection rules and angular momentum considerations
-	 - Make diagrams of atomic structure
-	 - Plot transition spectra
+ - Compute branching ratios
+ - Make diagrams of atomic structure
+ - Plot transition spectra
 
 ### Very basic example usage:
 
