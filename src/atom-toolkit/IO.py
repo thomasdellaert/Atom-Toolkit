@@ -5,7 +5,7 @@ import warnings
 import pandas as pd
 from tqdm import tqdm
 
-from . import *
+from src import *
 from .atom import Atom
 
 warnings.filterwarnings("ignore", category=RuntimeWarning)

@@ -9,7 +9,7 @@ import numpy as np
 import pint
 from tqdm import tqdm
 
-from . import Q_, ureg
+from src import Q_, ureg
 from .atom_helpers import LevelStructure, TransitionStructure
 from .wigner import wigner3j, wigner6j
 
