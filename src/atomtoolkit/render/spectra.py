@@ -5,9 +5,9 @@ Tools for drawing transition spectra using matplotlib
 import numpy as np
 from matplotlib import pyplot as plt
 import matplotlib.colors
-from src.atom import Transition
+from atomtoolkit.atom import Transition
 import colorsys
-from src.render.lineshapes import LineShape
+from .lineshapes import LineShape
 from typing import List
 import itertools
 
