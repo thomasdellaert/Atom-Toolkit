@@ -1,5 +1,5 @@
 from unittest import TestCase
-from main import Term
+from atomtoolkit.atom import Term
 
 
 class TestTerm(TestCase):
