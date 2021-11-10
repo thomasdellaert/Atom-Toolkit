@@ -2,8 +2,8 @@ from setuptools import setup
 
 setup(
     name='Atom-Toolkit',
-    version='0.1.0',
-    packages=['atomtoolkit'],
+    version='0.1.1.dev1',
+    packages=['atomtoolkit', 'atomtoolkit.render'],
     url='https://github.com/thomasdellaert/Atom-Toolkit',
     license='GNU GPLv3',
     author='Thomas Dellaert',
