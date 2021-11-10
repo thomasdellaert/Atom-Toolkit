@@ -1,10 +1,10 @@
 from setuptools import setup
 
 setup(
-    name='Atom Toolkit',
-    version='0.1.1',
-    packages=['src'],
-    url='',
+    name='Atom-Toolkit',
+    version='0.1.0',
+    packages=['atom-toolkit'],
+    url='https://github.com/thomasdellaert/Atom-Toolkit',
     license='GNU GPLv3',
     author='Thomas Dellaert',
     author_email='dellaert.thomas@gmail.com',
