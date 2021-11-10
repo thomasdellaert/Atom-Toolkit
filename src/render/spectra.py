@@ -8,9 +8,16 @@ import matplotlib.colors
 from src.atom import Transition
 import colorsys
 from src.render.lineshapes import LineShape
+from typing import List
+import itertools
 
-def plot_spectrum(transition: Transition, lineshape: LineShape, coloring='l', **kwargs):
-    lines = transition.subtransitions.values()
+# FIXME: Zeeman transitions kind of work, but it's a bit of a bodge and the colors are off.
+
+def plot_spectrum(transitions: Transition or List[Transition], lineshape: LineShape, coloring='l', **kwargs):
+    if isinstance(transitions, list):
+        lines = list(itertools.chain.from_iterable(list(t.subtransitions.values() for t in transitions)))
+    else:
+        lines = list(transitions.subtransitions.values())
     lo_Fs, hi_Fs = [], []
     for t in lines:
         lo_Fs.append(t.E_lower.term.F)
@@ -33,29 +40,34 @@ def plot_spectrum(transition: Transition, lineshape: LineShape, coloring='l', **
         all_x.append(x_values)
         all_y.append(y_values)
 
-        # depending on coloring by upper/lower, one ser of Fs determines color, while the other determines shade
-        if not (coloring == 'u'):
-            color_num_Fs = num_lo_Fs
-            color_F = line.E_lower.term.F
-            shade_F = line.E_upper.term.F
-            min_shade_Fs = min_hi_Fs
+        if line.E_lower.term.mF_frac is not None:
+            label = f"F={line.E_lower.term.F_frac}, mF={line.E_lower.term.mF_frac} → F={line.E_upper.term.F_frac}, mF={line.E_upper.term.mF_frac}"
         else:
-            color_num_Fs = num_hi_Fs
-            color_F = line.E_upper.term.F
-            shade_F = line.E_lower.term.F
-            min_shade_Fs = min_lo_Fs
+            label = f"F={line.E_lower.term.F_frac} → F={line.E_upper.term.F_frac}"
 
-        # pick a color depending on the color F
-        col = cmap(list(color_num_Fs.keys()).index(color_F))
-        # convert it to HLS
-        col = colorsys.rgb_to_hls(*matplotlib.colors.to_rgb(col))
-        # set the lightness depending on the shade F and convert back to RGB
-        lightness = 0.2+0.6*(shade_F-min_shade_Fs[color_F]+1)/(color_num_Fs[color_F]+1)
-        col = colorsys.hls_to_rgb(col[0], lightness, col[2])
         if (coloring == 'l') or (coloring == 'u'):
-            plt.plot(x_values, y_values, label=f"{line.E_lower.term.F_frac} → {line.E_upper.term.F_frac}", c=col)
+            # depending on coloring by upper/lower, one set of Fs determines color, while the other determines shade
+            if not (coloring == 'u'):
+                color_num_Fs = num_lo_Fs
+                color_F = line.E_lower.term.F
+                shade_F = line.E_upper.term.F
+                min_shade_Fs = min_hi_Fs
+            else:
+                color_num_Fs = num_hi_Fs
+                color_F = line.E_upper.term.F
+                shade_F = line.E_lower.term.F
+                min_shade_Fs = min_lo_Fs
+
+            # pick a color depending on the color F
+            col = cmap(list(color_num_Fs.keys()).index(color_F))
+            # convert it to HLS
+            col = colorsys.rgb_to_hls(*matplotlib.colors.to_rgb(col))
+            # set the lightness depending on the shade F and convert back to RGB
+            lightness = 0.2 + 0.6 * (shade_F - min_shade_Fs[color_F] + 1) / (color_num_Fs[color_F] + 1)
+            col = colorsys.hls_to_rgb(col[0], lightness, col[2])
+            plt.plot(x_values, y_values, label=label, c=col)
         else:
-            plt.plot(x_values, y_values, label=f"{line.E_lower.term.F_frac} → {line.E_upper.term.F_frac}")
+            plt.plot(x_values, y_values, label=label)
 
     x_values = []
     for x in all_x:
