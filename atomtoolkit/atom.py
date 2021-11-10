@@ -863,12 +863,11 @@ class ZTransition(BaseTransition):
         if self.parent is None or self.parent.A is None:
             return None, 1.0
         F1, F2 = self.E_1.term.F, self.E_2.term.F
-        M1, M2 = self.E_1.term.mF, self.E_2.term.mF
-        J1 = self.E_1.term.J
+        mF1, mF2 = self.E_1.term.mF, self.E_2.term.mF
         if self.parent.allowed_types[0] or self.parent.allowed_types[1]:
-            factor = wigner3j(F1, 1, F2, M1, J1, M2)**2
+            factor = sum([wigner3j(F1, 1, F2, -mF1, q, mF2)**2 for q in [-1, 0, 1]])
         elif self.parent.allowed_types[2]:
-            factor = wigner3j(F1, 2, F2, M1, J1, M2)**2
+            factor = sum([wigner3j(F1, 2, F1, -mF1, q, mF2)**2 for q in [-2, -1, 0, 1, 2]])
         else:
             factor = 0.0
         return float(self.parent.A * factor), float(factor)
