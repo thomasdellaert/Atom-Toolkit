@@ -31,7 +31,7 @@ class Term:
     def __init__(self,
                  conf: str, term: str, J: float or str,
                  F: float or str = None, mF: float or str = None,
-                 percentage=100.0):
+                 percentage=100.0, quantum_nums=None):
         """
         # TODO: Term symbols with multiple leading percentages, for better calculation of g factors etc
         :param conf: the configuration of the term, formatted according to NIST's conventions
@@ -61,7 +61,10 @@ class Term:
 
         self.coupling = self.get_coupling()
 
-        self.lc, self.sc, self.lo, self.so, self.jc, self.jo, self.l, self.s, self.k = self.get_quantum_nums()
+        if quantum_nums is None:
+            quantum_nums = self.get_quantum_nums()
+        self.quantum_nums = quantum_nums
+        self.lc, self.sc, self.lo, self.so, self.jc, self.jo, self.l, self.s, self.k = self.quantum_nums
 
     def __str__(self):
         return self.term_name
@@ -470,7 +473,7 @@ class EnergyLevel(BaseLevel):
         """
         if isinstance(self.parent, Atom):
             for f in np.arange(abs(self.term.J - self.atom.I), self.term.J + self.atom.I + 1):
-                t = Term(self.term.conf, self.term.term, self.term.J, F=f)
+                t = Term(self.term.conf, self.term.term, self.term.J, F=f, quantum_nums=self.term.quantum_nums)
                 e = HFLevel(term=t, parent=self)
                 self[f'F={f}'] = e
 
@@ -581,7 +584,7 @@ class HFLevel(BaseLevel):
         """Populates the sublevels dict with the appropriate Zeeman sublevels"""
         if isinstance(self.parent, EnergyLevel):
             for mf in np.arange(-self.term.F, self.term.F + 1):
-                t = Term(self.term.conf, self.term.term, self.term.J, F=self.term.F, mF=mf)
+                t = Term(self.term.conf, self.term.term, self.term.J, F=self.term.F, mF=mf, quantum_nums=self.term.quantum_nums)
                 e = ZLevel(term=t, parent=self)
                 self[f'mF={mf}'] = e
 
