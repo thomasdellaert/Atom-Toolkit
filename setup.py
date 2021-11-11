@@ -10,4 +10,7 @@ setup(
     author_email='dellaert.thomas@gmail.com',
     description='A package for handling and displaying data for atomic physics calculations',
     python_requires='>=3.8',
+    install_requires=[
+          'pint', 'numpy', 'pandas', 'networkx', 'sympy', 'matplotlib', 'scipy', 'tqdm'
+      ],
 )
