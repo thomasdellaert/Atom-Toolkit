@@ -695,7 +695,7 @@ class BaseTransition:
         """
 
         self.parent = parent
-        self.subtransitions = {}
+        self._subtransitions = dict()
         self.E_1, self.E_2 = E1, E2
         if self.E_2.level > self.E_1.level:
             self.E_upper = self.E_2
@@ -757,6 +757,30 @@ class BaseTransition:
         return ((l1, l2) for l1, l2 in itertools.product(self.E_1.sublevels(), self.E_2.sublevels())
                 if abs(l1.term.__getattribute__(attr) - l2.term.__getattribute__(attr)) <= max_delta)
 
+    def __len__(self):
+        return len(self._subtransitions)
+
+    def __getitem__(self, item):
+        return self._subtransitions[item]
+
+    def __setitem__(self, key, value):
+        pass #TODO: How should this behave?
+
+    def __delitem__(self, key):
+        del self._subtransitions[key]
+
+    def __iter__(self):
+        return iter(self._subtransitions)
+
+    def values(self):
+        return self._subtransitions.values()
+
+    def subtransitions(self):
+        return self._subtransitions.values()
+
+    def keys(self):
+        return self._subtransitions.keys()
+
 
 class Transition(BaseTransition):
     """
@@ -777,7 +801,7 @@ class Transition(BaseTransition):
     def add_to_atom(self, atom):
         """A Transition lives as an edge in the atom's levelsModel graph"""
         atom.levelsModel.add_edge(self.E_1.name, self.E_2.name, transition=self)
-        for subtransition in self.subtransitions.values():
+        for subtransition in self.subtransitions():
             subtransition.add_to_atom(atom)
 
     def populate_subtransitions(self):
@@ -786,7 +810,7 @@ class Transition(BaseTransition):
         for pair in pairs:
             t = HFTransition(pair[0], pair[1], parent=self)
             if np.any(np.array(t.allowed_types)):
-                self.subtransitions[t.name] = t
+                self[t.name] = t
             else:
                 del t
 
@@ -841,7 +865,7 @@ class HFTransition(BaseTransition):
     def add_to_atom(self, atom):
         """An HFTransition lives as an edge in the atom's hfModel graph"""
         atom.hfModel.add_edge(self.E_1.name, self.E_2.name, transition=self)
-        for subtransition in self.subtransitions.values():
+        for subtransition in self.subtransitions():
             subtransition.add_to_atom(atom)
 
     def populate_subtransitions(self):
@@ -850,7 +874,7 @@ class HFTransition(BaseTransition):
         for pair in pairs:
             t = ZTransition(pair[0], pair[1], parent=self)
             if np.any(np.array(t.allowed_types)):
-                self.subtransitions[t.name] = t
+                self[t.name] = t
             else:
                 del t
 
