@@ -15,9 +15,9 @@ import itertools
 
 def plot_spectrum(transitions: Transition or List[Transition], lineshape: LineShape, coloring='l', **kwargs):
     if isinstance(transitions, list):
-        lines = list(itertools.chain.from_iterable(list(t.subtransitions.values() for t in transitions)))
+        lines = list(itertools.chain.from_iterable(list(t.values() for t in transitions)))
     else:
-        lines = list(transitions.subtransitions.values())
+        lines = list(transitions.values())
     lo_Fs, hi_Fs = [], []
     for t in lines:
         lo_Fs.append(t.E_lower.term.F)

@@ -20,10 +20,9 @@ def draw_levels(atom, plot_type='norm', **kwargs):
     for node in model.nodes():
         try:
             model.remove_edge(node, node)
-        except KeyError:
+        except nx.NetworkXError:
             pass
     nx.draw(model, pos=posdict, node_shape="_", with_labels=True, font_size=8, edge_color=(0., 0., 0., 0.2), **kwargs)
-    plt.show()
 
 
 # class Grotrian:
