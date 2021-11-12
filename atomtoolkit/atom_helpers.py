@@ -62,7 +62,8 @@ class TransitionStructure:
 
     def __delitem__(self, level1, level2):
         self.model.remove_edge(level1, level2)
-        # TODO: make this also remove children? Think about how to implement this
+        # TODO: make this also remove children? Think about how to implement this. probably this should be done by
+        #  overriding __del__ in BaseLevel and BaseTransition
 
     def __len__(self):
         return len(nx.get_edge_attributes(self.model, 'transition'))
