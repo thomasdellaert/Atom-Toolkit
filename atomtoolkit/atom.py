@@ -735,7 +735,7 @@ class BaseTransition:
     def compute_linewidth(self):
         if self._A is None:
             return None, 1.0
-        return float(self._A), 1.0
+        return self._A.to(Hz), 1.0
 
     def transition_allowed(self):
         """Should return list containing what types of transition are allowed in E1, M1, E2, ... order"""
@@ -842,7 +842,7 @@ class HFTransition(BaseTransition):
             factor = ((2 * F1 + 1) * (2 * F2 + 1)) * wigner6j(J2, F2, I, F1, J1, 2)**2
         else:
             factor = 0.0
-        return float(self.parent.A * factor), float(factor)
+        return self.parent.A * factor, float(factor)
 
     def transition_allowed(self):
         """Use the spectator theorem to check whether it's allowed. """
@@ -897,7 +897,7 @@ class ZTransition(BaseTransition):
             factor = sum([wigner3j(F1, 2, F1, -mF1, q, mF2)**2 for q in [-2, -1, 0, 1, 2]])
         else:
             factor = 0.0
-        return float(self.parent.A * factor), float(factor)
+        return self.parent.A * factor, float(factor)
 
     def transition_allowed(self):
         """Check whether allowed. Currently only uses a geometric average"""

@@ -113,7 +113,7 @@ def load_transition_data(filename: str, columns: dict = None, **kwargs):
     else:
         df["freq"] = None
     if "A" in columns:
-        df["A"] = df_file[columns["A"]]
+        df["A"] = df_file[columns["A"]].astype('pint[MHz]')
     else:
         df["A"] = None
     return df
