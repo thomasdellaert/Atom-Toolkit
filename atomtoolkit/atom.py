@@ -316,6 +316,28 @@ class Term:
         else:
             return str(int(f * 2)) + '/2'
 
+class MultiTerm:
+    def __init__(self, *terms: Term):
+        """
+        A MultiTerm is a container for multiple terms, useful for situations in which just the leading term won't do. It
+        passes through any attribute requests to the leading term, so that it doesn't have to be engaged with unless needed
+        :param terms: the terms that the MultiTerm contains
+        """
+        self.terms = sorted(terms, key=lambda t: t.percentage, reverse=True)
+        self.terms_dict = {t.percentage: t for t in self.terms}
+
+    def __getattribute__(self, item):
+        """
+        When you need to access a term-liek term, this ensures that the MultiTerm defaults to the leading term.
+        For example:
+            MT.mF == MT.terms[0].mF
+        """
+        if item == 'terms':
+            return object.__getattribute__(self, item)
+        return self.terms[0].__getattribute__(item)
+
+    def __getitem__(self, item: int):
+        return self.terms[item]
 
 ############################################
 #                  Level                   #
@@ -334,7 +356,7 @@ class BaseLevel:
     can directly index them using sublevel names
     """
 
-    def __init__(self, term: Term or List[Term], parent):
+    def __init__(self, term: Term, parent):
         """
         Initialize the level
 
@@ -342,11 +364,8 @@ class BaseLevel:
         :param parent: The 'parent' of the level. Can be another level, or an Atom
         """
         self.parent = parent
-        if type(term) is not list:
-            self.terms = [term]
-        else:
-            self.terms = sorted(term, key=lambda t: t.percentage, reverse=True)
-        self.term = self.terms[0]
+
+        self.term = term
         self.atom = self.get_atom()
         self.manifold = self.get_manifold()
         self.name = self.term.name
@@ -439,7 +458,7 @@ class EnergyLevel(BaseLevel):
         consistent with a transition that the level participates in
     """
 
-    def __init__(self, term: Term or List[Term], level: pint.Quantity, lande: float = None, parent=None,
+    def __init__(self, term: Term, level: pint.Quantity, lande: float = None, parent=None,
                  hfA=Q_(0.0, 'gigahertz'), hfB=Q_(0.0, 'gigahertz'), hfC=Q_(0.0, 'gigahertz')):
         """
         :param term: a Term object containing the level's quantum numbers
@@ -477,7 +496,7 @@ class EnergyLevel(BaseLevel):
         """
         if isinstance(self.parent, Atom):
             for f in np.arange(abs(self.term.J - self.atom.I), self.term.J + self.atom.I + 1):
-                t = [Term(t.conf, t.term, t.J, F=f, quantum_nums=t.quantum_nums, percentage=t.percentage) for t in self.terms]
+                t = Term(self.term.conf, self.term.term, self.term.J, F=f, quantum_nums=self.term.quantum_nums, percentage=self.term.percentage)
                 e = HFLevel(term=t, parent=self)
                 self[f'F={f}'] = e
 
@@ -568,7 +587,7 @@ class HFLevel(BaseLevel):
     An HFLevel defines where it is based on its shift relative to its parent level
     """
 
-    def __init__(self, term: Term or List[Term], parent=None):
+    def __init__(self, term: Term, parent=None):
         """
         :param term: a Term object containing the level's quantum numbers
         :param parent: the atom that the level is contained in
