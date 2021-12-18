@@ -1,3 +1,4 @@
+import collections.abc
 import itertools
 import pickle
 import re
@@ -316,7 +317,7 @@ class Term:
         else:
             return str(int(f * 2)) + '/2'
 
-class MultiTerm:
+class MultiTerm(collections.abc.Sequence):
     def __init__(self, *terms: Term):
         """
         A MultiTerm is a container for multiple terms, useful for situations in which just the leading term won't do. It
@@ -328,16 +329,20 @@ class MultiTerm:
 
     def __getattribute__(self, item):
         """
-        When you need to access a term-liek term, this ensures that the MultiTerm defaults to the leading term.
+        When you need to access a term-like attribute, this ensures that the MultiTerm defaults to the leading term.
         For example:
             MT.mF == MT.terms[0].mF
         """
-        if item == 'terms':
+        try:
             return object.__getattribute__(self, item)
-        return self.terms[0].__getattribute__(item)
+        except AttributeError:
+            return self.terms[0].__getattribute__(item)
 
     def __getitem__(self, item: int):
         return self.terms[item]
+
+    def __len__(self):
+        return self.terms.__len__()
 
 ############################################
 #                  Level                   #
