@@ -1,6 +1,7 @@
 import csv
 import re
 import warnings
+import itertools
 
 import pandas as pd
 from tqdm import tqdm
@@ -47,15 +48,43 @@ def load_NIST_data(species, term_ordered=False, save=False):
     df_clean['Term'] = df_clean['Term'].apply(lambda x: re.sub(r'[a-z] ', '', x))
     df_clean['J'] = df_clean['J'].astype('str')
     df_clean['Level (cm-1)'] = pd.to_numeric(df_clean['Level (cm-1)'], errors='coerce')
-    #  keep only the initial number of the leading percentage for now, replacing NaN with 100% I guess
-    if 'Leading percentages' not in df_clean.columns:
-        df_clean['Leading percentages'] = '100'
-    df_clean['Leading percentages'] = df_clean['Leading percentages'].apply(lambda x: re.sub(r' ?:.*', '', x))
-    df_clean['Leading percentages'] = pd.to_numeric(df_clean['Leading percentages'], errors='coerce')
-    df_clean['Leading percentages'] = df_clean['Leading percentages'].fillna(value=100.0)
+
     if 'Lande' not in df_clean.columns:
         df_clean['Lande'] = None
     df_clean['Lande'] = pd.to_numeric(df_clean['Lande'], errors='coerce')
+
+    ### Parsing NIST's leading percentages column is extremely complicated
+
+    if 'Leading percentages' not in df_clean.columns:
+        df_clean['Leading percentages'] = '100.0'
+    # terms with insufficient first percentage have everything stored in the leading percentages column
+    df_clean.loc[df_clean["Term"] == ('*' or ''), 'Term'] = \
+        df_clean['Leading percentages'].str.extract(r'\ *\d+\ +(.+?)\ *:\ *\d+\ +.+?(:?\ +.+?)?\ *$', expand=False)
+    # extract the relevant data available in the config leading percentage
+    df_clean[['Percentage', 'Percentage_2', 'Configuration_2', 'Term_2']] = \
+        df_clean['Leading percentages'].str.extract(r'\ *(\d+)\ +.+?\ *:\ *(\d+)\ +(.+?)(?:\ +(.+?))?\ *$')
+    # NIST doesn't see fit to give the jj-coupled terms in their second percentages so we extract from the configuration
+    df_clean.loc[df_clean["Term_2"].isnull( ), 'Term_2_int'] = df_clean['Configuration_2'].str.findall(r'\<(.+?)\>')
+    df_clean.loc[~df_clean["Term_2_int"].isnull(), 'Term_2'] = \
+        df_clean["Term_2_int"].map(lambda x: '({}, {})'.format(*x), na_action='ignore')
+    df_clean = df_clean.drop("Term_2_int", axis=1)
+    # Finally, we have to add back in the parts of the second configuration that NIST deemed redundant and left out
+    def reconstitute_conf(c0, c1):
+        # grab any info in c0 that has been removed from c1 and put it back where it belongs
+        if type(c1) != str:
+            return
+        if re.match(r'\(.+?\)\(.+?\)', c1):
+            return re.sub( r'\((.+?)\)', '({})',c0).format(*re.findall(r'\((.+?)\)', c1))
+        elif re.match(r'\(.+?\).+\(.+?\)', c1):
+            return c0.split('(')[0]+c1
+        else:
+            return c1
+    df_clean['Configuration_2'] = df_clean.apply(lambda x: reconstitute_conf(x['Configuration'], x['Configuration_2']), axis=1)
+    df_clean['Percentage'] = pd.to_numeric(df_clean['Percentage'], errors='coerce')
+    df_clean['Percentage_2'] = pd.to_numeric(df_clean['Percentage_2'], errors='coerce')
+    df_clean['Percentage'] = df_clean['Percentage'].fillna(value=100.0)
+    df_clean = df_clean.drop('Leading percentages', axis=1)
+
     pbar.update(1)
     pbar.set_description('data typed')
     # drop rows that don't have a defined level
