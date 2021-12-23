@@ -72,6 +72,12 @@ class Term:
     def __repr__(self):
         return f'Term({self.name})'
 
+    def __eq__(self, other):
+        # FIXME rn this matches multiterms. Is this the behavior I want?
+        return self.quantum_nums == other.quantum_nums and \
+               self.conf == other.conf and \
+               self.term == other.term
+
     # region frac properties
 
     @property
