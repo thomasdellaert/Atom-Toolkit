@@ -45,7 +45,7 @@ class Term:
         self.conf = conf
         self.term = term
         self.percentage = percentage
-        self.parity = (1 if '*' in self.term else 0)
+        self.parity = (-1 if '*' in self.term else 1)
 
         self.J = self.frac_to_float(J)
         self.F = self.frac_to_float(F)
@@ -299,7 +299,7 @@ class Term:
         :param frac: a string formatted as "1/2", "5/2", "3", etc
         :return: the corresponding float
         """
-        if frac is None or '':
+        if frac is (None or ''):
             return None
         if type(frac) == str:
             if '/' in frac:
@@ -359,6 +359,11 @@ class MultiTerm(collections.abc.Sequence):
 
     def __len__(self):
         return self.terms.__len__()
+
+    def __eq__(self, other):
+        if isinstance(other, Term):
+            return self[0] == other
+        return np.all([self[i] == other[i] for i in range(len(self))])
 
     def make_term_copy(self, F=None, mF=None):
         """
