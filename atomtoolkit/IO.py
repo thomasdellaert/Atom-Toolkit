@@ -1,7 +1,6 @@
 import csv
 import re
 import warnings
-import itertools
 
 import pandas as pd
 from tqdm import tqdm

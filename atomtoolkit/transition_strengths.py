@@ -1,14 +1,14 @@
 """
-Tools for calculating the relative transition strengths and allowedness of transitions using angular momentum math.
+Tools for calculating the relative transition strengths and allowed-ness of transitions using angular momentum math.
 Currently also contains some other angular-momentum-heavy functions like converting between coupling schemes, but
 this may eventually get moved either into the Term class or into a module of its own.
 """
 
 import warnings
-
+import functools
 import numpy as np
 
-from .wigner import *
+from .wigner import wigner3j, wigner6j, wigner9j
 
 
 @functools.lru_cache(maxsize=None)
