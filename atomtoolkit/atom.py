@@ -1,7 +1,6 @@
 import collections.abc
 import itertools
 import pickle
-import re
 import warnings
 from typing import List
 
@@ -13,6 +12,8 @@ from tqdm import tqdm
 from . import Q_, ureg
 from .atom_helpers import LevelStructure, TransitionStructure
 from .wigner import wigner3j, wigner6j
+import util
+
 
 Hz = ureg.hertz
 mu_B = 1.39962449361e6  # MHz/G
@@ -47,9 +48,9 @@ class Term:
         self.percentage = percentage
         self.parity = (-1 if '*' in self.term else 1)
 
-        self.J = self.frac_to_float(J)
-        self.F = self.frac_to_float(F)
-        self.mF = self.frac_to_float(mF)
+        self.J = util.frac_to_float(J)
+        self.F = util.frac_to_float(F)
+        self.mF = util.frac_to_float(mF)
 
         self.term_name = f'{self.term}{self.J_frac}'
         if self.F is not None:
@@ -59,10 +60,10 @@ class Term:
 
         self.name = f'{self.conf} {self.term_name}'
 
-        self.coupling = self.get_coupling()
+        self.coupling = util.get_term_coupling(self.term)
 
         if quantum_nums is None:
-            quantum_nums = self.get_quantum_nums()
+            quantum_nums = util.get_quantum_nums(self.conf, self.term)
         self.quantum_nums = quantum_nums
         self.lc, self.sc, self.lo, self.so, self.jc, self.jo, self.l, self.s, self.k = self.quantum_nums
 
@@ -82,178 +83,27 @@ class Term:
 
     @property
     def J_frac(self):
-        return self.float_to_frac(self.J)
+        return util.float_to_frac(self.J)
 
     @J_frac.setter
     def J_frac(self, value):
-        self.J = self.frac_to_float(value)
+        self.J = util.frac_to_float(value)
 
     @property
     def F_frac(self):
-        return self.float_to_frac(self.F)
+        return util.float_to_frac(self.F)
 
     @F_frac.setter
     def F_frac(self, value):
-        self.F = self.frac_to_float(value)
+        self.F = util.frac_to_float(value)
 
     @property
     def mF_frac(self):
-        return self.float_to_frac(self.mF)
+        return util.float_to_frac(self.mF)
 
     @mF_frac.setter
     def mF_frac(self, value):
-        self.mF = self.frac_to_float(value)
-
-    # endregion
-
-    def get_quantum_nums(self):
-        """
-        Calls the appropriate term parsing method in order to (hopefully) extract all usable information
-        :return: a tuple of useful quantum numbers
-        """
-        lc = sc = lo = so = jc = jo = l = s = k = None
-        if self.coupling == 'LS':
-            l, s = self.parse_LS_term()
-        elif self.coupling == 'JK':
-            lc, sc, lo, so, jc, k = self.parse_JK_term()
-        elif self.coupling == 'JJ':
-            lc, sc, lo, so, jc, jo = self.parse_JJ_term()
-        elif self.coupling == 'LK':
-            lc, sc, lo, so, l, k = self.parse_LK_term()
-        return lc, sc, lo, so, jc, jo, l, s, k
-
-    # region parsing functions
-
-    def get_coupling(self):
-        """
-        :return: A string corresponding to the coupling detected in the term symbol
-        """
-        if '[' in self.term:
-            if self.term[0] in 'SPDFGHIKMNOPQRTUVWXYZ':
-                return 'LK'
-            else:
-                return 'JK'
-        elif '(' in self.term:
-            return 'JJ'
-        elif len(self.term) > 1:
-            return 'LS'
-        else:
-            return "unknown"
-
-    def parse_LS_term(self):
-        """
-        Parses an LS-coupled term. Looks for the following forms in self.term:
-            {2S+1}{L}
-        Examples:
-            2F, 3P*, 1S, 6L
-        :return: L, S
-        """
-        # find the following forms: 2F, 3P*, and extract the relevant substrings
-        [(ss, ls)] = re.findall(r'(\d+)([A-Z])', self.term)
-        s = (float(ss) - 1) / 2
-        l = self.let_to_l(ls)
-        return l, s
-
-    def parse_JK_term(self):
-        """
-        Parses a JK-coupled term.
-        Looks for the following forms in self.term:
-            {2S+1}[{K}]
-        Examples:
-            2[3/2], 3[4]*, 1[11/2]
-        Looks for the following forms in self.conf:
-            {2s+1}{L}<{J}>
-        Examples:
-            3D<2>, 2F<7/2>
-
-        :return: Lc, Sc, Lo, So, Jc, K
-        """
-        # find the following forms: 3D<2>, and extract the relevant substrings
-        relevant_parts = re.findall(r'(\d+)([A-Z])\*?(?:<(.+?)>)?', self.conf)
-        if len(relevant_parts) == 2:
-            [(scs, lcs, jcs), (_, los, _)] = relevant_parts
-        else:
-            [(scs, lcs, jcs)] = relevant_parts
-            los = self.conf[-1]
-        # find the following forms: 2[3/2], 3[4]*, and extract the relevant substrings
-        [(sos, ks)] = re.findall(r'(\d+)\[(.+?)]', self.term)
-
-        jc = self.frac_to_float(jcs)
-        k = self.frac_to_float(ks)
-        sc = (float(scs) - 1) / 2
-        so = (float(sos) - 1) / 2
-        lc = self.let_to_l(lcs)
-        lo = self.let_to_l(los)
-
-        return lc, sc, lo, so, jc, k
-
-    def parse_JJ_term(self):
-        """
-         Parses a JJ-coupled term.
-         Looks for the following in self.term:
-             ({Jc, Jo})<{J}
-         Examples:
-             (2, 1/2)<5/2>
-
-         :return: Lc, Sc, Lo, So, Jc, Jo
-         """
-        # find the following forms: 3D<2>, 7p<3/2>, (8,5/2)*<21/2>, and extract the relevant substrings
-        relevant_parts = re.findall(r'(?:(\d+)([A-Za-z])|\(.+?\))\*?<(.+?)>', self.conf)
-        if len(relevant_parts) == 0:  # sometimes the ancestor terms are in the term, not in the config
-            relevant_parts = re.findall(r'(?:(\d+)([A-Za-z])|\(.+?\))\*?<(.+?)>', self.term)
-        [(scs, lcs, jcs), (sos, los, jos)] = relevant_parts
-
-        jc = self.frac_to_float(jcs)
-        jo = self.frac_to_float(jos)
-        lc = self.let_to_l(lcs)
-        lo = self.let_to_l(los)
-        if lcs.isupper():
-            sc = (float(scs) - 1) / 2
-        elif lcs.islower():
-            sc = 0.0
-        else:
-            sc = None
-        if los.isupper():
-            so = (float(sos) - 1) / 2
-        elif los.islower():
-            so = 0.0
-        else:
-            so = None
-
-        return lc, sc, lo, so, jc, jo
-
-    def parse_LK_term(self):
-        """
-        Parses a JK-coupled term.
-        Looks for the following forms in self.term:
-            {L} {2S+1}[{K}]
-        Examples:
-            P 2[3/2], D 3[4]*, G 1[11/2]
-        Looks for the following forms in self.conf:
-            {2s+1}{L}<{J}>
-        Examples:
-            3D, 2F*
-
-        :return: Lc, Sc, Lo, So, L, K
-        """
-        # find the following forms: 3D, and extract the relevant substrings
-        relevant_parts = re.findall(r'\((\d+)([A-Z])\*?\)', self.conf)
-        if len(relevant_parts) == 2:
-            [(scs, lcs), (_, los)] = relevant_parts
-        else:
-            [(scs, lcs)] = relevant_parts
-            los = self.conf[-1]
-        # find the following forms: D 2[3/2], P* 3[4]*, and extract the relevant substrings
-        [(ls, sos, ks)] = re.findall(r'([A-Z])\*? ?(\d+)\[(.+?)]', self.term)
-
-        k = self.frac_to_float(ks)
-        sc = (float(scs) - 1) / 2
-        so = (float(sos) - 1) / 2
-        l = self.let_to_l(ls)
-        lc = self.let_to_l(lcs)
-        lo = self.let_to_l(los)
-
-        return lc, sc, lo, so, l, k
+        self.mF = util.frac_to_float(value)
 
     # endregion
 
@@ -272,66 +122,6 @@ class Term:
     def from_dataframe(cls, df, i=0):
         """Returns a term as listed in the nist ASD csv dataframe generated by the IO module"""
         return Term(df["Configuration"][i], df["Term"][i], df["J"][i], percentage=df["Leading percentages"])
-
-    @staticmethod
-    def let_to_l(let: str) -> int or None:
-        """
-        :param let: a single character in "SPDFGHIKLMNOQRTUVWXYZ" or ""
-        :return: the L-value corresponding to the letter in spectroscopic notation
-        """
-        if let == '':
-            return None
-        if len(let) > 1:
-            raise ValueError('Argument must be a single character in "SPDFGHIKLMNOQRTUVWXYZ" or an empty string')
-        return 'SPDFGHIKLMNOQRTUVWXYZ'.index(let.upper())
-
-    @staticmethod
-    def l_to_let(l: int) -> str:
-        """
-        :param l: a positive integer
-        :return: the corresponding L-value in spectroscopic notation
-        """
-        return 'SPDFGHIKLMNOQRTUVWXYZ'[l]
-
-    @staticmethod
-    def frac_to_float(frac: float or str) -> float or None:
-        """
-        :param frac: a string formatted as "1/2", "5/2", "3", etc
-        :return: the corresponding float
-        """
-        if frac is (None or ''):
-            return None
-        if type(frac) == str:
-            if '/' in frac:
-                (f1, f2) = frac.split('/')
-                return float(f1) / float(f2)
-            else:
-                try:
-                    return float(frac)
-                except TypeError:
-                    raise ValueError("Please input a fraction-formatted string or a float")
-        return frac
-
-    @staticmethod
-    def float_to_frac(f: float or str) -> str or None:
-        """
-        :param f: a half-integer float
-        :return: a string formatted as "1/2", "5/2", "3", etc
-        """
-        if f is None:
-            return None
-        # Assumes n/2, since all the fractions that appear in term symbols are of that form
-        if type(f) == str:
-            if '/' in f:
-                return f
-            try:
-                f = float(f)
-            except TypeError:
-                raise ValueError("Please input either a float or a fraction-formatted string")
-        if (2 * f) % 2 == 0:
-            return str(int(f))
-        else:
-            return str(int(f * 2)) + '/2'
 
 class MultiTerm(collections.abc.Sequence):
     def __init__(self, *terms: Term):
@@ -385,6 +175,7 @@ class MultiTerm(collections.abc.Sequence):
             if type(df[confs[j]][i]) == str:
                 term_objs.append(Term(df[confs[j]][i], df[terms[j]][i], df['J'][i], percentage=df[pcts[j]][i]))
         return MultiTerm(*term_objs)
+
 
 ############################################
 #                  Level                   #
@@ -1027,7 +818,7 @@ class Atom:
             added will bring their EnergyLevels with them
         """
         self.name = name
-        self.I = Term.frac_to_float(I)
+        self.I = util.frac_to_float(I)
         self.B_gauss = B.to(ureg.gauss).magnitude
 
         self.levelsModel = nx.Graph()
@@ -1184,7 +975,7 @@ class Atom:
             for pair in level_pairs:
                 if self.transitions[(pair[0].name, pair[1].name)] is None:
                     t = Transition(pair[0], pair[1])
-                    if  np.any(np.array(t.allowed_types) & np.array(allowed)):
+                    if np.any(np.array(t.allowed_types) & np.array(allowed)):
                         level_pairs.set_description(f'processing ΔJ={delta_j:3} transition {t.name:93}')
                         self.add_transition(t)
                     else:
@@ -1207,8 +998,8 @@ class Atom:
         """
         rows = tqdm(list(df.iterrows()))
         for _, row in rows:
-            j_l = Term.float_to_frac(float(row['j_l']))
-            j_u = Term.float_to_frac(float(row['j_u']))
+            j_l = util.float_to_frac(float(row['j_l']))
+            j_u = util.float_to_frac(float(row['j_u']))
             try:
                 e1 = self.levels[f'{row["conf_l"]} {row["term_l"]}{j_l}']
                 e2 = self.levels[f'{row["conf_u"]} {row["term_u"]}{j_u}']
@@ -1280,7 +1071,7 @@ class Atom:
                 t = sg.edges()[edge]['transition']
                 el, eu, freq = t.E_lower, t.E_upper, t.set_freq.to(Hz).magnitude
                 if el.fixed and eu.fixed and freq != abs(el.level_Hz - eu.level_Hz):
-                    warnings.warn(f'Constraint problem encountered when checking {edge}. Perhaps there is a loop of fixed transitions?')
+                    warnings.warn(f'Constraint problem encountered when checking {edge}. Loop of fixed transitions?')
                 elif eu.fixed:
                     el.level_Hz = eu.level_Hz - freq
                 else:
