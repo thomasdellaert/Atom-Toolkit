@@ -54,22 +54,23 @@ def load_NIST_data(species, term_ordered=False, save=False):
 
     ### Parsing NIST's leading percentages column is extremely complicated
 
+    #    Not all NIST ASD tables even inclue leading percentages
     if 'Leading percentages' not in df_clean.columns:
         df_clean['Leading percentages'] = '100.0'
-    # terms with insufficient first percentage have everything stored in the leading percentages column
+    #    terms with insufficient first percentage have everything stored in the leading percentages column
     df_clean.loc[df_clean["Term"] == ('*' or ''), 'Term'] = \
         df_clean['Leading percentages'].str.extract(r'\ *\d+\ +(.+?)\ *:\ *\d+\ +.+?(:?\ +.+?)?\ *$', expand=False)
-    # extract the relevant data available in the config leading percentage
+    #    extract the relevant data available in the config leading percentage
     df_clean[['Percentage', 'Percentage_2', 'Configuration_2', 'Term_2']] = \
         df_clean['Leading percentages'].str.extract(r'\ *(\d+)\ +.+?\ *:\ *(\d+)\ +(.+?)(?:\ +(.+?))?\ *$')
-    # NIST doesn't see fit to give the jj-coupled terms in their second percentages so we extract from the configuration
+    #    NIST doesn't see fit to give the jj-coupled terms in their second percentages so we extract from the configuration
     df_clean.loc[df_clean["Term_2"].isnull( ), 'Term_2_int'] = df_clean['Configuration_2'].str.findall(r'\<(.+?)\>')
     df_clean.loc[~df_clean["Term_2_int"].isnull(), 'Term_2'] = \
         df_clean["Term_2_int"].map(lambda x: '({}, {})'.format(*x), na_action='ignore')
     df_clean = df_clean.drop("Term_2_int", axis=1)
-    # Finally, we have to add back in the parts of the second configuration that NIST deemed redundant and left out
+    #    Finally, we have to add back in the parts of the second configuration that NIST deemed redundant and left out
     def reconstitute_conf(c0, c1):
-        # grab any info in c0 that has been removed from c1 and put it back where it belongs
+        #    grab any info in c0 that has been removed from c1 and put it back where it belongs
         if type(c1) != str:
             return
         if re.match(r'\(.+?\)\(.+?\)', c1):
@@ -78,6 +79,8 @@ def load_NIST_data(species, term_ordered=False, save=False):
             return c0.split('(')[0]+c1
         else:
             return c1
+    df_clean['Term'] = df_clean['Term'].fillna('')
+    df_clean['Term_2'] = df_clean['Term_2'].fillna('')
     df_clean['Configuration_2'] = df_clean.apply(lambda x: reconstitute_conf(x['Configuration'], x['Configuration_2']), axis=1)
     df_clean['Percentage'] = pd.to_numeric(df_clean['Percentage'], errors='coerce')
     df_clean['Percentage_2'] = pd.to_numeric(df_clean['Percentage_2'], errors='coerce')

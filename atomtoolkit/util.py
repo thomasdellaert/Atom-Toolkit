@@ -80,6 +80,8 @@ def term_to_LS(conf, term, j):
 
 
 def _sets_to_list(sets):
+    # converts the default output of the basis conversion methods below (an unlabeled array of floats) into
+    # a dict that's human-readable
     if len(sets) == 0:
         raise ValueError("Invalid input state")
     return [(str(int(2 * s + 1)) + l_to_let(l), round(100 * ampl ** 2, 2)) for l, s, ampl in sets if ampl != 0]

@@ -9,14 +9,13 @@ import numpy as np
 import pint
 from tqdm import tqdm
 
-from . import Q_, ureg
+from . import Q_, ureg, util
 from .atom_helpers import LevelStructure, TransitionStructure
 from .wigner import wigner3j, wigner6j
-import util
 
 
 Hz = ureg.hertz
-mu_B = 1.39962449361e6  # MHz/G
+mu_B = 1.39962449361e6  # Hz/G
 
 
 ############################################
@@ -947,7 +946,7 @@ class Atom:
                 pass
         return a
 
-    def populate_transitions(self, allowed=(True, True, True)):
+    def populate_transitions(self, allowed=(True, True, True), **_):
         """
         Iterate through every pair of levels in the atom, checking whether a given transition is 'allowed'
         and adding it if it is. Since this involves calculating Clebsch-Gordan coefficients for every possible
@@ -956,7 +955,6 @@ class Atom:
         :param allowed: a tuple of booleans:  ([E1],[M1],[E2])
         """
         max_to_try = 20
-
         allowed_deltas = []
         # since the ordering of the list is potentially E1, M1, E2, M2, etc... and the allowed deltas are 1, 1, 2, 2, etc
         for i in range(len(allowed)):
@@ -1031,12 +1029,12 @@ class Atom:
             if t.E_upper.name == key:
                 A_coeffs[n] = t.A
         try:
-            totalAs = np.sum(list(A_coeffs.values()))
+            totalAs = np.sum([A.magnitude for A in list(A_coeffs.values())])
         except TypeError:
             # TODO: make a custom exception for this? Maybe a whole slew of exceptions to throw
             raise TypeError("At least one transition leading from the given level has no valid A coefficient")
 
-        ratios = {k: t / totalAs for k, t in A_coeffs.items()}
+        ratios = {k: t.magnitude / totalAs for k, t in A_coeffs.items()}
         return ratios
 
     def enforce(self, node_or_trans=None):
