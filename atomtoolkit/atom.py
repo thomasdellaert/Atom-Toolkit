@@ -147,6 +147,9 @@ class MultiTerm(collections.abc.Sequence):
         try:
             return object.__getattribute__(self, item)
         except AttributeError:
+            # FIXME: This causes an infinite recursion if there's actually an attribute problem. Need to explicitly callout
+            #  the methods in Term to make this work :(
+            print(self.terms[0])
             return self.terms[0].__getattribute__(item)
 
     def __getitem__(self, item: int):
@@ -934,12 +937,11 @@ class Atom:
         :param filename:
         :return:
         """
-        file = open(filename, "rb")
-        p = pickle.load(file)
-        file.close()
-        if not isinstance(p, Atom):
-            raise IOError("The indicated file does not contain an Atom object")
-        return p
+        with open(filename, "rb") as file:
+            p = pickle.load(file)
+            if not isinstance(p, Atom):
+                raise IOError("The indicated file does not contain an Atom object")
+            return p
 
     @classmethod
     def from_dataframe(cls, df, name, I=0.0, num_levels=None, B=Q_(0.0, 'G'), **kwargs):

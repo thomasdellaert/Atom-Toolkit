@@ -23,6 +23,8 @@ def l_to_let(l: int or float) -> str:
     if type(l) is float:
         if not l.is_integer():
             raise (ValueError("Requires an integer or an integer-valued float"))
+    if type(l) is str:
+        raise TypeError()
     return 'SPDFGHIKLMNOQRTUVWXYZ'[int(l)]
 
 
