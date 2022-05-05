@@ -28,6 +28,9 @@ class Term:
     different couplings, among other things.
     """
 
+    # TODO: Right now, terms are defined one level deep. In principle, they could be defined recursively
+    #  from the configuration with fewer assumptions
+
     def __init__(self,
                  conf: str, term: str, J: float or str,
                  F: float or str = None, mF: float or str = None,
@@ -523,7 +526,9 @@ class ZLevel(HFLevel):
 
     def __init__(self, term: MultiTerm, parent=None):
         super().__init__(term, parent)
-        self.nonlinear_zeeman = lambda B: 0
+        # FIXME: Originally I wanted this to accept an arbitrary lambda function etc to encompass any
+        #  nonlinearity in the Zeeman shift. I couldn't get it to work with Pickle, so I dropped it for now
+        self.quadratic_zeeman = 0
 
     def get_manifold(self):
         return self.parent.manifold
@@ -536,15 +541,14 @@ class ZLevel(HFLevel):
     def shift_Hz(self):
         """A zeeman sublevel is shifted from its parent by the magnetic field. """
         return self.gF * self.term.mF * mu_B * self.atom.B_gauss \
-               + self.nonlinear_zeeman(self.atom.B_gauss)
+               + self.quadratic_zeeman*self.atom.B_gauss**2
 
-    def set_nonlinear_zeeman(self, func):
-        """
-        Set any function to be added onto the linear Zeeman shift
-        :param func: a function that takes in B in gauss and outputs a shift in Hz
-        example: func = lambda B: 155.305 * B ** 2
-        """
-        self.nonlinear_zeeman = func
+    # def nonlinear_zeeman(self, B):
+    #     """
+    #     Can be overridden to add any functional form to the Zeeman shift
+    #     example: level.nonlinear_zeeman = lambda B: 155.305 * B ** 2
+    #     """
+    #     return 0
 
 
 ############################################
