@@ -518,6 +518,10 @@ class ZLevel(HFLevel):
     to a parent hyperfine sublevel, dependent on the atom's magnetic field. It has no sublevels.
     """
 
+    def __init__(self, term: MultiTerm, parent=None):
+        super().__init__(term, parent)
+        self.nonlinear_zeeman = lambda B: 0
+
     def get_manifold(self):
         return self.parent.manifold
 
@@ -529,7 +533,16 @@ class ZLevel(HFLevel):
     def shift_Hz(self):
         """A zeeman sublevel is shifted from its parent by the magnetic field. """
         # TODO: Breit-Rabi or at least second-order shifts?
-        return self.gF * self.term.mF * mu_B * self.atom.B_gauss
+        return self.gF * self.term.mF * mu_B * self.atom.B_gauss \
+               + self.nonlinear_zeeman(self.atom.B_gauss)
+
+    def set_nonlinear_zeeman(self, func):
+        """
+        Set any function to be added onto the linear Zeeman shift
+        :param func: a function that takes in B in gauss and outputs a shift in Hz
+        example: func = lambda B: 155.305 * B ** 2
+        """
+        self.nonlinear_zeeman = func
 
 
 ############################################
