@@ -32,10 +32,11 @@ class Term:
     #  from the configuration with fewer assumptions
 
     __slots__ = ['conf', 'term', 'percentage', 'parity',
-                    'J', 'F', 'mF',
-                    'term_name', 'short_name', 'name',
-                    'coupling', 'quantum_nums',
-                    'lc', 'sc', 'lo', 'so', 'jc', 'jo', 'l', 's', 'k']
+                 'J', 'F', 'mF',
+                 'J_frac', 'F_frac', 'mF_frac',
+                 'term_name', 'short_name', 'name',
+                 'coupling', 'quantum_nums',
+                 'lc', 'sc', 'lo', 'so', 'jc', 'jo', 'l', 's', 'k']
 
     def __init__(self,
                  conf: str, term: str, J: float or str,
@@ -58,6 +59,8 @@ class Term:
         self.J = util.frac_to_float(J)
         self.F = util.frac_to_float(F)
         self.mF = util.frac_to_float(mF)
+        self.J_frac, self.F_frac, self.mF_frac = util.float_to_frac(self.J), util.float_to_frac(self.F), util.float_to_frac(
+            self.mF)
 
         self.term_name = f'{self.term}{self.J_frac}'
         self.short_name = f'{self.term}{self.J_frac}'
@@ -88,34 +91,6 @@ class Term:
         return self.quantum_nums == other.quantum_nums and \
                self.conf == other.conf and \
                self.term == other.term
-
-    # region frac properties
-
-    @property
-    def J_frac(self):
-        return util.float_to_frac(self.J)
-
-    @J_frac.setter
-    def J_frac(self, value):
-        self.J = util.frac_to_float(value)
-
-    @property
-    def F_frac(self):
-        return util.float_to_frac(self.F)
-
-    @F_frac.setter
-    def F_frac(self, value):
-        self.F = util.frac_to_float(value)
-
-    @property
-    def mF_frac(self):
-        return util.float_to_frac(self.mF)
-
-    @mF_frac.setter
-    def mF_frac(self, value):
-        self.mF = util.frac_to_float(value)
-
-    # endregion
 
     def make_term_copy(self, F=None, mF=None):
         """
@@ -551,7 +526,7 @@ class ZLevel(HFLevel):
     def shift_Hz(self):
         """A zeeman sublevel is shifted from its parent by the magnetic field. """
         return self.gF * self.term.mF * mu_B * self.atom.B_gauss \
-               + self.quadratic_zeeman*self.atom.B_gauss**2
+               + self.quadratic_zeeman * self.atom.B_gauss ** 2
 
     # def nonlinear_zeeman(self, B):
     #     """
