@@ -50,6 +50,7 @@ class LorentzianLineShape(LineShape):
     def __init__(self, gamma):
         super().__init__()
         self.gamma = gamma
+        self.fwhm = self.gamma
 
     def shape_func(self, x, x0, **kwargs):
         width = self.gamma
@@ -104,9 +105,9 @@ class GaussianLineShape(LineShape):
     def __init__(self, sigma):
         super().__init__()
         self.sigma = sigma
+        self.fwhm = self.sigma * 2.355
 
     def shape_func(self, x, x0, **kwargs):
-        width = self.sigma * 2.355
         # TODO: technically with a line/laser of finite linewidth this can broaden into a Voigt profile
         ampl = 1.0
         if 'ampl' in kwargs:
