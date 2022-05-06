@@ -31,6 +31,12 @@ class Term:
     # TODO: Right now, terms are defined one level deep. In principle, they could be defined recursively
     #  from the configuration with fewer assumptions
 
+    __slots__ = ['conf', 'term', 'percentage', 'parity',
+                    'J', 'F', 'mF',
+                    'term_name', 'short_name', 'name',
+                    'coupling', 'quantum_nums',
+                    'lc', 'sc', 'lo', 'so', 'jc', 'jo', 'l', 's', 'k']
+
     def __init__(self,
                  conf: str, term: str, J: float or str,
                  F: float or str = None, mF: float or str = None,
@@ -129,6 +135,7 @@ class Term:
 
 
 class MultiTerm(collections.abc.Sequence):
+
     def __init__(self, *terms: Term):
         """
         A MultiTerm is a container for multiple terms, useful for situations in which just the leading term won't do. It
@@ -144,13 +151,13 @@ class MultiTerm(collections.abc.Sequence):
         For example:
             MT.mF == MT.terms[0].mF
         """
-        try:
-            return object.__getattribute__(self, item)
-        except AttributeError:
-            # FIXME: This causes an infinite recursion if there's actually an attribute problem. Need to explicitly callout
-            #  the methods in Term to make this work :(
-            print(self.terms[0])
+        if item in Term.__slots__:
             return self.terms[0].__getattribute__(item)
+        return object.__getattribute__(self, item)
+
+    @property
+    def full_name(self):
+        return f'{self.name} ({self.percentage}%)'
 
     def __getitem__(self, item: int):
         return self.terms[item]
@@ -926,9 +933,8 @@ class Atom:
                 filename = filename + ".atom"
         except IndexError:
             filename = filename + ".atom"
-        file = open(filename, "wb")
-        pickle.dump(self, file)
-        file.close()
+        with open(filename, "wb") as file:
+            pickle.dump(self, file)
 
     @classmethod
     def load(cls, filename):
