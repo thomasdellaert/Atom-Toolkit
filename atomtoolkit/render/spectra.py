@@ -8,10 +8,10 @@ import matplotlib.colors
 from atomtoolkit.atom import BaseTransition, Transition, HFTransition, ZTransition
 import colorsys
 from .lineshapes import LineShape, LorentzianLineShape
-from typing import List, Type
+from typing import List, Type, Callable
 import itertools
 
-# FIXME: Zeeman transitions kind of work, but it's a bit of a bodge and the colors are off.
+# TODO: Make this use the axis method instead of pyplot
 
 def plot_transitions(transitions: Type[BaseTransition] or List[Type[BaseTransition]],
                      lineshape: Type[LineShape], **kwargs):
@@ -60,53 +60,31 @@ def plot_hyperfine_spectrum(transitions: Type[BaseTransition] or List[Type[BaseT
     else:
         lines = list(transitions.values())
 
-    lower_Fs, upper_Fs = [], []
-    for t in lines:
-        lower_Fs.append(t.E_lower.term.F)
-        upper_Fs.append(t.E_upper.term.F)
-    num_lower_Fs = {F: lower_Fs.count(F) for F in np.unique(lower_Fs)}
-    num_upper_Fs = {F: upper_Fs.count(F) for F in np.unique(upper_Fs)}
-    F_pairs = list(zip(lower_Fs, upper_Fs))
-    min_upper_Fs = {Flo: min([Fp[1] for Fp in F_pairs if Fp[0] == Flo]) for Flo in lower_Fs}
-    min_lower_Fs = {Fhi: min([Fp[0] for Fp in F_pairs if Fp[1] == Fhi]) for Fhi in upper_Fs}
-
-    def color_by_F(line, cmap="tab10"):
-        colormap = plt.get_cmap(cmap)
-
-        # depending on coloring by upper/lower, one set of Fs determines color, while the other determines shade
-        if not (coloring == 'u'):
-            color_num_Fs = num_lower_Fs
-            color_F = line.E_lower.term.F
-            shade_F = line.E_upper.term.F
-            min_shade_Fs = min_upper_Fs
-        else:
-            color_num_Fs = num_upper_Fs
-            color_F = line.E_upper.term.F
-            shade_F = line.E_lower.term.F
-            min_shade_Fs = min_lower_Fs
-
-        # pick a color depending on the color F
-        col = colormap(list(color_num_Fs.keys()).index(color_F))
-        # convert it to HLS
-        col = colorsys.rgb_to_hls(*matplotlib.colors.to_rgb(col))
-        # set the lightness depending on the shade F and convert back to RGB
-        lightness = 0.2 + 0.6 * (shade_F - min_shade_Fs[color_F] + 1) / (color_num_Fs[color_F] + 1)
-        col = colorsys.hls_to_rgb(col[0], lightness, col[2])
-        return col
-
-    if coloring == 'l' or coloring == 'u':
-        color_func = color_by_F
+    if coloring == 'l':
+        color_dict = color_table_from_property(lines,
+                                               property_color=lambda t: t.E_lower.term.F,
+                                               property_shade=lambda t: t.E_upper.term.F,
+                                               cmap=kwargs.pop('cmap', 'tab10'))
+        color_func = lambda t: color_dict[t]
+    elif coloring == 'u':
+        color_dict = color_table_from_property(lines,
+                                               property_color=lambda t: t.E_upper.term.F,
+                                               property_shade=lambda t: t.E_lower.term.F,
+                                               cmap=kwargs.pop('cmap', 'tab10'))
+        color_func = lambda t: color_dict[t]
+    elif isinstance(coloring, Callable):
+        color_func = coloring
     else:
         color_func = None
 
     plot_transitions(lines, lineshape=lineshape, color_func=color_func, unit="GHz", **kwargs)
 
 def plot_zeeman_spectrum(transitions: Type[BaseTransition] or List[Type[BaseTransition]],
-                         lineshape: Type[LineShape] = LorentzianLineShape, **kwargs):
-    # TODO: Currently all mFs get the same color. Generalize the colorize function in
-    #  plot_hyperfine_spectrum to color by any parameter
-    if isinstance(transitions, Transition):
+                         lineshape: Type[LineShape] = LorentzianLineShape, coloring='transition_type', **kwargs):
+    if isinstance(transitions, HFTransition):
         lines = list(transitions.values())
+    elif isinstance(transitions, Transition):
+        lines = list(itertools.chain.from_iterable(list(t.values()) for t in list(transitions.values())))
     elif isinstance(transitions, list):
         lines = list(itertools.chain.from_iterable(list(t.values() for t in transitions)))
     else:
@@ -119,4 +97,56 @@ def plot_zeeman_spectrum(transitions: Type[BaseTransition] or List[Type[BaseTran
         mF1 = transition.E_upper.term.mF_frac
         return f'F={F0}, mF={mF0} → F={F1}, mF={mF1}'
 
-    plot_hyperfine_spectrum(lines, lineshape=lineshape, label_func=label_func, **kwargs)
+    if coloring == 'l':
+        color_dict = color_table_from_property(lines,
+                                               property_color=lambda t: t.E_lower.term.mF,
+                                               property_shade=lambda t: t.E_upper.term.mF,
+                                               cmap=kwargs.pop('cmap', 'tab10'))
+        color_func = lambda t: color_dict[t]
+    elif coloring == 'u':
+        color_dict = color_table_from_property(lines,
+                                               property_color=lambda t: t.E_upper.term.mF,
+                                               property_shade=lambda t: t.E_lower.term.mF,
+                                               cmap=kwargs.pop('cmap', 'tab10'))
+        color_func = lambda t: color_dict[t]
+    elif coloring == 'transition_type':
+        color_dict = color_table_from_property(lines,
+                                               property_color=lambda t: t.E_upper.term.mF - t.E_lower.term.mF,
+                                               property_shade=lambda t: t.E_lower.term.mF,
+                                               cmap=kwargs.pop('cmap', 'tab10'))
+        color_func = lambda t: color_dict[t]
+    elif isinstance(coloring, Callable):
+        color_func = coloring
+    else:
+        color_func = None
+
+    plot_transitions(lines, lineshape=lineshape, color_func=color_func, unit="GHz", **kwargs)
+
+def color_table_from_property(items: List[Type[BaseTransition]],
+                              property_color: Callable, property_shade: Callable=None, cmap="tab10"):
+    main_props, secondary_props = [], []
+    for t in items:
+        main_props.append(property_color(t))
+        secondary_props.append(property_shade(t))
+    # the number of colors that will be needed
+    num_main_props = {F: main_props.count(F) for F in np.unique(main_props)}
+    prop_pairs = list(zip(main_props, secondary_props))
+    # a dict that yields the lowest secondary property associated with each main property
+    min_main_props = {p0: min([Fp[1] for Fp in prop_pairs if Fp[0] == p0]) for p0 in main_props}
+
+    def color_by_properties(t):
+        colormap = plt.get_cmap(cmap)
+
+        color_prop = property_color(t)
+        shade_prop = property_shade(t)
+
+        # pick a color depending on the color property
+        col = colormap(list(num_main_props.keys()).index(color_prop))
+        # convert it to HLS
+        col = colorsys.rgb_to_hls(*matplotlib.colors.to_rgb(col))
+        # set the lightness depending on the shade property and convert back to RGB
+        lightness = 0.2 + 0.6 * (shade_prop - min_main_props[color_prop] + 1) / (num_main_props[color_prop] + 1)
+        col = colorsys.hls_to_rgb(col[0], lightness, col[2])
+        return col
+
+    return {t: color_by_properties(t) for t in items}
