@@ -246,6 +246,8 @@ class BaseLevel:
         return len(self._sublevels)
 
     def __getitem__(self, key):
+        if self.atom.I == 0 and 'mJ' in key:
+            return self._sublevels[f'F={self.term.J_frac}'][key.replace('mJ', 'mF')]
         return self._sublevels[key]
 
     def __setitem__(self, key, level):
@@ -376,25 +378,27 @@ class EnergyLevel(BaseLevel):
         and many terms with intermediate coupling will be well off from the true value
         :return: gJ
         """
-        # TODO currently this only takes the leading term. Update with MultiTerms in mind
         from .transition_strengths import JJ_to_LS, JK_to_LS, LK_to_LS
-        if self.term.coupling == 'LS':
-            terms = np.array([[self.term.l], [self.term.s], [1.0]])
-        elif self.term.coupling == 'JJ':
-            terms = JJ_to_LS(self.term.J, self.term.jc, self.term.jo, self.term.lc, self.term.sc, self.term.lo,
-                             self.term.so)
-        elif self.term.coupling == 'JK':
-            terms = JK_to_LS(self.term.J, self.term.jc, self.term.k, self.term.lc, self.term.sc, self.term.lo,
-                             self.term.so)
-        elif self.term.coupling == 'LK':
-            terms = LK_to_LS(self.term.J, self.term.l, self.term.k, self.term.sc, self.term.so)
-        else:
-            return 0.0
+        total = 0
+        for pct, term in self.term.terms_dict.items():
+            if term.coupling == 'LS':
+                terms = np.array([[self.term.l], [self.term.s], [1.0]])
+            elif term.coupling == 'JJ':
+                terms = JJ_to_LS(self.term.J, self.term.jc, self.term.jo, self.term.lc, self.term.sc, self.term.lo,
+                                 self.term.so)
+            elif term.coupling == 'JK':
+                terms = JK_to_LS(self.term.J, self.term.jc, self.term.k, self.term.lc, self.term.sc, self.term.lo,
+                                 self.term.so)
+            elif term.coupling == 'LK':
+                terms = LK_to_LS(self.term.J, self.term.l, self.term.k, self.term.sc, self.term.so)
+            else:
+                return 0.0
 
-        J = self.term.J
-        ls, ss, percents = terms
+            J = term.J
+            ls, ss, percents = terms
 
-        return sum(percents * (1 + 1.0023 * (J * (J + 1) + ss * (ss + 1) - ls * (ls + 1)) / (2 * J * (J + 1))))
+            total += pct * sum(percents * (1 + 1.0023 * (J * (J + 1) + ss * (ss + 1) - ls * (ls + 1)) / (2 * J * (J + 1))))
+        return total
 
     @classmethod
     def from_dataframe(cls, df, i=0):
@@ -1034,7 +1038,7 @@ class Atom:
             totalAs = np.sum([A.magnitude for A in list(A_coeffs.values())])
         except TypeError:
             # TODO: make a custom exception for this? Maybe a whole slew of exceptions to throw
-            raise TypeError("At least one transition leading from the given level has no valid A coefficient")
+            raise TypeError(f"At least one transition leading from {key} has no valid A coefficient")
 
         ratios = {k: t.magnitude / totalAs for k, t in A_coeffs.items()}
         return ratios
