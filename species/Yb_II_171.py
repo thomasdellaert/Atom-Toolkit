@@ -6,9 +6,9 @@ from atomtoolkit import Q_, IO
 from atomtoolkit.atom import Transition
 import os
 
-RESOURCE_PATH = os.path.abspath('../../resources')
-TRANSITIONS_PATH = os.path.abspath('../../resources/Yb_II_Oscillator_Strengths.csv')
-HYPERFINE_PATH = os.path.abspath('../../resources/171Yb_Hyperfine.csv')
+RESOURCE_PATH = os.path.abspath('../resources')
+TRANSITIONS_PATH = os.path.abspath('../resources/Yb_II_Oscillator_Strengths.csv')
+HYPERFINE_PATH = os.path.abspath('../resources/171Yb_Hyperfine.csv')
 
 NAME = '171Yb II'
 I = 1/2

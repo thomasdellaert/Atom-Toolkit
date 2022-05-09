@@ -9,11 +9,10 @@ import numpy as np
 import pint
 from tqdm import tqdm
 
-from . import Q_, ureg, util
+from . import Q_, ureg, util, Hz
 from .atom_helpers import LevelStructure, TransitionStructure
 from .wigner import wigner3j, wigner6j
 
-Hz = ureg.hertz
 mu_B = 1.39962449361e6  # Hz/G
 
 
@@ -87,7 +86,7 @@ class Term:
         return f'Term({self.name})'
 
     def __eq__(self, other):
-        # FIXME rn this matches multiterms. Is this the behavior I want?
+        # CONSIDER: rn this matches multiterms. Is this the behavior I want?
         return self.quantum_nums == other.quantum_nums and \
                self.conf == other.conf and \
                self.term == other.term
@@ -997,7 +996,7 @@ class Atom:
 
     def populate_transitions_df(self, df, **kwargs):
         """
-        # TODO: move this outside the atom class?
+        # CONSIDER: move this outside the atom class?
         Load transitions into the Atom from a dataframe generated from the IO module's load_transition_data function
         """
         rows = tqdm(list(df.iterrows()))
@@ -1025,7 +1024,7 @@ class Atom:
 
     def state_lifetime(self, level):
         ts = self.linked_levels(level).values()
-        total_A = sum((t for t in ts if t.E_upper is level))
+        total_A = sum((t.A for t in ts if t.E_upper is self.levels[level]))
         return 1 / (total_A / (2 * np.pi))
 
     def compute_branching_ratios(self, key):

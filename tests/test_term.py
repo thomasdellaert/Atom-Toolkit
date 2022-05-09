@@ -47,46 +47,56 @@ class TestTerm:
             assert term == term2
             assert not(term is term2)
 
+    def test_str(self):
+        for term in TestTerm.terms:
+            assert str(term) == term.name
+
+    def test_repr(self):
+        for term in TestTerm.terms:
+            assert term.name in term.__repr__
+
 
 class TestMultiTerm:
     t1_100 = Term('4f14.6s', '2S', '1/2', percentage=100.0)
     t1_60 = Term('4f14.6s', '2S', '1/2', percentage=60.0)
     t2_40 = Term('4f14.6d', '2D', '5/2', percentage=40.0)
 
-    def test_getattribute(self):
-        m = MultiTerm(self.t1_100)
-        assert self.t1_100.quantum_nums == m.quantum_nums
-        assert self.t1_100.name == m.name
-        assert m == self.t1_100
-        assert m.terms == [self.t1_100]
-        assert m.terms_dict == {100.0: self.t1_100}
+    m100 = MultiTerm(t1_100)
+    m6040 = MultiTerm(t1_60, t2_40)
 
-        m = MultiTerm(self.t1_60, self.t2_40)
-        assert self.t1_60.quantum_nums == m.quantum_nums
-        assert self.t1_60.name == m.name
-        assert m == self.t1_60
-        assert m.terms == [self.t1_60, self.t2_40]
-        assert m.terms_dict == {60.0: self.t1_60, 40.0: self.t2_40}
+    def test_getattribute(self):
+        assert self.t1_100.quantum_nums == self.m100.quantum_nums
+        assert self.t1_100.name == self.m100.name
+        assert self.m100 == self.t1_100
+        assert self.m100.terms == [self.t1_100]
+        assert self.m100.terms_dict == {100.0: self.t1_100}
+
+        assert self.t1_60.quantum_nums == self.m6040.quantum_nums
+        assert self.t1_60.name == self.m6040.name
+        assert self.m6040 == self.t1_60
+        assert self.m6040.terms == [self.t1_60, self.t2_40]
+        assert self.m6040.terms_dict == {60.0: self.t1_60, 40.0: self.t2_40}
 
     def test_len(self):
-        m = MultiTerm(self.t1_60, self.t2_40)
-        assert len(m) == 2
+        assert len(self.m6040) == 2
 
     def test_getitem(self):
-        m = MultiTerm(self.t1_60, self.t2_40)
-        assert m[0] == self.t1_60
-        assert m[1] == self.t2_40
-        assert m == self.t1_60
+        assert self.m6040[0] == self.t1_60
+        assert self.m6040[1] == self.t2_40
+        assert self.m6040 == self.t1_60
 
     def test_copy(self):
-        m = MultiTerm(self.t1_60, self.t2_40)
-        m1 = m.make_term_copy()
-        assert m == m1
-        assert m is not m1
-        for i in range(len(m)):
-            assert m[i] == m1[i]
-            assert m[i] is not m1[i]
+        m1 = self.m6040.make_term_copy()
+        assert self.m6040 == m1
+        assert self.m6040 is not m1
+        for i in range(len(self.m6040)):
+            assert self.m6040[i] == m1[i]
+            assert self.m6040[i] is not m1[i]
 
-        m2 = m.make_term_copy(F=1)
+        m2 = self.m6040.make_term_copy(F=1)
         assert m2[0].F == 1
         assert m2[1].F == 1
+
+    def test_full_name(self):
+        assert self.m100.full_name == '4f14.6s 2S1/2 (100.0%)'
+        assert self.m6040.full_name == '4f14.6s 2S1/2 (60.0%)'

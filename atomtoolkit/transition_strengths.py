@@ -127,38 +127,7 @@ def LK_to_LS(J, L, K, sc, so):
 
 
 if __name__ == '__main__':
-    # I_0 = 2.5
-    # L_0 = 3
-    # L_1 = 3
-    # S_0 = 0.5
-    # S_1 = 0.5
-    # J_0 = 3.5
-    # J_1 = 3.5
-    # F_0 = 4
-    # F_1 = 3
-    # G = [-4, -3, -2, -1, 0, 1, 2, 3, 4]
-    # E = [-3, -2, -1, 0, 1, 2, 3]
-    # print(wigner3j(0.0, 0.5, 0.5, 0.0, 0.5, -0.5))
-    # print("M1")
-    # flg = False
-    # for mg in G:
-    #     for me in E:
-    #         s = M1_transition_strength_avg(I_0, J_0, F_0, mg, J_1, F_1, me)
-    #         if s != 0:
-    #             flg = True
-    #             print("{0:.6f} {1:} {2:}".format(s, mg, me))
-    # if not flg:
-    #     print("no allowed transitions")
-    # print("E1")
-    # flg = False
-    # for mg in G:
-    #     for me in E:
-    #         s = E1_transition_strength_avg(I_0, J_0, F_0, mg, J_1, F_1, me)
-    #         if s != 0:
-    #             flg = True
-    #             print("{0:.6f} {1:} {2:}".format(s, mg, me))
-    # if not flg:
-    #     print("no allowed transitions")
+
     print(JJ_to_LS(3.5, 3.5, 0, 3, 0.5, 1, 1))
 
     print(JK_to_LS(0.5, 3.5, 1.5, 3, 0.5, 2, 1))

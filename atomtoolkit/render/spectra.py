@@ -54,7 +54,7 @@ def plot_transitions(transitions: Type[BaseTransition] or List[Type[BaseTransiti
 
 def plot_hyperfine_spectrum(transitions: Type[BaseTransition] or List[Type[BaseTransition]],
                             lineshape: Type[LineShape] = LorentzianLineShape, coloring='l', **kwargs):
-    # TODO: reconsider the name, since this is theoretically able to plot *any* sub-spectrum
+    # CONSIDER: reconsider the name, since this is theoretically able to plot *any* sub-spectrum
     if isinstance(transitions, list):
         lines = list(itertools.chain.from_iterable(list(t.values() for t in transitions)))
     else:

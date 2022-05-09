@@ -2,6 +2,7 @@
 <module type="PYTHON_MODULE" version="4">
   <component name="NewModuleRootManager">
     <content url="file://$MODULE_DIR$">
+      <sourceFolder url="file://$MODULE_DIR$/tests" isTestSource="true" />
       <excludeFolder url="file://$MODULE_DIR$/venv" />
       <excludeFolder url="file://$MODULE_DIR$/src/.ipynb_checkpoints" />
       <excludeFolder url="file://$MODULE_DIR$/.ipynb_checkpoints" />
@@ -10,7 +11,11 @@
     <orderEntry type="jdk" jdkName="Python 3.9 (Atom Toolkit)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
-  <component name="PyDocumentationSettings">
-    <option name="renderExternalDocumentation" value="true" />
+  <component name="PyNamespacePackagesService">
+    <option name="namespacePackageFolders">
+      <list>
+        <option value="$MODULE_DIR$/atomtoolkit" />
+      </list>
+    </option>
   </component>
 </module>

@@ -193,7 +193,7 @@ def apply_transition_csv(atom, filename):
     # TODO: apply_transition_csv
 
 
-def generate_hf_csv(atom, filename=None, blank=False, def_A=Q_(0.0, 'gigahertz')):
+def generate_hf_csv(atom, filename=None, blank=False, def_A=Q_(0.0, 'GHz')):
     """
     Output the hyperfine coefficients of every energy level in the atom
     :param atom: the atom from which to generate the csv
@@ -256,7 +256,7 @@ def generate_full_from_dataframe(df, name, I=0.0, **kwargs):
     if 'hf_csv' in kwargs:
         try:
             apply_hf_csv(a, kwargs['hf_csv'])
-        except FileNotFoundError:
+        except (FileNotFoundError, TypeError) as e:
             pass
     if 'transitions_csv' in kwargs:
         apply_transition_csv(a, kwargs['transitions_csv'])

@@ -15,3 +15,11 @@ _c.add_transformation('[wavenumber]', '[frequency]',
 _c.add_transformation('[frequency]', '[wavenumber]',
                       lambda ureg, x: x / ureg.speed_of_light)
 ureg.enable_contexts('spectroscopy')
+
+c = ureg.speed_of_light
+Hz = ureg.Hz
+kHz = ureg.Hz * 1e3
+MHz = ureg.Hz * 1e6
+GHz = ureg.Hz * 1e9
+THz = ureg.Hz * 1e12
+G = ureg.G

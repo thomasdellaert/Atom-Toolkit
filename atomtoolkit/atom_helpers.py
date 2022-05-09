@@ -85,4 +85,4 @@ class TransitionStructure:
             return [key for key in self.keys() if key[0] != key[1]]
         return list(self.keys())
 
-# TODO: search_levels? search_transitions?
+# CONSIDER: search_levels? search_transitions?
