@@ -1,6 +1,7 @@
 import pytest
-from atomtoolkit.atom import Atom, Transition
-from atomtoolkit import Hz, Q_
+from atomtoolkit.atom import Atom, Transition, EnergyLevel, Term
+from atomtoolkit import *
+import numpy as np
 
 # class TestAtomCreation:
 #     def test_creation(self):
@@ -11,82 +12,87 @@ from atomtoolkit import Hz, Q_
 #         import atomtoolkit.species.Yb_II_173
 #         assert isinstance(atomtoolkit.species.Yb_II_173.Yb173, Atom)
 
+@pytest.fixture
+def dummy_atom():
+    a = Atom(name="dummy")
+    gs = EnergyLevel(Term('1s2.2s', '2S', 0.5), level=0.0 * Hz)
+    a.add_level(gs)
+    e1 = EnergyLevel(Term('1s2.2p', '2P', 1.5), level=200 * THz)
+    a.add_level(e1)
+    e2 = EnergyLevel(Term('1s2.3d', '2D', 2.5), level=100 * THz)
+    a.add_level(e2)
+    tc = Transition(gs, e1, A=10 * MHz)
+    a.add_transition(tc)
+    tw = Transition(gs, e2, A=100 * Hz)
+    a.add_transition(tw)
+    td = Transition(e1, e2, A=5 * MHz)
+    a.add_transition(td)
+    return a
 
-class TestAtomComponents:
-    yb174 = Atom.load('../species/Yb_II_174.atom')
-    yb171 = Atom.load('../species/Yb_II_171.atom')
-    yb173 = Atom.load('../species/Yb_II_173.atom')
+class TestAtom:
+    def test_init(self, dummy_atom):
+        assert dummy_atom.name == 'dummy'
+        assert dummy_atom.I == 0
+        assert dummy_atom.B_gauss == 0
 
-    def test_instantiation(self):
-        assert isinstance(self.yb171, Atom)
-        assert isinstance(self.yb174, Atom)
-        assert isinstance(self.yb173, Atom)
+    def test_str(self, dummy_atom):
+        assert str(dummy_atom) == 'dummy'
 
-    def test_save(self):
-        pass
+    def test_repr(self, dummy_atom):
+        assert dummy_atom.__repr__().startswith('Atom')
 
-    def test_add_level(self):
-        pass
+    def test_add_level_and_transition(self, dummy_atom):
+        d = EnergyLevel(Term('1s2.4s', '2S', 0.5), level=10.0 * THz)
+        dummy_atom.add_level(d)
+        assert d in dummy_atom.levels.values()
 
-    def test_add_transition(self):
-        t = Transition(self.yb171.levels['4f13.(2F*).6s2 2F*7/2'],
-                       self.yb171.levels['4f13.(2F*<7/2>).5d.6s.(3D) 3[3/2]*3/2'],
-                       1e5*Hz)
-        self.yb171.add_transition(t)
-        assert self.yb171.transitions[('4f13.(2F*).6s2 2F*7/2', '4f13.(2F*).6s2 2F*7/2')] is not None
-        t = Transition(self.yb173.levels['4f13.(2F*).6s2 2F*7/2'],
-                       self.yb173.levels['4f13.(2F*<7/2>).5d.6s.(3D) 3[3/2]*3/2'],
-                       1e5 * Hz)
-        self.yb173.add_transition(t)
-        assert self.yb173.transitions[('4f13.(2F*).6s2 2F*7/2', '4f13.(2F*).6s2 2F*7/2')] is not None
-        t = Transition(self.yb174.levels['4f13.(2F*).6s2 2F*7/2'],
-                       self.yb174.levels['4f13.(2F*<7/2>).5d.6s.(3D) 3[3/2]*3/2'],
-                       1e5 * Hz)
-        self.yb174.add_transition(t)
-        assert self.yb174.transitions[('4f13.(2F*).6s2 2F*7/2', '4f13.(2F*).6s2 2F*7/2')] is not None
+        td = Transition(d, dummy_atom.levels['1s2.2s 2S1/2'], A=50 * MHz)
+        dummy_atom.add_transition(td)
 
-    def test_B(self):
-        self.yb171.B = Q_(0.0, 'G')
-        zero_field = self.yb171.levels['4f14.6s 2S1/2']['F=1']['mF=1'].level
-        assert self.yb171.B == Q_(0.0, 'G')
-        assert self.yb171.B_gauss == 0.0
-        self.yb171.B = Q_(5.0, 'G')
-        small_field = self.yb171.levels['4f14.6s 2S1/2']['F=1']['mF=1'].level
-        assert self.yb171.B == Q_(5.0, 'G')
-        assert self.yb171.B_gauss == 5.0
-        assert small_field > zero_field
+    def test_B(self, dummy_atom):
+        assert dummy_atom.B == Q_(0.0, 'G')
+        dummy_atom.B = Q_(10.0, 'G')
+        assert dummy_atom.B_gauss == 10.0
+        assert dummy_atom.B == Q_(10.0, 'G')
 
-        self.yb174.B = Q_(0.0, 'G')
-        zero_field = self.yb174.levels['4f14.6s 2S1/2']['F=1/2']['mF=1/2'].level
-        assert self.yb174.B == Q_(0.0, 'G')
-        assert self.yb174.B_gauss == 0.0
-        self.yb174.B = Q_(5.0, 'G')
-        small_field = self.yb174.levels['4f14.6s 2S1/2']['F=1/2']['mF=1/2'].level
-        assert self.yb174.B == Q_(5.0, 'G')
-        assert self.yb174.B_gauss == 5.0
-        assert small_field > zero_field
+    def test_save(self, dummy_atom):
+        dummy_atom.save('dummy')
+        dummy_atom.save('dummy.atom')
 
-    def test_linked_levels(self):
-        assert len(self.yb171.linked_levels('4f14.6p 2P*3/2')) > 0
-        assert len(self.yb173.linked_levels('4f14.6p 2P*3/2')) > 0
-        assert len(self.yb174.linked_levels('4f14.6p 2P*3/2')) > 0
+    def test_load(self):
+        da = Atom.load('dummy.atom')
+        assert da.name == 'dummy'
 
-    def test_state_lifetime(self):
-        assert self.yb171.state_lifetime('4f14.6p 2P*3/2') > 0
-        assert self.yb173.state_lifetime('4f14.6p 2P*3/2') > 0
-        assert self.yb174.state_lifetime('4f14.6p 2P*3/2') > 0
+    def test_from_dataframe(self):
+        pass #TODO
 
-    def test_branching_ratios(self):
-        assert len(self.yb171.compute_branching_ratios('4f14.6p 2P*3/2')) == 3
-        assert len(self.yb173.compute_branching_ratios('4f14.6p 2P*3/2')) == 3
-        assert len(self.yb174.compute_branching_ratios('4f14.6p 2P*3/2')) == 3
+    def test_populate_transitions(self):
+        pass #TODO
 
-    def test_energy_level_access(self):
-        assert len(self.yb171.levels['4f13.(2F*).6s2 2F*7/2'].sublevels()) == 2
-        assert self.yb171.levels['4f14.6s 2S1/2']['F=1']['mF=1'] is not None
-        assert self.yb174.levels['4f14.6s 2S1/2']['F=1/2']['mF=1/2'] is not None
-        assert self.yb174.levels['4f14.6s 2S1/2']['mJ=1/2'] is not None
+    def test_linked_levels(self, dummy_atom):
+        assert len(dummy_atom.linked_levels('1s2.2s 2S1/2')) == 2
+        assert len(dummy_atom.linked_levels('1s2.2p 2P3/2')) == 2
+        assert len(dummy_atom.linked_levels('1s2.3d 2D5/2')) == 2
 
-        assert self.yb171.transitions[('4f14.6s 2S1/2', '4f13.(2F*<7/2>).5d2.(3F) 3[3/2]*1/2')].A != 0
+    def test_state_lifetime(self, dummy_atom):
+        s = ureg.s
+        assert dummy_atom.state_lifetime('1s2.2s 2S1/2').to(s).magnitude == np.inf
+        assert abs(dummy_atom.state_lifetime('1s2.2p 2P3/2').to(s).magnitude - 4e-7) < 1e-7
+        assert abs(dummy_atom.state_lifetime('1s2.3d 2D5/2').to(s).magnitude - 0.06) < 0.1
 
-        assert self.yb171.levels['4f13.(2F*<7/2>).5d.6s.(3D) 3[3/2]*3/2'].lande != 0
+    def test_branching_ratios(self, dummy_atom):
+        assert dummy_atom.compute_branching_ratios('1s2.2s 2S1/2') == {}
+        assert dummy_atom.compute_branching_ratios('1s2.2p 2P3/2') == {'1s2.2s 2S1/2': 0.6666666666666666, '1s2.3d 2D5/2': 0.3333333333333333}
+        assert dummy_atom.compute_branching_ratios('1s2.3d 2D5/2') == {'1s2.2s 2S1/2': 1.0}
+
+# TODO: test energy level methods, transition methods
+
+#     def test_energy_level_access(self):
+#         assert len(self.yb171.levels['4f13.(2F*).6s2 2F*7/2'].sublevels()) == 2
+#         assert self.yb171.levels['4f14.6s 2S1/2']['F=1']['mF=1'] is not None
+#         assert self.yb174.levels['4f14.6s 2S1/2']['F=1/2']['mF=1/2'] is not None
+#         assert self.yb174.levels['4f14.6s 2S1/2']['mJ=1/2'] is not None
+#
+#         assert self.yb171.transitions[('4f14.6s 2S1/2', '4f13.(2F*<7/2>).5d2.(3F) 3[3/2]*1/2')].A != 0
+#
+#         assert self.yb171.levels['4f13.(2F*<7/2>).5d.6s.(3D) 3[3/2]*3/2'].lande != 0

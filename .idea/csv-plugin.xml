@@ -3,7 +3,28 @@
   <component name="CsvFileAttributes">
     <option name="attributeMap">
       <map>
+        <entry key="\resources\.ipynb_checkpoints\133Ba_Hyperfine-checkpoint.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\resources\.ipynb_checkpoints\171Yb_Hyperfine-checkpoint.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="\resources\.ipynb_checkpoints\173Yb_Hyperfine-checkpoint.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\resources\.ipynb_checkpoints\Yb_II_Oscillator_Strengths-checkpoint.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />

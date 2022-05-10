@@ -80,7 +80,7 @@ class Term:
         self.lc, self.sc, self.lo, self.so, self.jc, self.jo, self.l, self.s, self.k = self.quantum_nums
 
     def __str__(self):
-        return self.term_name
+        return self.term_name #CONSIDER: Is this what I want?
 
     def __repr__(self):
         return f'Term({self.name})'
@@ -183,7 +183,7 @@ class BaseLevel:
     can directly index them using sublevel names
     """
 
-    def __init__(self, term: MultiTerm, parent):
+    def __init__(self, term: Term or MultiTerm, parent):
         """
         Initialize the level
 
@@ -191,7 +191,8 @@ class BaseLevel:
         :param parent: The 'parent' of the level. Can be another level, or an Atom
         """
         self.parent = parent
-
+        if isinstance(term, Term):
+            term = MultiTerm(term)
         self.term = term
         self.atom = self.get_atom()
         self.manifold = self.get_manifold()
@@ -287,7 +288,7 @@ class EnergyLevel(BaseLevel):
         consistent with a transition that the level participates in
     """
 
-    def __init__(self, term: MultiTerm, level: pint.Quantity, lande: float = None, parent=None,
+    def __init__(self, term: MultiTerm or Term, level: pint.Quantity, lande: float = None, parent=None,
                  hfA=Q_(0.0, 'gigahertz'), hfB=Q_(0.0, 'gigahertz'), hfC=Q_(0.0, 'gigahertz')):
         """
         :param term: a Term object containing the level's quantum numbers
@@ -687,7 +688,7 @@ class Transition(BaseTransition):
             if self.E_upper.fixed and self.E_lower.fixed:
                 self.E_upper.fixed = False
         self.set_freq = freq
-        self.E_1.atom.enforce(node_or_trans=self.model_name)
+        self.E_1.atom.enforce_consistency(node_or_trans=self.model_name)
 
 
 class HFTransition(BaseTransition):
@@ -850,7 +851,7 @@ class Atom:
         return self.name
 
     def __repr__(self):
-        if len(self.levels) <= 100:
+        if len(self.levels) <= 20:
             l = str(list(self.levels.values()))
         else:
             l = str(list(self.levels[:5])) + "..." + str(list(self.levels[-5:]))
@@ -872,7 +873,7 @@ class Atom:
         level.atom = self
         level.parent = self
         level.populate_sublevels()
-        self.levelsModel.add_node(key, level=level)
+        self.levelsModel.add_node(key, level=level) # TODO: Should this call levelsmodel directly?
         for sublevel in list(level.values()):
             self.hfModel.add_node(sublevel.name, level=sublevel)
             sublevel.populate_sublevels()
@@ -886,10 +887,11 @@ class Atom:
         :param transition: the Transition to be added
         :return:
         """
-
+        # TODO: This should be able to take a tuple of EnergyLevels, or possibly even indices, and create the
+        #  necessary transition on the spot
         transition.add_to_atom(self)
         if transition.set_freq is not None:
-            self.enforce()
+            self.enforce_consistency()
 
     @property
     def B(self):
@@ -1016,7 +1018,7 @@ class Atom:
 
     def linked_levels(self, level):
         """
-        returns a set of levels connected to the current level and the transitions connecting them
+        returns a dict of levels connected to the current level and the transitions connecting them
         :return: dict(Level: transition)
         """
         adjacent = self.levelsModel.adj[level]
@@ -1025,7 +1027,9 @@ class Atom:
     def state_lifetime(self, level):
         ts = self.linked_levels(level).values()
         total_A = sum((t.A for t in ts if t.E_upper is self.levels[level]))
-        return 1 / (total_A / (2 * np.pi))
+        if total_A == 0:
+            return np.inf * ureg.s
+        return (1 / (total_A / (2 * np.pi))).to(ureg.s)
 
     def compute_branching_ratios(self, key):
         transitions = self.linked_levels(key)
@@ -1042,7 +1046,7 @@ class Atom:
         ratios = {k: t.magnitude / totalAs for k, t in A_coeffs.items()}
         return ratios
 
-    def enforce(self, node_or_trans=None):
+    def enforce_consistency(self, node_or_trans=None):
         """Enforces consistency of the Atom's internal levelsModel. It does this by traversing all the
         fixed transitions, and moving the EnergyLevels to be consistent with the transition frequencies.
         TODO: this currently only warns on cycles. Eventually, uncertainty math could make cycles that
