@@ -1,6 +1,6 @@
 import itertools
 import pytest
-from atomtoolkit.atom import Term, MultiTerm
+from atomtoolkit.term import Term, MultiTerm
 
 term_args = [
     ('3s2.3p.(2P*).4f', 'G 2[7/2]', '3'),

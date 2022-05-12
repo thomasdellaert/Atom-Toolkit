@@ -1,5 +1,5 @@
 import pytest
-from atomtoolkit.atom import Term
+from atomtoolkit.term import Term
 from atomtoolkit import util
 
 exps = (
