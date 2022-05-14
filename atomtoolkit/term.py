@@ -2,7 +2,7 @@ import collections.abc
 
 import numpy as np
 
-from atomtoolkit import util
+from . import util
 
 
 class Term:

@@ -165,9 +165,15 @@ class TestAtomEditing:
         dummy_atom.levels['1s2.2p 2P3/2']['F=3/2'].level = 110*THz
         assert dummy_atom.levels['1s2.2p 2P3/2'].level == 110*THz
 
+        dummy_atom.hflevels['1s2.2p 2P3/2 F=3/2'].level = 120 * THz
+        assert dummy_atom.levels['1s2.2p 2P3/2'].level == 120 * THz
+
     def test_zlevel_level_assignment(self, dummy_atom):
         dummy_atom.levels['1s2.2p 2P3/2']['F=3/2']['mF=1/2'].level = 110*THz
         assert dummy_atom.levels['1s2.2p 2P3/2'].level == 110*THz
+
+        dummy_atom.levels['1s2.2p 2P3/2 F=3/2 mF=1/2'].level = 120 * THz
+        assert dummy_atom.levels['1s2.2p 2P3/2'].level == 120 * THz
 
 class TestEnergyLevel:
     def test_shift(self, lvl):

@@ -86,3 +86,22 @@ class TransitionStructure:
         return list(self.keys())
 
 # CONSIDER: search_levels? search_transitions?
+
+class SubtransitionStructure(TransitionStructure):
+    def __init__(self, atom, model: nx.Graph, parentmodel: nx.Graph):
+        super().__init__(atom, model)
+        self.parentmodel = parentmodel
+
+    def __getitem__(self, key):
+        try:
+            try:
+                return nx.get_edge_attributes(self.model, 'transition')[(key[1], key[0])]
+            except KeyError:
+                return nx.get_edge_attributes(self.model, 'transition')[key]
+        except KeyError:
+            parent_key = tuple(a.rsplit(' ', maxsplit=1)[0] for a in key)
+            nx.get_edge_attributes(self.parentmodel, 'transition')[parent_key].populate_subtransitions()
+            try:
+                return nx.get_edge_attributes(self.model, 'transition')[(key[1], key[0])]
+            except KeyError:
+                return nx.get_edge_attributes(self.model, 'transition')[key]

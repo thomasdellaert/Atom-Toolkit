@@ -10,7 +10,7 @@ import pint
 from tqdm import tqdm
 
 from . import Q_, ureg, util, Hz
-from .atom_helpers import LevelStructure, TransitionStructure
+from .atom_helpers import LevelStructure, TransitionStructure, SubtransitionStructure
 from .term import Term, MultiTerm
 from .wigner import wigner3j, wigner6j
 
@@ -98,9 +98,11 @@ class BaseLevel(ABC):
 
     # region dict-like methods
     def __len__(self):
+        self._lazy_compute_sublevels()
         return len(self._sublevels)
 
     def __getitem__(self, key):
+        self._lazy_compute_sublevels()
         if self.atom.I == 0 and 'mJ' in key:
             return self._sublevels[f'F={self.term.J_frac}'][key.replace('mJ', 'mF')]
         return self._sublevels[key]
@@ -113,21 +115,35 @@ class BaseLevel(ABC):
         del self._sublevels[key]
 
     def __iter__(self):
+        self._lazy_compute_sublevels()
         return iter(self._sublevels)
 
     def values(self):
+        self._lazy_compute_sublevels()
         return self._sublevels.values()
 
     def sublevels(self):
-        return self._sublevels.values()
+        self._lazy_compute_sublevels()
+        return list(self._sublevels.values())
 
     def keys(self):
+        self._lazy_compute_sublevels()
         return self._sublevels.keys()
 
     def items(self):
+        self._lazy_compute_sublevels()
         return self._sublevels.items()
 
     # endregion
+
+    def _lazy_compute_sublevels(self):
+        if len(self._sublevels) == 0:
+            self.populate_sublevels()
+            for sublevel in self.sublevels():
+                self.atom.hfModel.add_node(sublevel.name, level=sublevel)
+                sublevel.populate_sublevels()
+                for z_level in sublevel.sublevels():
+                    self.atom.zModel.add_node(z_level.name, level=z_level)
 
 
 class EnergyLevel(BaseLevel):
@@ -429,6 +445,7 @@ class BaseTransition(ABC):
         else:
             self.E_upper = self.E_1
             self.E_lower = self.E_2
+        self.atom = self.E_1.atom
         self.model_name = (self.E_1.name, self.E_2.name)
         self.name = name
         if self.name is None:
@@ -437,7 +454,6 @@ class BaseTransition(ABC):
         self.A, self.rel_strength = self.compute_linewidth()
         self.allowed_types = self.transition_allowed()
         self.set_freq = freq
-        self.populate_subtransitions()
 
     def __str__(self):
         return self.name
@@ -494,10 +510,20 @@ class BaseTransition(ABC):
         return ((l1, l2) for l1, l2 in itertools.product(self.E_1.sublevels(), self.E_2.sublevels())
                 if abs(l1.term.__getattribute__(attr) - l2.term.__getattribute__(attr)) <= max_delta)
 
+    def _lazy_compute_subtransitions(self):
+        if len(self._subtransitions) == 0:
+            assert len(self.E_1.sublevels()) != 0
+            assert len(self.E_2.sublevels()) != 0
+            self.populate_subtransitions()
+            for transition in self.subtransitions():
+                transition.add_to_atom(self.atom)
+
     def __len__(self):
+        self._lazy_compute_subtransitions()
         return len(self._subtransitions)
 
     def __getitem__(self, item):
+        self._lazy_compute_subtransitions()
         try:
             return self._subtransitions[(item[1], item[0])]
         except KeyError:
@@ -510,16 +536,24 @@ class BaseTransition(ABC):
         del self._subtransitions[key]
 
     def __iter__(self):
+        self._lazy_compute_subtransitions()
         return iter(self._subtransitions)
 
     def values(self):
+        self._lazy_compute_subtransitions()
         return self._subtransitions.values()
 
     def subtransitions(self):
+        self._lazy_compute_subtransitions()
         return self._subtransitions.values()
 
     def keys(self):
+        self._lazy_compute_subtransitions()
         return self._subtransitions.keys()
+
+    def items(self):
+        self._lazy_compute_subtransitions()
+        return self._subtransitions.items()
 
 
 class Transition(BaseTransition):
@@ -541,10 +575,11 @@ class Transition(BaseTransition):
     def add_to_atom(self, atom):
         """A Transition lives as an edge in the atom's levelsModel graph"""
         atom.levelsModel.add_edge(self.E_1.name, self.E_2.name, transition=self)
-        for subtransition in self.subtransitions():
-            subtransition.add_to_atom(atom)
+        if len(self._subtransitions) != 0:
+            for subtransition in self.subtransitions():
+                subtransition.add_to_atom(atom)
 
-    def populate_subtransitions(self):
+    def populate_subtransitions(self): 
         """Creates HFTransitions for every allowed pair of hyperfine sublevels in the transition's EnergyLevels"""
         pairs = self._compute_sublevel_pairs('F')
         for a, b in pairs:
@@ -589,7 +624,7 @@ class HFTransition(BaseTransition):
         I = self.E_1.atom.I
         J0, J1 = self.E_1.term.J, self.E_2.term.J
         F0, F1 = self.E_1.term.F, self.E_2.term.F
-        if self.parent:
+        if self.parent is not None:
             init = self.parent.allowed_types
         else:
             init = [True, True, True]
@@ -605,8 +640,9 @@ class HFTransition(BaseTransition):
     def add_to_atom(self, atom):
         """An HFTransition lives as an edge in the atom's hfModel graph"""
         atom.hfModel.add_edge(self.E_1.name, self.E_2.name, transition=self)
-        for subtransition in self.subtransitions():
-            subtransition.add_to_atom(atom)
+        if len(self._subtransitions) != 0:
+            for subtransition in self.subtransitions():
+                subtransition.add_to_atom(atom)
 
     def populate_subtransitions(self):
         """Creates ZTransitions for every allowed pair of Zeeman sublevels in the transition's HFLevels"""
@@ -716,8 +752,8 @@ class Atom:
         self.zlevels = LevelStructure(self, self.zModel)
 
         self.transitions = TransitionStructure(self, self.levelsModel)
-        self.hftransitions = TransitionStructure(self, self.hfModel)
-        self.ztransitions = TransitionStructure(self, self.zModel)
+        self.hftransitions = SubtransitionStructure(self, self.hfModel, self.levelsModel)
+        self.ztransitions = SubtransitionStructure(self, self.zModel, self.hfModel)
 
         if levels is not None:
             for level in levels:
@@ -737,10 +773,12 @@ class Atom:
 
         return f'Atom(name={self.name}, I={self.I}, levels={l})'
 
-    def add_level(self, level: EnergyLevel, key=None):
+    def add_level(self, level: EnergyLevel, key=None, populate_sublevels=False):
         """
         Adds a level to the internal graph model. When the level is added, it calculates its sublevels, and the
         sublevels are then also added
+        :param populate_sublevels: whether the atom should populate the sublevels upon addition. If False, the
+        sublevels can still be accessed, but are populated lazily on-demand
         :param level: the EnergyLevel to be added
         :param key: A custom name, if desired. Otherwise defaults to the EnergyLevel's name
         :return:
@@ -751,13 +789,14 @@ class Atom:
             level = level.manifold
         level.atom = self
         level.parent = self
-        level.populate_sublevels()
         self.levelsModel.add_node(key, level=level)
-        for sublevel in list(level.values()):
-            self.hfModel.add_node(sublevel.name, level=sublevel)
-            sublevel.populate_sublevels()
-            for z_level in list(sublevel.values()):
-                self.zModel.add_node(z_level.name, level=z_level)
+        if populate_sublevels:
+            level.populate_sublevels()
+            for sublevel in list(level.values()):
+                self.hfModel.add_node(sublevel.name, level=sublevel)
+                sublevel.populate_sublevels()
+                for z_level in list(sublevel.values()):
+                    self.zModel.add_node(z_level.name, level=z_level)
 
     def add_transition(self, transition: Transition):
         """
