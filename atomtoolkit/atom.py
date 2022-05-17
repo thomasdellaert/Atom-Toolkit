@@ -10,7 +10,7 @@ import pint
 from tqdm import tqdm
 
 from . import Q_, ureg, util, Hz
-from .atom_helpers import LevelStructure, TransitionStructure, SubtransitionStructure
+from .atom_helpers import LevelStructure, TransitionStructure
 from .term import Term, MultiTerm
 from .wigner import wigner3j, wigner6j
 
@@ -140,10 +140,10 @@ class BaseLevel(ABC):
         if len(self._sublevels) == 0:
             self.populate_sublevels()
             for sublevel in self.sublevels():
-                self.atom.hfModel.add_node(sublevel.name, level=sublevel)
+                self.atom.levels.hf_model.add_node(sublevel.name, level=sublevel)
                 sublevel.populate_sublevels()
                 for z_level in sublevel.sublevels():
-                    self.atom.zModel.add_node(z_level.name, level=z_level)
+                    self.atom.levels.z_model.add_node(z_level.name, level=z_level)
 
 
 class EnergyLevel(BaseLevel):
@@ -530,6 +530,7 @@ class BaseTransition(ABC):
             return self._subtransitions[item]
 
     def __setitem__(self, key, value):
+        # TODO: make this idiot-proof
         self._subtransitions[key] = value
 
     def __delitem__(self, key):
@@ -574,7 +575,7 @@ class Transition(BaseTransition):
 
     def add_to_atom(self, atom):
         """A Transition lives as an edge in the atom's levelsModel graph"""
-        atom.levelsModel.add_edge(self.E_1.name, self.E_2.name, transition=self)
+        atom.levels.model.add_edge(self.E_lower.name, self.E_upper.name, transition=self)
         if len(self._subtransitions) != 0:
             for subtransition in self.subtransitions():
                 subtransition.add_to_atom(atom)
@@ -585,7 +586,7 @@ class Transition(BaseTransition):
         for a, b in pairs:
             t = HFTransition(a, b, parent=self)
             if np.any(np.array(t.allowed_types)):
-                self[(a.name, b.name)] = t
+                self[(t.E_lower.term.short_name, t.E_upper.term.short_name)] = t
             else:
                 del t
 
@@ -639,7 +640,7 @@ class HFTransition(BaseTransition):
 
     def add_to_atom(self, atom):
         """An HFTransition lives as an edge in the atom's hfModel graph"""
-        atom.hfModel.add_edge(self.E_1.name, self.E_2.name, transition=self)
+        atom.levels.hf_model.add_edge(self.E_lower.name, self.E_lower.name, transition=self)
         if len(self._subtransitions) != 0:
             for subtransition in self.subtransitions():
                 subtransition.add_to_atom(atom)
@@ -650,7 +651,7 @@ class HFTransition(BaseTransition):
         for a, b in pairs:
             t = ZTransition(a, b, parent=self)
             if np.any(np.array(t.allowed_types)):
-                self[(a.name, b.name)] = t
+                self[(t.E_lower.term.short_name, t.E_upper.term.short_name)] = t
             else:
                 del t
 
@@ -696,7 +697,7 @@ class ZTransition(BaseTransition):
 
     def add_to_atom(self, atom):
         """A ZTransition lives as an edge in the atom's zModel"""
-        atom.zModel.add_edge(self.E_1.name, self.E_2.name, transition=self)
+        atom.levels.z_model.add_edge(self.E_lower.name, self.E_upper.name, transition=self)
 
     def populate_subtransitions(self):
         pass
@@ -743,17 +744,17 @@ class Atom:
         self.I = util.frac_to_float(I)
         self.B_gauss = B.to(ureg.gauss).magnitude
 
-        self.levelsModel = nx.Graph()
-        self.hfModel = nx.Graph()
-        self.zModel = nx.Graph()
+        self._levelsModel = nx.Graph()
+        self._hfModel = nx.Graph()
+        self._zModel = nx.Graph()
 
-        self.levels = LevelStructure(self, self.levelsModel)
-        self.hflevels = LevelStructure(self, self.hfModel)
-        self.zlevels = LevelStructure(self, self.zModel)
+        self.levels = LevelStructure(self, self._levelsModel, self._hfModel, self._zModel)
+        # self.hflevels = LevelStructure(self, self.hfModel)
+        # self.zlevels = LevelStructure(self, self.zModel)
 
-        self.transitions = TransitionStructure(self, self.levelsModel)
-        self.hftransitions = SubtransitionStructure(self, self.hfModel, self.levelsModel)
-        self.ztransitions = SubtransitionStructure(self, self.zModel, self.hfModel)
+        self.transitions = TransitionStructure(self, self._levelsModel, self._hfModel, self._zModel)
+        # self.hftransitions = SubtransitionStructure(self, self.hfModel, self.levelsModel)
+        # self.ztransitions = SubtransitionStructure(self, self.zModel, self.hfModel)
 
         if levels is not None:
             for level in levels:
@@ -787,16 +788,17 @@ class Atom:
             key = level.name
         if type(level) != EnergyLevel:
             level = level.manifold
+            populate_sublevels = True
         level.atom = self
         level.parent = self
-        self.levelsModel.add_node(key, level=level)
+        self._levelsModel.add_node(key, level=level)
         if populate_sublevels:
             level.populate_sublevels()
             for sublevel in list(level.values()):
-                self.hfModel.add_node(sublevel.name, level=sublevel)
+                self._hfModel.add_node(sublevel.name, level=sublevel)
                 sublevel.populate_sublevels()
                 for z_level in list(sublevel.values()):
-                    self.zModel.add_node(z_level.name, level=z_level)
+                    self._zModel.add_node(z_level.name, level=z_level)
 
     def add_transition(self, transition: Transition):
         """
@@ -939,7 +941,8 @@ class Atom:
         returns a dict of levels connected to the current level and the transitions connecting them
         :return: dict(Level: transition)
         """
-        adjacent = self.levelsModel.adj[level]
+        #TODO: hyperfine and zeeman should be supported
+        adjacent = self._levelsModel.adj[level]
         return {k: t['transition'] for k, t in adjacent.items() if k != level}
 
     def state_lifetime(self, level):
@@ -974,8 +977,8 @@ class Atom:
          the enforcement to the subgraph in which the change happened
         """
         # make a subgraph of the full model containing only the fixed edges
-        set_edges = [(u, v) for u, v, e in self.levelsModel.edges(data=True) if e['transition'].set_freq is not None]
-        set_graph = self.levelsModel.edge_subgraph(set_edges)
+        set_edges = [(u, v) for u, v, e in self._levelsModel.edges(data=True) if e['transition'].set_freq is not None]
+        set_graph = self._levelsModel.edge_subgraph(set_edges)
         ccs = (set_graph.subgraph(c) for c in nx.connected_components(set_graph))
         for sg in ccs:
             if node_or_trans:

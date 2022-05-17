@@ -12,11 +12,11 @@ def draw_levels(atom, plot_type='norm', **kwargs):
     """
     posdict = {l.name: (l.term.J, l.level_Hz) for l in atom.levels.values()}
     if plot_type == 'hf':
-        model = atom.hfModel.copy()
+        model = atom._hfModel.copy()
     elif plot_type == 'z':
-        model = atom.zModel.copy()
+        model = atom._zModel.copy()
     else:
-        model = atom.levelsModel.copy()
+        model = atom._levelsModel.copy()
     for node in model.nodes():
         try:
             model.remove_edge(node, node)
