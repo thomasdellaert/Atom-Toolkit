@@ -12,7 +12,7 @@ HYPERFINE_PATH = None
 
 NAME = '174Yb II'
 I = 0
-NUM_LEVELS = 70
+NUM_LEVELS = 300
 B_FIELD = Q_(0.0, 'G')
 ALLOWED_TRANSITIONS = (True, False, False)
 
@@ -42,6 +42,11 @@ Yb174.transitions[('4f14.6s 2S1/2', '4f14.6p 2P*1/2')].set_frequency(Q_(811.2918
 t = Transition(Yb174.levels['4f14.6s 2S1/2'], Yb174.levels['4f14.5d 2D5/2'], A=Q_(22, 'Hz'))
 t.add_to_atom(Yb174)
 t.set_frequency(Q_(729.475280, 'THz'))
+
+t = Transition(Yb174.levels['4f13.(2F*<7/2>).6s2 2F*7/2'], Yb174.levels['4f13.(2F*<7/2>).5d.6s.(1D) 1[3/2]*3/2'], A=Q_(50, 'kHz'))
+t.add_to_atom(Yb174)
+t.set_frequency(Q_(394.423900, 'THz'))
+
 
 # Set any additional properties
 
