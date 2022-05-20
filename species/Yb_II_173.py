@@ -12,7 +12,7 @@ HYPERFINE_PATH = os.path.abspath('../resources/173Yb_Hyperfine.csv')
 
 NAME = '173Yb II'
 I = 5/2
-NUM_LEVELS = 70
+NUM_LEVELS = 300
 B_FIELD = Q_(0.0, 'G')
 ALLOWED_TRANSITIONS = (True, False, False)
 

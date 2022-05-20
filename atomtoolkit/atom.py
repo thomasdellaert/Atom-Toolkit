@@ -113,6 +113,8 @@ class BaseLevel(ABC):
         return len(self._sublevels)
 
     def __getitem__(self, key):
+        """Returns the sublevel associated with the key. For atoms with I=0, mJ is usually used instead of mF
+        and F is not used, so this is supported"""
         self._lazy_compute_sublevels()
         if self.atom.I == 0 and 'mJ' in key:
             return self._sublevels[f'F={self.term.J_frac}'][key.replace('mJ', 'mF')]
@@ -148,6 +150,12 @@ class BaseLevel(ABC):
     # endregion
 
     def _lazy_compute_sublevels(self):
+        """
+        Called before the main text of any level that references the sublevels of the atom. If the level hasn't
+        populated its sublevels yet, it computes them before returning any data.
+        :return:
+        """
+        # FIXME: Right now this assumes and EnergyLevel, which is inappropriate for Baselevel. Make this more abstract.
         if len(self._sublevels) == 0:
             self.populate_sublevels()
             for sublevel in self.sublevels():
@@ -450,6 +458,7 @@ class BaseTransition(ABC):
         self.parent = parent
         self._subtransitions = dict()
         self._alias = alias
+        # Energy Levels
         self.E_1, self.E_2 = E1, E2
         if self.E_2.level > self.E_1.level:
             self.E_upper = self.E_2
@@ -457,11 +466,16 @@ class BaseTransition(ABC):
         else:
             self.E_upper = self.E_1
             self.E_lower = self.E_2
+        # Check if in an atom
         self.atom = self.E_1.atom
+        if self.atom is not None:
+            self.add_to_atom(self.atom)
+        # Names
         self.model_name = (self.E_1.name, self.E_2.name)
         self.name = name
         if self.name is None:
             self.name = f'{self.E_1.name} → {self.E_2.name}'
+        # Physical parameters
         self._A = A
         self.A, self.rel_strength = self.compute_linewidth()
         self.allowed_types = self.transition_allowed()
@@ -598,6 +612,7 @@ class Transition(BaseTransition):
 
     def add_to_atom(self, atom):
         """A Transition lives as an edge in the atom's levelsModel graph"""
+        self.atom = atom
         atom.levels.model.add_edge(self.E_lower.name, self.E_upper.name, transition=self)
         if len(self._subtransitions) != 0:
             for subtransition in self.subtransitions():
@@ -663,6 +678,7 @@ class HFTransition(BaseTransition):
 
     def add_to_atom(self, atom):
         """An HFTransition lives as an edge in the atom's hfModel graph"""
+        self.atom = atom
         atom.levels.hf_model.add_edge(self.E_lower.name, self.E_lower.name, transition=self)
         if len(self._subtransitions) != 0:
             for subtransition in self.subtransitions():
@@ -720,6 +736,7 @@ class ZTransition(BaseTransition):
 
     def add_to_atom(self, atom):
         """A ZTransition lives as an edge in the atom's zModel"""
+        self.atom = atom
         atom.levels.z_model.add_edge(self.E_lower.name, self.E_upper.name, transition=self)
 
     def populate_subtransitions(self):
