@@ -1,7 +1,7 @@
 # Atom-Toolkit
 A python package that seeks to provide a convenient way to manipulate atomic physics data in a notebook environment, based on Networkx graph structures. The package allows you to:
 
- - create an Atom object that contains information about spectroscopic energy levels
+ - Create an Atom object that contains information about spectroscopic energy levels
    - Hyperfine and Zeeman structure is automatically generated as needed
    - Support for LS, JJ, LK, and J1K couplings, with quantum numbers automatically extracted from the spectroscopic notation
  - Intuitively access and iterate through energy levels and sublevels
@@ -12,8 +12,8 @@ A python package that seeks to provide a convenient way to manipulate atomic phy
      CaII_43.levels['3p6.3d 2D3/2']['F=1']['mF=0']
      NdII_145.levels['5d9.6s2(2D<5/2>).6p 2[3/2]*2']['F=3/2']
      ```
- - create transitions between energy levels
-     - transitions between any sublevels are also computed, with appropriate selection rules and angular momentum considerations
+ - Create transitions between energy levels
+     - Transitions between any sublevels are also computed, with appropriate selection rules and angular momentum considerations
      - When setting the frequency of a transition, associated parent- and sub-transitions are also updated, as are the energies of the associated levels
  - Compute branching ratios and lifetimes
  - Make diagrams of atomic structure (in development)
