@@ -113,6 +113,26 @@ class BaseLevel(ABC):
         self._alias = al
         self.atom.levels.aliases[al] = self
 
+    @property
+    def model(self):
+        if not self._model:
+            self._assign_models()
+        return self._model
+
+    @model.setter
+    def model(self, val):
+        self._model = val
+
+    @property
+    def submodel(self):
+        if not self._submodel:
+            self._assign_models()
+        return self._submodel
+
+    @model.setter
+    def submodel(self, val):
+        self._submodel = val
+
     def add_to_atom(self, atom):
         self.atom = atom
         self._assign_models()
@@ -170,6 +190,7 @@ class BaseLevel(ABC):
         :return:
         """
         if len(self._sublevels) == 0:
+            self._assign_models()
             self.populate_sublevels()
             for sublevel in self.sublevels():
                 self._submodel.add_node(sublevel.name, level=sublevel)
@@ -332,7 +353,6 @@ class HFLevel(BaseLevel):
         :param parent: the atom that the level is contained in
         """
         super().__init__(term, parent)
-        self._submodel = self.atom.levels.z_model
         self.gF = self.compute_gF()
 
     def get_manifold(self):
@@ -605,7 +625,6 @@ class BaseTransition(ABC):
             return self._subtransitions[item]
 
     def __setitem__(self, key, value):
-        # TODO: make this idiot-proof
         self._subtransitions[key] = value
 
     def __delitem__(self, key):
@@ -1008,14 +1027,17 @@ class Atom:
             except KeyError:
                 pass
 
-    def linked_levels(self, level):
+    def linked_levels(self, key):
         """
         returns a dict of levels connected to the current level and the transitions connecting them
         :return: dict(Level: transition)
         """
-        # TODO: hyperfine and zeeman should be supported
-        adjacent = self._levelsModel.adj[level]
-        return {k: t['transition'] for k, t in adjacent.items() if k != level}
+        level = self.levels[key]
+        if not isinstance(level, EnergyLevel):
+            for k, trans in self.linked_levels(level.parent.name).items():
+                trans.populate_subtransitions()
+        adjacent = level.model.adj[key]
+        return {k: t['transition'] for k, t in adjacent.items() if k != key}
 
     def state_lifetime(self, level):
         ts = self.linked_levels(level).values()

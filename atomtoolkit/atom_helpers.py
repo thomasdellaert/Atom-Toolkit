@@ -68,7 +68,6 @@ class TransitionStructure:
         return f'TransitionStructure containing {len(self)} transitions of type {type(list(self.values())[0]).__name__}'
 
     def __getitem__(self, key):
-        print(key, self.aliases)
         if key in self.aliases.keys():
             return self.aliases[key]
         lvl0 = self.atom.levels[key[0]]

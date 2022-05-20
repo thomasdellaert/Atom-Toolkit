@@ -90,6 +90,7 @@ class TestAtom:
         assert len(dummy_atom.linked_levels('1s2.2s 2S1/2')) == 2
         assert len(dummy_atom.linked_levels('1s2.2p 2P3/2')) == 2
         assert len(dummy_atom.linked_levels('1s2.3d 2D5/2')) == 2
+        assert len(dummy_atom.linked_levels('1s2.2s 2S1/2 F=1/2')) == 2
 
     def test_state_lifetime(self, dummy_atom):
         s = ureg.s
