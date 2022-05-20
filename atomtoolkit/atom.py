@@ -52,6 +52,8 @@ class BaseLevel(ABC):
         self.fixed = False
 
         self._sublevels = dict()
+        self._model = None
+        self._submodel = None
 
     def __str__(self):
         return self.name
@@ -62,6 +64,10 @@ class BaseLevel(ABC):
     @abstractmethod
     def get_atom(self):  # pragma: no cover
         """Should return the atom to which the level belongs"""
+        raise NotImplementedError()
+
+    @abstractmethod
+    def _assign_models(self):
         raise NotImplementedError()
 
     @abstractmethod
@@ -105,7 +111,15 @@ class BaseLevel(ABC):
     @alias.setter
     def alias(self, al):
         self._alias = al
-        self.atom.levels[al] = self
+        self.atom.levels.aliases[al] = self
+
+    def add_to_atom(self, atom):
+        self.atom = atom
+        self._assign_models()
+        self._model.add_node(self.name, level=self)
+        if len(self._sublevels) != 0:
+            for sublevel in self.sublevels():
+                sublevel.add_to_atom(atom)
 
     # region dict-like methods
     def __len__(self):
@@ -155,14 +169,10 @@ class BaseLevel(ABC):
         populated its sublevels yet, it computes them before returning any data.
         :return:
         """
-        # FIXME: Right now this assumes and EnergyLevel, which is inappropriate for Baselevel. Make this more abstract.
         if len(self._sublevels) == 0:
             self.populate_sublevels()
             for sublevel in self.sublevels():
-                self.atom.levels.hf_model.add_node(sublevel.name, level=sublevel)
-                sublevel.populate_sublevels()
-                for z_level in sublevel.sublevels():
-                    self.atom.levels.z_model.add_node(z_level.name, level=z_level)
+                self._submodel.add_node(sublevel.name, level=sublevel)
 
 
 class EnergyLevel(BaseLevel):
@@ -213,11 +223,15 @@ class EnergyLevel(BaseLevel):
         else:
             return None
 
+    def _assign_models(self):
+        self._model = self.atom.levels.model
+        self._submodel = self.atom.levels.hf_model
+
     def populate_sublevels(self):
         """
         Populates the sublevels dict with the appropriate hyperfine sublevels, given the atom that the EnergyLevel is in
         """
-        if isinstance(self.parent, Atom):
+        if self.atom is not None:
             for f in np.arange(abs(self.term.J - self.atom.I), self.term.J + self.atom.I + 1):
                 t = self.term.make_term_copy(F=f)
                 e = HFLevel(term=t, parent=self)
@@ -318,6 +332,7 @@ class HFLevel(BaseLevel):
         :param parent: the atom that the level is contained in
         """
         super().__init__(term, parent)
+        self._submodel = self.atom.levels.z_model
         self.gF = self.compute_gF()
 
     def get_manifold(self):
@@ -327,6 +342,10 @@ class HFLevel(BaseLevel):
     def get_atom(self):
         """Inhabits the same atom as its parent"""
         return self.parent.atom
+
+    def _assign_models(self):
+        self._model = self.atom.levels.hf_model
+        self._submodel = self.atom.levels.z_model
 
     def populate_sublevels(self):
         """Populates the sublevels dict with the appropriate Zeeman sublevels"""
@@ -417,7 +436,14 @@ class ZLevel(HFLevel):
 
     def populate_sublevels(self):
         """A Zeeman sublevel will have no further sublevels."""
-        pass
+        return
+
+    def _assign_models(self):
+        self._model = self.atom.levels.z_model
+        self._submodel = None
+
+    def _lazy_compute_sublevels(self):
+        return
 
     @property
     def shift_Hz(self):
@@ -458,6 +484,8 @@ class BaseTransition(ABC):
         self.parent = parent
         self._subtransitions = dict()
         self._alias = alias
+        self._model = None
+        self._submodel = None
         # Energy Levels
         self.E_1, self.E_2 = E1, E2
         if self.E_2.level > self.E_1.level:
@@ -517,8 +545,7 @@ class BaseTransition(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def add_to_atom(self, atom):  # pragma: no cover
-        """Should define how the transition is stored in the Atom"""
+    def _assign_models(self):
         raise NotImplementedError
 
     @abstractmethod
@@ -539,6 +566,15 @@ class BaseTransition(ABC):
         self._alias = al
         self.atom.transitions.aliases[al] = self
 
+    def add_to_atom(self, atom):  # pragma: no cover
+        """Add the transition to the atom and the appropriate graphs within the atom"""
+        self.atom = atom
+        self._assign_models()
+        self._model.add_edge(self.E_lower.name, self.E_upper.name, transition=self)
+        if len(self._subtransitions) != 0:
+            for subtransition in self.subtransitions():
+                subtransition.add_to_atom(atom)
+
     def _compute_sublevel_pairs(self, attr: str):
         """Returns pairs of sublevels that are likely to have allowed transitions, given the type of transition"""
         if True not in self.allowed_types:
@@ -554,6 +590,8 @@ class BaseTransition(ABC):
             self.populate_subtransitions()
             for transition in self.subtransitions():
                 transition.add_to_atom(self.atom)
+
+    # region: dict-like-methods
 
     def __len__(self):
         self._lazy_compute_subtransitions()
@@ -593,6 +631,8 @@ class BaseTransition(ABC):
         self._lazy_compute_subtransitions()
         return self._subtransitions.items()
 
+    # endregion
+
 
 class Transition(BaseTransition):
     """
@@ -610,13 +650,10 @@ class Transition(BaseTransition):
                 (np.abs(J1 - J0) <= 1.0 and p0 == p1),
                 (np.abs(J1 - J0) <= 2.0 and p0 == p1 and not (self.E_1 is self.E_2)))
 
-    def add_to_atom(self, atom):
+    def _assign_models(self):
         """A Transition lives as an edge in the atom's levelsModel graph"""
-        self.atom = atom
-        atom.levels.model.add_edge(self.E_lower.name, self.E_upper.name, transition=self)
-        if len(self._subtransitions) != 0:
-            for subtransition in self.subtransitions():
-                subtransition.add_to_atom(atom)
+        self._model = self.atom.transitions.model
+        self._submodel = self.atom.transitions.hf_model
 
     def populate_subtransitions(self):
         """Creates HFTransitions for every allowed pair of hyperfine sublevels in the transition's EnergyLevels"""
@@ -676,13 +713,10 @@ class HFTransition(BaseTransition):
             ret[2] = wigner6j(J0, J1, 2, F1, F0, I) != 0.0
         return tuple(ret)
 
-    def add_to_atom(self, atom):
+    def _assign_models(self):
         """An HFTransition lives as an edge in the atom's hfModel graph"""
-        self.atom = atom
-        atom.levels.hf_model.add_edge(self.E_lower.name, self.E_lower.name, transition=self)
-        if len(self._subtransitions) != 0:
-            for subtransition in self.subtransitions():
-                subtransition.add_to_atom(atom)
+        self._model = self.atom.transitions.hf_model
+        self._submodel = self.atom.transitions.z_model
 
     def populate_subtransitions(self):
         """Creates ZTransitions for every allowed pair of Zeeman sublevels in the transition's HFLevels"""
@@ -734,10 +768,10 @@ class ZTransition(BaseTransition):
             ret[2] = sum([wigner3j(F1, 2, F0, -mF1, q, mF0) for q in [-2, -1, 0, 1, 2]]) != 0.0
         return ret
 
-    def add_to_atom(self, atom):
+    def _assign_models(self):
         """A ZTransition lives as an edge in the atom's zModel"""
-        self.atom = atom
-        atom.levels.z_model.add_edge(self.E_lower.name, self.E_upper.name, transition=self)
+        self._model = self.atom.transitions.z_model
+        self._submodel = None
 
     def populate_subtransitions(self):
         pass
@@ -815,33 +849,26 @@ class Atom:
 
         return f'Atom(name={self.name}, I={self.I}, levels={l})'
 
-    def add_level(self, level: EnergyLevel, key=None, populate_sublevels=False):
+    def add_level(self, level: EnergyLevel, populate_sublevels=False):
         """
         Adds a level to the internal graph model. When the level is added, it calculates its sublevels, and the
         sublevels are then also added
         :param populate_sublevels: whether the atom should populate the sublevels upon addition. If False, the
         sublevels can still be accessed, but are populated lazily on-demand
         :param level: the EnergyLevel to be added
-        :param key: A custom name, if desired. Otherwise defaults to the EnergyLevel's name
         :return:
         """
-        if key is None:
-            key = level.name
+
         if type(level) != EnergyLevel:
             level = level.manifold
             populate_sublevels = True
-        level.atom = self
-        level.parent = self
-        self._levelsModel.add_node(key, level=level)
+        level.add_to_atom(self)
         if level.alias is not None:
             self.levels.aliases[level.alias] = level
         if populate_sublevels:
             level.populate_sublevels()
             for sublevel in list(level.values()):
-                self._hfModel.add_node(sublevel.name, level=sublevel)
-                sublevel.populate_sublevels()
-                for z_level in list(sublevel.values()):
-                    self._zModel.add_node(z_level.name, level=z_level)
+                sublevel.add_to_atom(self)
 
     def add_transition(self, transition: Transition):
         """
