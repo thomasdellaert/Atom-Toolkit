@@ -16,6 +16,7 @@ from .wigner import wigner3j, wigner6j
 
 mu_B = 1.39962449361e6  # Hz/G
 
+
 ############################################
 #                  Level                   #
 ############################################
@@ -33,7 +34,7 @@ class BaseLevel(ABC):
     can directly index them using sublevel names
     """
 
-    def __init__(self, term: Term or MultiTerm, parent):
+    def __init__(self, term: Term or MultiTerm, parent, alias=None):
         """
         Initialize the level
 
@@ -41,6 +42,7 @@ class BaseLevel(ABC):
         :param parent: The 'parent' of the level. Can be another level, or an Atom
         """
         self.parent = parent
+        self._alias = alias
         if isinstance(term, Term):
             term = MultiTerm(term)
         self.term = term
@@ -58,23 +60,23 @@ class BaseLevel(ABC):
         return f'{type(self).__name__}(name = {self.name}, level={str(self.level)}, {len(self._sublevels)} sublevels)'
 
     @abstractmethod
-    def get_atom(self): # pragma: no cover
+    def get_atom(self):  # pragma: no cover
         """Should return the atom to which the level belongs"""
         raise NotImplementedError()
 
     @abstractmethod
-    def get_manifold(self): # pragma: no cover
+    def get_manifold(self):  # pragma: no cover
         """Should return the fine structure manifold to which the level belongs"""
         raise NotImplementedError()
 
     @abstractmethod
-    def populate_sublevels(self): # pragma: no cover
+    def populate_sublevels(self):  # pragma: no cover
         """Should populate the sublevels of the level"""
         raise NotImplementedError()
 
     @property
     @abstractmethod
-    def level_Hz(self): # pragma: no cover
+    def level_Hz(self):  # pragma: no cover
         """Should appropriately calculate the energy of the state (in Hz)"""
         raise NotImplementedError()
 
@@ -88,13 +90,22 @@ class BaseLevel(ABC):
 
     @property
     @abstractmethod
-    def shift_Hz(self): # pragma: no cover
+    def shift_Hz(self):  # pragma: no cover
         """Should return the shift relative to the parent (in Hz)"""
         raise NotImplementedError()
 
     @property
     def shift(self):
         return self.shift_Hz * Hz
+
+    @property
+    def alias(self):
+        return self._alias
+
+    @alias.setter
+    def alias(self, al):
+        self._alias = al
+        self.atom.levels.add_alias(self, al)
 
     # region dict-like methods
     def __len__(self):
@@ -162,7 +173,7 @@ class EnergyLevel(BaseLevel):
         consistent with a transition that the level participates in
     """
 
-    def __init__(self, term: MultiTerm or Term, level: pint.Quantity, lande: float = None, parent=None,
+    def __init__(self, term: MultiTerm or Term, level: pint.Quantity, lande: float = None, parent=None, alias=None,
                  hfA=Q_(0.0, 'gigahertz'), hfB=Q_(0.0, 'gigahertz'), hfC=Q_(0.0, 'gigahertz')):
         """
         :param term: a Term object containing the level's quantum numbers
@@ -173,7 +184,7 @@ class EnergyLevel(BaseLevel):
         :param hfB: the hyperfine B-coefficient
         :param hfC: the hyperfine C-coefficient
         """
-        super().__init__(term, parent)
+        super().__init__(term, parent, alias)
         self._level_Hz = level.to(Hz).magnitude
         self.hfA_Hz, self.hfB_Hz, self.hfC_Hz = hfA.to(Hz).magnitude, hfB.to(Hz).magnitude, hfC.to(Hz).magnitude
         if lande is None:
@@ -404,7 +415,7 @@ class ZLevel(HFLevel):
     def shift_Hz(self):
         """A zeeman sublevel is shifted from its parent by the magnetic field. """
         return self.gF * self.term.mF * mu_B * self.atom.B_gauss \
-               + self.quadratic_zeeman * self.atom.B_gauss ** 2
+            + self.quadratic_zeeman * self.atom.B_gauss ** 2
 
     # def nonlinear_zeeman(self, B):
     #     """
@@ -426,7 +437,7 @@ class BaseTransition(ABC):
     precise spectroscopy, etc.
     """
 
-    def __init__(self, E1: EnergyLevel, E2: EnergyLevel, freq=None, A: pint.Quantity = None, name=None, parent=None):
+    def __init__(self, E1: EnergyLevel, E2: EnergyLevel, freq=None, A: pint.Quantity = None, name=None, parent=None, alias=None):
         """
         :param E1: EnergyLevel 1
         :param E2: EnergyLevel 2
@@ -438,6 +449,7 @@ class BaseTransition(ABC):
 
         self.parent = parent
         self._subtransitions = dict()
+        self._alias = alias
         self.E_1, self.E_2 = E1, E2
         if self.E_2.level > self.E_1.level:
             self.E_upper = self.E_2
@@ -454,6 +466,8 @@ class BaseTransition(ABC):
         self.A, self.rel_strength = self.compute_linewidth()
         self.allowed_types = self.transition_allowed()
         self.set_freq = freq
+        if alias is not None:
+            self.atom.transitions.add_alias(self, alias)
 
     def __str__(self):
         return self.name
@@ -484,23 +498,32 @@ class BaseTransition(ABC):
         return self._A.to(Hz), 1.0
 
     @abstractmethod
-    def transition_allowed(self): # pragma: no cover
+    def transition_allowed(self):  # pragma: no cover
         """Should return list containing what types of transition are allowed in E1, M1, E2, ... order"""
         raise NotImplementedError
 
     @abstractmethod
-    def add_to_atom(self, atom): # pragma: no cover
+    def add_to_atom(self, atom):  # pragma: no cover
         """Should define how the transition is stored in the Atom"""
         raise NotImplementedError
 
     @abstractmethod
-    def populate_subtransitions(self): # pragma: no cover
+    def populate_subtransitions(self):  # pragma: no cover
         """Should generate the appropriate transitions between the sublevels of the transition's EnergyLevels"""
         raise NotImplementedError
 
     @abstractmethod
-    def set_frequency(self, freq): # pragma: no cover
+    def set_frequency(self, freq):  # pragma: no cover
         raise NotImplementedError
+
+    @property
+    def alias(self):
+        return self._alias
+
+    @alias.setter
+    def alias(self, al):
+        self._alias = al
+        self.atom.transitions.add_alias(self, al)
 
     def _compute_sublevel_pairs(self, attr: str):
         """Returns pairs of sublevels that are likely to have allowed transitions, given the type of transition"""
@@ -580,7 +603,7 @@ class Transition(BaseTransition):
             for subtransition in self.subtransitions():
                 subtransition.add_to_atom(atom)
 
-    def populate_subtransitions(self): 
+    def populate_subtransitions(self):
         """Creates HFTransitions for every allowed pair of hyperfine sublevels in the transition's EnergyLevels"""
         pairs = self._compute_sublevel_pairs('F')
         for a, b in pairs:
@@ -706,6 +729,7 @@ class ZTransition(BaseTransition):
         diff = freq - self.freq
         self.parent.set_frequency(self.parent.freq + diff)
 
+
 ############################################
 #                   Atom                   #
 ############################################
@@ -792,6 +816,8 @@ class Atom:
         level.atom = self
         level.parent = self
         self._levelsModel.add_node(key, level=level)
+        if level.alias is not None:
+            self.levels.aliases[level.alias] = level
         if populate_sublevels:
             level.populate_sublevels()
             for sublevel in list(level.values()):
@@ -810,6 +836,8 @@ class Atom:
         # TODO: This should be able to take a tuple of EnergyLevels, or possibly even indices, and create the
         #  necessary transition on the spot
         transition.add_to_atom(self)
+        if transition.alias is not None:
+            self.transitions.aliases[transition.alias] = transition
         if transition.set_freq is not None:
             self.enforce_consistency()
 
@@ -850,7 +878,7 @@ class Atom:
             return p
 
     @classmethod
-    def from_dataframe(cls, df, name, I=0.0, num_levels=None, B=Q_(0.0, 'G'), **kwargs):
+    def from_dataframe(cls, df, name, I=0.0, num_levels=None, B=Q_(0.0, 'G'), **_):
         """
         Generate the atom from a dataframe, formatted like the output from the IO module
         :param df: the dataframe to read
@@ -916,7 +944,7 @@ class Atom:
             t.add_to_atom(self)
             levels.set_description(f'adding internal transitions to {level.name:91}')
 
-    def populate_transitions_df(self, df, **kwargs):
+    def populate_transitions_df(self, df, **_):
         """
         # CONSIDER: move this outside the atom class?
         Load transitions into the Atom from a dataframe generated from the IO module's load_transition_data function
@@ -941,7 +969,7 @@ class Atom:
         returns a dict of levels connected to the current level and the transitions connecting them
         :return: dict(Level: transition)
         """
-        #TODO: hyperfine and zeeman should be supported
+        # TODO: hyperfine and zeeman should be supported
         adjacent = self._levelsModel.adj[level]
         return {k: t['transition'] for k, t in adjacent.items() if k != level}
 

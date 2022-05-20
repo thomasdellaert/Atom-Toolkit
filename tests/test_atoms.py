@@ -6,6 +6,7 @@ from atomtoolkit.term import Term
 from atomtoolkit import *
 import numpy as np
 
+
 # class TestAtomCreation:
 #     def test_creation(self):
 #         import atomtoolkit.species.Yb_II_171
@@ -18,13 +19,13 @@ import numpy as np
 @pytest.fixture
 def dummy_atom():
     a = Atom(name="dummy")
-    gs = EnergyLevel(Term('1s2.2s', '2S', 0.5), level=0.0 * Hz)#, alias='gs')
+    gs = EnergyLevel(Term('1s2.2s', '2S', 0.5), level=0.0 * Hz, alias='gs')
     a.add_level(gs)
     e1 = EnergyLevel(Term('1s2.2p', '2P', 1.5), level=200 * THz)
     a.add_level(e1)
     e2 = EnergyLevel(Term('1s2.3d', '2D', 2.5), level=100 * THz)
     a.add_level(e2)
-    tc = Transition(gs, e1, A=10 * MHz)#, alias='cooling')
+    tc = Transition(gs, e1, A=10 * MHz, alias='cooling')
     a.add_transition(tc)
     tw = Transition(gs, e2, A=100 * Hz)
     a.add_transition(tw)
@@ -32,16 +33,18 @@ def dummy_atom():
     a.add_transition(td)
     return a
 
+
 @pytest.fixture(params=['1s2.2s 2S1/2', '1s2.2p 2P3/2', '1s2.3d 2D5/2'])
 def lvl(request):
-    a = Atom(name="dummy", I=1/2)
-    gs = EnergyLevel(Term('1s2.2s', '2S', 0.5), level=0.0 * Hz, hfA = 1*GHz)
+    a = Atom(name="dummy", I=1 / 2)
+    gs = EnergyLevel(Term('1s2.2s', '2S', 0.5), level=0.0 * Hz, hfA=1 * GHz)
     a.add_level(gs)
-    e1 = EnergyLevel(Term('1s2.2p', '2P', 1.5), level=200 * THz, hfA = 1*GHz)
+    e1 = EnergyLevel(Term('1s2.2p', '2P', 1.5), level=200 * THz, hfA=1 * GHz)
     a.add_level(e1)
-    e2 = EnergyLevel(Term('1s2.3d', '2D', 2.5), level=100 * THz, lande=1.204, hfA = 1*GHz)
+    e2 = EnergyLevel(Term('1s2.3d', '2D', 2.5), level=100 * THz, lande=1.204, hfA=1 * GHz)
     a.add_level(e2)
     return a.levels[request.param]
+
 
 class TestAtom:
     def test_init(self, dummy_atom):
@@ -78,10 +81,10 @@ class TestAtom:
         assert da.name == 'dummy'
 
     def test_from_dataframe(self):
-        pass #TODO
+        pass  # TODO
 
     def test_populate_transitions(self):
-        pass #TODO
+        pass  # TODO
 
     def test_linked_levels(self, dummy_atom):
         assert len(dummy_atom.linked_levels('1s2.2s 2S1/2')) == 2
@@ -96,8 +99,10 @@ class TestAtom:
 
     def test_branching_ratios(self, dummy_atom):
         assert dummy_atom.compute_branching_ratios('1s2.2s 2S1/2') == {}
-        assert dummy_atom.compute_branching_ratios('1s2.2p 2P3/2') == {'1s2.2s 2S1/2': 0.6666666666666666, '1s2.3d 2D5/2': 0.3333333333333333}
+        assert dummy_atom.compute_branching_ratios('1s2.2p 2P3/2') == {'1s2.2s 2S1/2': 0.6666666666666666,
+                                                                       '1s2.3d 2D5/2': 0.3333333333333333}
         assert dummy_atom.compute_branching_ratios('1s2.3d 2D5/2') == {'1s2.2s 2S1/2': 1.0}
+
 
 class TestAtomAccess:
     def test_sublevels(self, dummy_atom):
@@ -111,17 +116,21 @@ class TestAtomAccess:
     def test_transition_alias(self, dummy_atom):
         assert dummy_atom.transitions['cooling'] is dummy_atom.transitions[('1s2.2s 2S1/2', '1s2.2p 2P3/2')]
 
-    def test_alias_assignment(self, dummy_atom):
+    def test_level_alias_assignment(self, dummy_atom):
         dummy_atom.levels['1s2.2p 2P3/2'].alias = 'es'
         assert dummy_atom.levels['es'] is dummy_atom.levels['1s2.2p 2P3/2']
 
+    def test_transition_alias_assignment(self, dummy_atom):
+        dummy_atom.transitions[('1s2.2s 2S1/2', '1s2.3d 2D5/2')].alias = 'shelving'
+        assert dummy_atom.transitions['shelving'] is dummy_atom.transitions[('1s2.2s 2S1/2', '1s2.3d 2D5/2')]
+
     def test_sublevel_access(self, dummy_atom):
         ways_of_calling = [
-        dummy_atom.levels['1s2.2s 2S1/2']['F=1/2']['mF=1/2'],
-        dummy_atom.levels['1s2.2s 2S1/2 F=1/2']['mF=1/2'],
-        dummy_atom.levels['1s2.2s 2S1/2 F=1/2 mF=1/2'],
-        dummy_atom.levels['1s2.2s 2S1/2']['mJ=1/2'],
-        dummy_atom.levels['1s2.2s 2S1/2 mJ=1/2'],
+            dummy_atom.levels['1s2.2s 2S1/2']['F=1/2']['mF=1/2'],
+            dummy_atom.levels['1s2.2s 2S1/2 F=1/2']['mF=1/2'],
+            dummy_atom.levels['1s2.2s 2S1/2 F=1/2 mF=1/2'],
+            dummy_atom.levels['1s2.2s 2S1/2']['mJ=1/2'],
+            dummy_atom.levels['1s2.2s 2S1/2 mJ=1/2'],
         ]
         for a, b in itertools.product(ways_of_calling, ways_of_calling):
             assert (a is b) and (a is not None)
@@ -159,39 +168,42 @@ class TestAtomAccess:
         for a, b in itertools.product(ways_of_calling, ways_of_calling):
             assert (a is b) and (a is not None)
 
+
 class TestAtomEditing:
     def test_etransition_freq_assignment(self, dummy_atom):
-        dummy_atom.transitions[('1s2.2s 2S1/2', '1s2.2p 2P3/2')].set_frequency(110*THz)
-        assert dummy_atom.transitions[('1s2.2s 2S1/2', '1s2.2p 2P3/2')].freq == 110*THz
+        dummy_atom.transitions[('1s2.2s 2S1/2', '1s2.2p 2P3/2')].set_frequency(110 * THz)
+        assert dummy_atom.transitions[('1s2.2s 2S1/2', '1s2.2p 2P3/2')].freq == 110 * THz
 
-        dummy_atom.transitions[('1s2.2s 2S1/2', '1s2.2p 2P3/2')].freq = 115*THz
-        assert dummy_atom.transitions[('1s2.2s 2S1/2', '1s2.2p 2P3/2')].freq == 115*THz
+        dummy_atom.transitions[('1s2.2s 2S1/2', '1s2.2p 2P3/2')].freq = 115 * THz
+        assert dummy_atom.transitions[('1s2.2s 2S1/2', '1s2.2p 2P3/2')].freq == 115 * THz
 
     def test_hftransition_freq_assignment(self, dummy_atom):
         dummy_atom.transitions[('1s2.2s 2S1/2', '1s2.2p 2P3/2')][('F=1/2', 'F=3/2')].set_frequency(110 * THz)
         assert dummy_atom.transitions[('1s2.2s 2S1/2', '1s2.2p 2P3/2')].freq == 110 * THz
 
     def test_ztransition_freq_assignment(self, dummy_atom):
-        dummy_atom.transitions[('1s2.2s 2S1/2', '1s2.2p 2P3/2')][('F=1/2', 'F=3/2')][('mF=1/2', 'mF=-1/2')].set_frequency(110 * THz)
+        dummy_atom.transitions[('1s2.2s 2S1/2', '1s2.2p 2P3/2')][('F=1/2', 'F=3/2')][('mF=1/2', 'mF=-1/2')].set_frequency(
+            110 * THz)
         assert dummy_atom.transitions[('1s2.2s 2S1/2', '1s2.2p 2P3/2')].freq == 110 * THz
 
     def test_elevel_level_assignment(self, dummy_atom):
-        dummy_atom.levels['1s2.2p 2P3/2'].level = 110*THz
-        assert dummy_atom.levels['1s2.2p 2P3/2'].level == 110*THz
+        dummy_atom.levels['1s2.2p 2P3/2'].level = 110 * THz
+        assert dummy_atom.levels['1s2.2p 2P3/2'].level == 110 * THz
 
     def test_hflevel_level_assignment(self, dummy_atom):
-        dummy_atom.levels['1s2.2p 2P3/2']['F=3/2'].level = 110*THz
-        assert dummy_atom.levels['1s2.2p 2P3/2'].level == 110*THz
+        dummy_atom.levels['1s2.2p 2P3/2']['F=3/2'].level = 110 * THz
+        assert dummy_atom.levels['1s2.2p 2P3/2'].level == 110 * THz
 
         # dummy_atom.hflevels['1s2.2p 2P3/2 F=3/2'].level = 120 * THz
         # assert dummy_atom.levels['1s2.2p 2P3/2'].level == 120 * THz
 
     def test_zlevel_level_assignment(self, dummy_atom):
-        dummy_atom.levels['1s2.2p 2P3/2']['F=3/2']['mF=1/2'].level = 110*THz
-        assert dummy_atom.levels['1s2.2p 2P3/2'].level == 110*THz
+        dummy_atom.levels['1s2.2p 2P3/2']['F=3/2']['mF=1/2'].level = 110 * THz
+        assert dummy_atom.levels['1s2.2p 2P3/2'].level == 110 * THz
 
         dummy_atom.levels['1s2.2p 2P3/2 F=3/2 mF=1/2'].level = 120 * THz
         assert dummy_atom.levels['1s2.2p 2P3/2'].level == 120 * THz
+
 
 class TestEnergyLevel:
     def test_shift(self, lvl):
