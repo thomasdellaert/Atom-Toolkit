@@ -105,7 +105,7 @@ class BaseLevel(ABC):
     @alias.setter
     def alias(self, al):
         self._alias = al
-        self.atom.levels.add_alias(self, al)
+        self.atom.levels[al] = self
 
     # region dict-like methods
     def __len__(self):
@@ -481,7 +481,7 @@ class BaseTransition(ABC):
         self.allowed_types = self.transition_allowed()
         self.set_freq = freq
         if alias is not None:
-            self.atom.transitions.add_alias(self, alias)
+            self.atom.transitions.aliases[alias] = self
 
     def __str__(self):
         return self.name
@@ -537,7 +537,7 @@ class BaseTransition(ABC):
     @alias.setter
     def alias(self, al):
         self._alias = al
-        self.atom.transitions.add_alias(self, al)
+        self.atom.transitions.aliases[al] = self
 
     def _compute_sublevel_pairs(self, attr: str):
         """Returns pairs of sublevels that are likely to have allowed transitions, given the type of transition"""
