@@ -43,6 +43,10 @@ t = Transition(Yb171.levels['4f14.6s 2S1/2'], Yb171.levels['4f14.5d 2D5/2'], A=Q
 t.add_to_atom(Yb171)
 t.set_frequency(Q_(729.476090, 'THz'))
 
+t = Transition(Yb171.levels['4f13.(2F*).6s2 2F*7/2'], Yb171.levels['4f13.(2F*<7/2>).5d.6s.(1D) 1[3/2]*3/2'], A=Q_(50, 'kHz'))
+t.add_to_atom(Yb171)
+# t.set_frequency(Q_(394.423900, 'THz'))
+
 # Set any additional properties
 Yb171.levels['4f14.6s 2S1/2']['F=0']['mF=0'].quadratic_zeeman = -155.305
 Yb171.levels['4f14.6s 2S1/2']['F=1']['mF=0'].quadratic_zeeman = 155.305
