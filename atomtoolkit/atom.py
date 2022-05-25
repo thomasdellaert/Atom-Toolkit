@@ -1055,8 +1055,8 @@ class Atom:
         try:
             totalAs = np.sum([A.magnitude for A in list(A_coeffs.values())])
         except TypeError:
-            # TODO: make a custom exception for this? Maybe a whole slew of exceptions to throw
-            raise TypeError(f"At least one transition leading from {key} has no valid A coefficient")
+            # CONSIDER: make a custom exception for this? Maybe a whole slew of exceptions to throw
+            raise ValueError(f"At least one transition leading from {key} has no valid A coefficient")
 
         ratios = {k: t.magnitude / totalAs for k, t in A_coeffs.items()}
         return ratios
@@ -1064,7 +1064,7 @@ class Atom:
     def enforce_consistency(self, node_or_trans=None):
         """Enforces consistency of the Atom's internal levelsModel. It does this by traversing all the
         fixed transitions, and moving the EnergyLevels to be consistent with the transition frequencies.
-        TODO: this currently only warns on cycles. Eventually, uncertainty math could make cycles that
+        CONSIDER: this currently only warns on cycles. Eventually, uncertainty math could make cycles that
          are self-consistent within a given error.
 
          :param node_or_trans: the node or transition that called the enforce function. It is used to restrict

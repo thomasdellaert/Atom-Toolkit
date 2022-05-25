@@ -65,13 +65,13 @@ class Term:
         self.lc, self.sc, self.lo, self.so, self.jc, self.jo, self.l, self.s, self.k = self.quantum_nums
 
     def __str__(self):
-        return self.term_name #CONSIDER: Is this what I want?
+        return self.term_name
 
     def __repr__(self):
         return f'Term({self.name})'
 
     def __eq__(self, other):
-        # CONSIDER: rn this matches multiterms. Is this the behavior I want?
+        # rn this matches multiterms. Is this the behavior I want?
         return self.quantum_nums == other.quantum_nums and \
                self.conf == other.conf and \
                self.term == other.term
