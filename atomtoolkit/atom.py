@@ -129,7 +129,7 @@ class BaseLevel(ABC):
             self._assign_models()
         return self._submodel
 
-    @model.setter
+    @submodel.setter
     def submodel(self, val):
         self._submodel = val
 
@@ -857,16 +857,8 @@ class Atom:
             for transition in transitions:
                 self.add_transition(transition)
 
-    def __str__(self):
-        return self.name
-
     def __repr__(self):
-        if len(self.levels) <= 20:
-            l = str(list(self.levels.values()))
-        else:
-            l = str(list(self.levels[:5])) + "..." + str(list(self.levels[-5:]))
-
-        return f'Atom(name={self.name}, I={self.I}, levels={l})'
+        return f'Atom(name={self.name}, I={self.I}, {len(self.levels)} levels)'
 
     def add_level(self, level: EnergyLevel, populate_sublevels=False):
         """
@@ -877,10 +869,6 @@ class Atom:
         :param level: the EnergyLevel to be added
         :return:
         """
-
-        if type(level) != EnergyLevel:
-            level = level.manifold
-            populate_sublevels = True
         level.add_to_atom(self)
         if level.alias is not None:
             self.levels.aliases[level.alias] = level
