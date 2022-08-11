@@ -5,22 +5,26 @@ Wigner functions used throughout the package, wrapped in a way that's convenient
 import functools
 
 try:
-    # py3nj is a pain to install, and requires a fortran compiler among other things. Therefore it's optional,
-    # and everything can work with sympy if it needs to. Py3nj is a bit faster, and it supports vectorized inputs,
+    # py3nj is a pain to install, and requires a fortran compiler among other things, therefore it's optional.
+    # Everything can work with sympy if it needs to. py3nj is a bit faster, and it supports vectorized inputs,
     # so it's preferred.
     from py3nj import wigner3j as _wigner3j
     from py3nj import wigner6j as _wigner6j
     from py3nj import wigner9j as _wigner9j
+
     PY3NJ_INSTALLED = True
 except ImportError:
     from sympy.physics.wigner import wigner_3j as _wigner3j
     from sympy.physics.wigner import wigner_6j as _wigner6j
     from sympy.physics.wigner import wigner_9j as _wigner9j
     from sympy import N
+
     PY3NJ_INSTALLED = False
 
+
 def triangle(a, b, c):
-    return a+b >= c, b+c >= a, c+a >= b
+    return a + b >= c, b + c >= a, c + a >= b
+
 
 def wignerPicker(func):
     def wrapper(*args):

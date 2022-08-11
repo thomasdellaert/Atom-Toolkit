@@ -11,6 +11,7 @@ from .lineshapes import LineShape, LorentzianLineShape
 from typing import List, Type, Callable
 import itertools
 
+
 # TODO: Make this use the axis method instead of pyplot
 
 def plot_transitions(transitions: Type[BaseTransition] or List[Type[BaseTransition]],
@@ -52,6 +53,7 @@ def plot_transitions(transitions: Type[BaseTransition] or List[Type[BaseTransiti
     plt.xlabel("Frequency (GHz)")
     plt.legend()
 
+
 def plot_hyperfine_spectrum(transitions: Type[BaseTransition] or List[Type[BaseTransition]],
                             lineshape: Type[LineShape] = LorentzianLineShape, coloring='l', **kwargs):
     # CONSIDER: reconsider the name, since this is theoretically able to plot *any* sub-spectrum
@@ -78,6 +80,7 @@ def plot_hyperfine_spectrum(transitions: Type[BaseTransition] or List[Type[BaseT
         color_func = None
 
     plot_transitions(lines, lineshape=lineshape, color_func=color_func, unit="GHz", **kwargs)
+
 
 def plot_zeeman_spectrum(transitions: Type[BaseTransition] or List[Type[BaseTransition]],
                          lineshape: Type[LineShape] = LorentzianLineShape, coloring='transition_type', **kwargs):
@@ -122,8 +125,9 @@ def plot_zeeman_spectrum(transitions: Type[BaseTransition] or List[Type[BaseTran
 
     plot_transitions(lines, lineshape=lineshape, color_func=color_func, unit="GHz", **kwargs)
 
+
 def color_table_from_property(items: List[Type[BaseTransition]],
-                              property_color: Callable, property_shade: Callable=None, cmap="tab10"):
+                              property_color: Callable, property_shade: Callable = None, cmap="tab10"):
     main_props, secondary_props = [], []
     for t in items:
         main_props.append(property_color(t))

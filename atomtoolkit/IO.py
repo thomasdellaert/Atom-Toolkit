@@ -12,9 +12,9 @@ warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 
 def load_NIST_data(species, term_ordered=False, save=False):
-    pbar = tqdm(total=7)
-    pbar.update(1)
-    pbar.set_description('loading data')
+    p_bar = tqdm(total=7)
+    p_bar.update(1)
+    p_bar.set_description('loading data')
     df = pd.read_csv(
         'https://physics.nist.gov/cgi-bin/ASD/energy1.pl?de=0' +
         '&spectrum=' + species.replace(' ', '+') +
@@ -35,16 +35,16 @@ def load_NIST_data(species, term_ordered=False, save=False):
         '&temp=',
         index_col=False)
 
-    pbar.update(1)
-    pbar.set_description('data loaded')
+    p_bar.update(1)
+    p_bar.set_description('data loaded')
     # === strip the data of extraneous symbols ===
-    df_clean = df.applymap(lambda x: x.strip(' ="?'))
-    pbar.update(1)
-    pbar.set_description('data stripped')
+    df_clean = df.applymap(lambda k: k.strip(' ="?'))
+    p_bar.update(1)
+    p_bar.set_description('data stripped')
     # === coerce types ===
     df_clean['Configuration'] = df_clean['Configuration'].astype('str')
     df_clean['Term'] = df_clean['Term'].astype('str')
-    df_clean['Term'] = df_clean['Term'].apply(lambda x: re.sub(r'[a-z] ', '', x))
+    df_clean['Term'] = df_clean['Term'].apply(lambda k: re.sub(r'[a-z] ', '', k))
     df_clean['J'] = df_clean['J'].astype('str')
     df_clean['Level (cm-1)'] = pd.to_numeric(df_clean['Level (cm-1)'], errors='coerce')
 
@@ -52,9 +52,9 @@ def load_NIST_data(species, term_ordered=False, save=False):
         df_clean['Lande'] = None
     df_clean['Lande'] = pd.to_numeric(df_clean['Lande'], errors='coerce')
 
-    ### Parsing NIST's leading percentages column is extremely complicated
+    # Parsing NIST's leading percentages column is extremely complicated
 
-    #    Not all NIST ASD tables even inclue leading percentages
+    #    Not all NIST ASD tables even include leading percentages
     if 'Leading percentages' not in df_clean.columns:
         df_clean['Leading percentages'] = '100.0'
     #    terms with insufficient first percentage have everything stored in the leading percentages column
@@ -63,52 +63,55 @@ def load_NIST_data(species, term_ordered=False, save=False):
     #    extract the relevant data available in the config leading percentage
     df_clean[['Percentage', 'Percentage_2', 'Configuration_2', 'Term_2']] = \
         df_clean['Leading percentages'].str.extract(r'\ *(\d+)\ +.+?\ *:\ *(\d+)\ +(.+?)(?:\ +(.+?))?\ *$')
-    #    NIST doesn't see fit to give the jj-coupled terms in their second percentages so we extract from the configuration
-    df_clean.loc[df_clean["Term_2"].isnull( ), 'Term_2_int'] = df_clean['Configuration_2'].str.findall(r'\<(.+?)\>')
+    #    NIST doesn't see fit to give the jj-coupled terms in their second percentages,
+    #    so we extract from the configuration
+    df_clean.loc[df_clean["Term_2"].isnull(), 'Term_2_int'] = df_clean['Configuration_2'].str.findall(r'\<(.+?)\>')
     df_clean.loc[~df_clean["Term_2_int"].isnull(), 'Term_2'] = \
-        df_clean["Term_2_int"].map(lambda x: '({}, {})'.format(*x), na_action='ignore')
+        df_clean["Term_2_int"].map(lambda k: '({}, {})'.format(*k), na_action='ignore')
     df_clean = df_clean.drop("Term_2_int", axis=1)
     #    Finally, we have to add back in the parts of the second configuration that NIST deemed redundant and left out
+
     def reconstitute_conf(c0, c1):
         #    grab any info in c0 that has been removed from c1 and put it back where it belongs
         if type(c1) != str:
             return
         if re.match(r'\(.+?\)\(.+?\)', c1):
-            return re.sub( r'\((.+?)\)', '({})',c0).format(*re.findall(r'\((.+?)\)', c1))
+            return re.sub(r'\((.+?)\)', '({})', c0).format(*re.findall(r'\((.+?)\)', c1))
         elif re.match(r'\(.+?\).+\(.+?\)', c1):
             return c0.split('(')[0]+c1
         else:
             return c1
     df_clean['Term'] = df_clean['Term'].fillna('')
     df_clean['Term_2'] = df_clean['Term_2'].fillna('')
-    df_clean['Configuration_2'] = df_clean.apply(lambda x: reconstitute_conf(x['Configuration'], x['Configuration_2']), axis=1)
+    df_clean['Configuration_2'] = df_clean.apply(lambda k: reconstitute_conf(x['Configuration'],
+                                                                             k['Configuration_2']), axis=1)
     df_clean['Percentage'] = pd.to_numeric(df_clean['Percentage'], errors='coerce')
     df_clean['Percentage_2'] = pd.to_numeric(df_clean['Percentage_2'], errors='coerce')
     df_clean['Percentage'] = df_clean['Percentage'].fillna(value=100.0)
     df_clean = df_clean.drop('Leading percentages', axis=1)
 
-    pbar.update(1)
-    pbar.set_description('data typed')
+    p_bar.update(1)
+    p_bar.set_description('data typed')
     # drop rows that don't have a defined level
     df_clean = df_clean.dropna(subset=['Level (cm-1)'])
-    pbar.update(1)
-    pbar.set_description('empty levels dropped')
+    p_bar.update(1)
+    p_bar.set_description('empty levels dropped')
     # convert levels to pint Quantities
     df_clean['Level (cm-1)'] = df_clean['Level (cm-1)'].astype('pint[cm**-1]')
     df_clean['Level (Hz)'] = df_clean['Level (cm-1)'].pint.to('Hz')
-    pbar.update(1)
-    pbar.set_description('pint quantities created')
+    p_bar.update(1)
+    p_bar.set_description('pint quantities created')
 
     df_clean = df_clean.loc[
                :(df_clean['Term'] == 'Limit').idxmax() - 1]  # remove any terms above ionization, and the ionization row
-    df_clean = df_clean[df_clean.J.str.contains(",") == False]  # happens when J is unknown
+    df_clean = df_clean[df_clean.J.str.contains(",") is False]  # happens when J is unknown
     # reset the indices, since we may have dropped some rows
     df_clean.reset_index(drop=True, inplace=True)
 
-    pbar.update(1)
-    pbar.set_description('data finalized')
+    p_bar.update(1)
+    p_bar.set_description('data finalized')
 
-    pbar.close()
+    p_bar.close()
 
     if save:
         if type(save) == str:
@@ -256,7 +259,7 @@ def generate_full_from_dataframe(df, name, I=0.0, **kwargs):
     if 'hf_csv' in kwargs:
         try:
             apply_hf_csv(a, kwargs['hf_csv'])
-        except (FileNotFoundError, TypeError) as e:
+        except (FileNotFoundError, TypeError):
             pass
     if 'transitions_csv' in kwargs:
         apply_transition_csv(a, kwargs['transitions_csv'])

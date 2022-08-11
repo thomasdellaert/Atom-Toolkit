@@ -112,7 +112,7 @@ def get_term_coupling(term):
             :return: A string corresponding to the coupling detected in the term symbol
             """
     if '[' in term:
-        if term[0] in 'SPDFGHIKMNOPQRTUVWXYZ':
+        if term[0] in 'SPDFGHIKLMNOQRTUVWXYZ':
             return 'LK'
         else:
             return 'JK'

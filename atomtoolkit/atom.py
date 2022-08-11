@@ -325,7 +325,8 @@ class EnergyLevel(BaseLevel):
             J = term.J
             ls, ss, percents = terms
 
-            total += pct * sum(percents * (1 + 1.0023 * (J * (J + 1) + ss * (ss + 1) - ls * (ls + 1)) / (2 * J * (J + 1))))
+            total += pct * sum(percents * (1 + 1.0023 * (J * (J + 1) + ss * (ss + 1) - ls * (ls + 1))
+                                           / (2 * J * (J + 1))))
         return total
 
     @classmethod
@@ -377,7 +378,7 @@ class HFLevel(BaseLevel):
 
     def compute_hf_shift(self):
         """
-        Computes the hyperfine shift of a itself given the EnergyLevel's hyperfine coefficients and its F quantum number
+        Computes the hyperfine shift of itself given the EnergyLevel's hyperfine coefficients and its F quantum number
         Math from Hoffman Thesis (2014)
         :return: the shift of the level
         """
@@ -491,7 +492,8 @@ class BaseTransition(ABC):
     precise spectroscopy, etc.
     """
 
-    def __init__(self, E1: EnergyLevel, E2: EnergyLevel, freq=None, A: pint.Quantity = None, name=None, parent=None, alias=None):
+    def __init__(self, E1: EnergyLevel, E2: EnergyLevel, freq=None, A: pint.Quantity = None, name=None, parent=None,
+                 alias=None):
         """
         :param E1: EnergyLevel 1
         :param E2: EnergyLevel 2
@@ -664,7 +666,7 @@ class Transition(BaseTransition):
         p0, p1 = self.E_1.term.parity, self.E_2.term.parity
         if not isinstance(self.E_1, type(self.E_2)):
             return [False, False, False]
-        # for now I'm assuming that E2 transitions within a manifold are impossible. Correct me if I'm wrong!
+        # for now, I'm assuming that E2 transitions within a manifold are impossible. Correct me if I'm wrong!
         return ((np.abs(J1 - J0) <= 1.0 and p0 != p1),
                 (np.abs(J1 - J0) <= 1.0 and p0 == p1),
                 (np.abs(J1 - J0) <= 2.0 and p0 == p1 and not (self.E_1 is self.E_2)))
@@ -696,11 +698,12 @@ class Transition(BaseTransition):
 class HFTransition(BaseTransition):
     """
     An HFTransition connects two HFLevels. It scales its linewidth and strength relative
-    to its parents based on the clebsch-gordan coefficients etc associated with itself
+    to its parents based on the clebsch-gordan coefficients etc. associated with itself
     """
 
     def compute_linewidth(self):
-        """Compute the amplitude/linewidth of the transition relative to others in its multiplet by Clebsch-Gordan math"""
+        """Compute the amplitude/linewidth of the transition relative to others in its multiplet by Clebsch-Gordan
+        math """
         if self.parent is None or self.parent.A is None:
             return None, 1.0
         I = self.E_1.atom.I
@@ -755,7 +758,7 @@ class HFTransition(BaseTransition):
 class ZTransition(BaseTransition):
     """
     An ZTransition connects two ZLevels. It scales its linewidth and strength relative
-    to its parents based on the clebsch-gordan coefficients etc associated with itself
+    to its parents based on the clebsch-gordan coefficients etc. associated with itself
     """
 
     def compute_linewidth(self):
@@ -962,7 +965,7 @@ class Atom:
         """
         max_to_try = 20
         allowed_deltas = []
-        # since the ordering of the list is potentially E1, M1, E2, M2, etc... and the allowed deltas are 1, 1, 2, 2, etc
+        # since the ordering of the list is potentially E1, M1, E2, M2, etc. and the allowed deltas are 1, 1, 2, 2, etc.
         for i in range(len(allowed)):
             if allowed[i // 2] or allowed[i // 2 + 1]:
                 allowed_deltas.append(i)

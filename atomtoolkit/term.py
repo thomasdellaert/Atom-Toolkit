@@ -43,8 +43,8 @@ class Term:
         self.J = util.frac_to_float(J)
         self.F = util.frac_to_float(F)
         self.mF = util.frac_to_float(mF)
-        self.J_frac, self.F_frac, self.mF_frac = util.float_to_frac(self.J), util.float_to_frac(self.F), util.float_to_frac(
-            self.mF)
+        self.J_frac, self.F_frac, self.mF_frac = util.float_to_frac(self.J), util.float_to_frac(self.F), \
+            util.float_to_frac(self.mF)
 
         self.term_name = f'{self.term}{self.J_frac}'
         self.short_name = f'{self.term}{self.J_frac}'
@@ -84,8 +84,10 @@ class Term:
         :return:
         """
         if self.F is not None:
-            return Term(self.conf, self.term, self.J, F=self.F, mF=mF, quantum_nums=self.quantum_nums, percentage=self.percentage)
-        return Term(self.conf, self.term, self.J, F=F, mF=mF, quantum_nums=self.quantum_nums, percentage=self.percentage)
+            return Term(self.conf, self.term, self.J, F=self.F, mF=mF, quantum_nums=self.quantum_nums,
+                        percentage=self.percentage)
+        return Term(self.conf, self.term, self.J, F=F, mF=mF, quantum_nums=self.quantum_nums,
+                    percentage=self.percentage)
 
     @classmethod
     def from_dataframe(cls, df, i=0):
@@ -97,8 +99,9 @@ class MultiTerm(collections.abc.Sequence):
 
     def __init__(self, *terms: Term):
         """
-        A MultiTerm is a container for multiple terms, useful for situations in which just the leading term won't do. It
-        passes through any attribute requests to the leading term, so that it doesn't have to be engaged with unless needed
+        A MultiTerm is a container for multiple terms, useful for situations in which just the leading term won't do.
+        It passes through any attribute requests to the leading term, so that it doesn't have to be engaged with unless
+        needed
         :param terms: the terms that the MultiTerm contains
         """
         self.terms = sorted(terms, key=lambda t: t.percentage, reverse=True)
