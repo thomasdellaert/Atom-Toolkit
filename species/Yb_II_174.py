@@ -4,10 +4,11 @@ Atom configuration file. This file should be able to build a full atom and save 
 
 from atomtoolkit import Q_, IO
 from atomtoolkit.atom import Transition
-import os
+import pathlib
 
-RESOURCE_PATH = os.path.abspath('../resources')
-TRANSITIONS_PATH = os.path.abspath('../resources/Yb_II_Oscillator_Strengths.csv')
+absroot = pathlib.Path(__file__).parents[1]
+RESOURCE_PATH = absroot.joinpath('resources')
+TRANSITIONS_PATH = absroot.joinpath('resources/Yb_II_Oscillator_Strengths.csv')
 HYPERFINE_PATH = None
 
 NAME = '174Yb II'
@@ -18,7 +19,7 @@ ALLOWED_TRANSITIONS = (True, False, False)
 
 _energy_level_df = IO.load_NIST_data('Yb II')
 _transition_df = IO.load_transition_data(
-    TRANSITIONS_PATH,
+    str(TRANSITIONS_PATH),
     columns={
             "conf_l": "LConfiguration", "conf_u": "UConfiguration",
             "term_l": "LTerm", "term_u": "UTerm", "j_l": "LJ", "j_u": "UJ",
@@ -43,7 +44,7 @@ t = Transition(Yb174.levels['4f14.6s 2S1/2'], Yb174.levels['4f14.5d 2D5/2'], A=Q
 t.add_to_atom(Yb174)
 t.set_frequency(Q_(729.475280, 'THz'))
 
-t = Transition(Yb174.levels['4f13.(2F*<7/2>).6s2 2F*7/2'], Yb174.levels['4f13.(2F*<7/2>).5d.6s.(1D) 1[3/2]*3/2'], A=Q_(50, 'kHz'))
+t = Transition(Yb174.levels['4f13.(2F*).6s2 2F*7/2'], Yb174.levels['4f13.(2F*<7/2>).5d.6s.(1D) 1[3/2]*3/2'], A=Q_(50, 'kHz'))
 t.add_to_atom(Yb174)
 t.set_frequency(Q_(394.423900, 'THz'))
 

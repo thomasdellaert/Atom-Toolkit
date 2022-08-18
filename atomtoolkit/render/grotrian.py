@@ -11,7 +11,7 @@ def draw_levels(atom, plot_type='norm', **kwargs):
     Draws a quick and dirty grotrian diagram.
     Placeholder for a more complete grotrian functionality
     """
-    posdict = {l.name: (l.term.J, l.level_Hz) for l in atom.levels.values()}
+    posdict = {l.name: (l.term.J, l.level_Hz/1e12) for l in atom.levels.values()}
     if plot_type == 'hf':
         model = atom._hfModel.copy()
     elif plot_type == 'z':

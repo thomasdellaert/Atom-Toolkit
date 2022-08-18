@@ -4,11 +4,12 @@ Atom configuration file. This file should be able to build a full atom and save 
 
 from atomtoolkit import Q_, IO
 from atomtoolkit.atom import Transition
-import os
+import pathlib
 
-RESOURCE_PATH = os.path.abspath('../resources')
-TRANSITIONS_PATH = os.path.abspath('../resources/Yb_II_Oscillator_Strengths.csv')
-HYPERFINE_PATH = os.path.abspath('../resources/171Yb_Hyperfine.csv')
+absroot = pathlib.Path(__file__).parents[1]
+RESOURCE_PATH = absroot.joinpath('resources')
+TRANSITIONS_PATH = absroot.joinpath('resources/Yb_II_Oscillator_Strengths.csv')
+HYPERFINE_PATH = absroot.joinpath('resources/171Yb_Hyperfine.csv')
 
 NAME = '171Yb II'
 I = 1/2

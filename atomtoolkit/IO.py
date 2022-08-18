@@ -83,7 +83,7 @@ def load_NIST_data(species, term_ordered=False, save=False):
             return c1
     df_clean['Term'] = df_clean['Term'].fillna('')
     df_clean['Term_2'] = df_clean['Term_2'].fillna('')
-    df_clean['Configuration_2'] = df_clean.apply(lambda k: reconstitute_conf(x['Configuration'],
+    df_clean['Configuration_2'] = df_clean.apply(lambda k: reconstitute_conf(k['Configuration'],
                                                                              k['Configuration_2']), axis=1)
     df_clean['Percentage'] = pd.to_numeric(df_clean['Percentage'], errors='coerce')
     df_clean['Percentage_2'] = pd.to_numeric(df_clean['Percentage_2'], errors='coerce')
@@ -104,7 +104,7 @@ def load_NIST_data(species, term_ordered=False, save=False):
 
     df_clean = df_clean.loc[
                :(df_clean['Term'] == 'Limit').idxmax() - 1]  # remove any terms above ionization, and the ionization row
-    df_clean = df_clean[df_clean.J.str.contains(",") is False]  # happens when J is unknown
+    df_clean = df_clean[df_clean.J.str.contains(",") == False]  # happens when J is unknown
     # reset the indices, since we may have dropped some rows
     df_clean.reset_index(drop=True, inplace=True)
 
