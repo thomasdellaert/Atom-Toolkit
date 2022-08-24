@@ -34,25 +34,15 @@ RENDER_METHODS = {'matplotlib', 'bokeh'}
 RENDERER = 'matplotlib'
 
 
-def gross_level_table(caller, level: BaseLevel, **kwargs):
-    level = level.manifold
-
-    width = kwargs.pop('width', caller.level_width)
-    x0 = kwargs.pop('x0', caller.calculate_x0(level))
-    x1 = kwargs.pop('x1', 0)
-    y = level.manifold.level_Hz
-    return [[(x0 + x1 - width / 2, y), (x0 + x1 + width / 2, y), kwargs]]
-
-
-def hf_level_table(caller, level: BaseLevel, **kwargs):
-    level = level.manifold
-
+def _process_kwargs(caller, level, kwargs):
     W = kwargs.pop('width', caller.level_width)
     x0 = kwargs.pop('x0', caller.calculate_x0(level))
     x1 = kwargs.pop('x1', 0)
     offset = kwargs.pop('offset', 0.0)
-    F_null = kwargs.pop('F_null', 3.0)
+    squeeze = kwargs.pop('squeeze', int((level.term.J + level.atom.I)))
+    squeeze = 2 * squeeze + 1
     hf_scale = kwargs.pop('hf_scale', 10000.0)
+    z_scale = kwargs.pop('z_scale', 5.0)
 
     b = kwargs.pop('spacing', 1.0)
     if b == 'realistic':
@@ -70,14 +60,31 @@ def hf_level_table(caller, level: BaseLevel, **kwargs):
     else:
         assert 0 <= a <= 1
 
+    return W, x0, x1, offset, squeeze, hf_scale, z_scale, a, b, kwargs
+
+
+def gross_level_table(caller, level: BaseLevel, **kwargs):
+    level = level.manifold
+
+    width, x0, x1, _, _, _, _, _, _, kwargs = _process_kwargs(caller, level, kwargs)
+
+    y = level.manifold.level_Hz
+    return [[(x0 + x1 - width / 2, y), (x0 + x1 + width / 2, y), kwargs]]
+
+
+def hf_level_table(caller, level: BaseLevel, **kwargs):
+    level = level.manifold
+
+    W, x0, x1, offset, squeeze, hf_scale, _, a, b, kwargs = _process_kwargs(caller, level, kwargs)
+
     Fs = [s.term.F for s in level.sublevels()]
     N = len(Fs)
+    span = abs(level[f'F={util.float_to_frac(max(Fs))}'].shift_Hz - level[f'F={util.float_to_frac(min(Fs))}'].shift_Hz)
 
     lvls = []
     for i, sublevel in enumerate(level.sublevels()):
-        wF = W * (2 * sublevel.term.F + 1) / (2 * F_null + 1)
+        wF = W * (2 * sublevel.term.F + 1) / (2 * squeeze + 1)
         w_null = W - (N - 1) * offset * W
-        span = abs(level[f'F={util.float_to_frac(max(Fs))}'].shift_Hz - level[f'F={util.float_to_frac(min(Fs))}'].shift_Hz)
         y = level.level_Hz + hf_scale * (b * sublevel.shift_Hz + (1 - b) * (i - N / 2) * span / N)
         dx = (1 - a) * w_null / 2 + a * wF / 2
         lvls.append(
@@ -90,22 +97,20 @@ def hf_level_table(caller, level: BaseLevel, **kwargs):
 def zeeman_level_table(caller, level: BaseLevel, **kwargs):
     level = level.manifold
 
-    width = kwargs.pop('width', caller.level_width)
-    x0 = kwargs.pop('x0', caller.calculate_x0(level))
-    x1 = kwargs.pop('x1', 0)
-    hf_scale = kwargs.pop('hf_scale', 10000.0)
-    z_scale = kwargs.pop('z_scale', 10.0)
     fill_factor = kwargs.pop('fill_factor', 0.9)
+    W, x0, x1, offset, squeeze, hf_scale, z_scale, a, b, kwargs = _process_kwargs(caller, level, kwargs)
+
+    sublevel_width = fill_factor * W / squeeze
+    space_width = (1 - fill_factor) * W / (squeeze - 1)
+
+    Fs = [s.term.F for s in level.sublevels()]
+    N = len(Fs)
+    span = abs(level[f'F={util.float_to_frac(max(Fs))}'].shift_Hz - level[f'F={util.float_to_frac(min(Fs))}'].shift_Hz)
+
     lvls = []
-
-    deg_max = int(2 * (level.term.J + level.atom.I) + 1)
-
-    sublevel_width = fill_factor * width / deg_max
-    space_width = (1 - fill_factor) * width / (deg_max - 1)
-
-    for sublevel in level.sublevels():
+    for i, sublevel in enumerate(level.sublevels()):
         for z_level in sublevel.sublevels():
-            y = level.level_Hz + hf_scale * sublevel.shift_Hz + z_scale * hf_scale * z_level.shift_Hz
+            y = level.level_Hz + hf_scale * (b * (sublevel.shift_Hz + z_scale * z_level.shift_Hz) + (1 - b) * (i - N / 2) * span / N)
             lvls.append([
                 ((x0 + x1) + z_level.term.mF * (sublevel_width + space_width) - sublevel_width / 2, y),
                 ((x0 + x1) + z_level.term.mF * (sublevel_width + space_width) + sublevel_width / 2, y),
