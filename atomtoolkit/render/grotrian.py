@@ -78,7 +78,7 @@ def hf_level_table(caller, level: BaseLevel, **kwargs):
         wF = W * (2 * sublevel.term.F + 1) / (2 * F_null + 1)
         w_null = W - (N - 1) * offset * W
         span = abs(level[f'F={util.float_to_frac(max(Fs))}'].shift_Hz - level[f'F={util.float_to_frac(min(Fs))}'].shift_Hz)
-        y = level.level_Hz + hf_scale * (b * sublevel.shift_Hz + (1 - b) * (i - N / 2) / span)
+        y = level.level_Hz + hf_scale * (b * sublevel.shift_Hz + (1 - b) * (i - N / 2) * span / N)
         dx = (1 - a) * w_null / 2 + a * wF / 2
         lvls.append(
             [(offset * W * i - dx + x1 + x0, y),
