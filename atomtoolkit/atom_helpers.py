@@ -1,3 +1,5 @@
+from typing import Union
+
 import networkx as nx
 
 
@@ -12,7 +14,9 @@ class LevelStructure:
     def __repr__(self):
         return f'LevelStructure containing {len(self)} levels of type {type(list(self.values())[0]).__name__}'
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: Union[int, slice, str]):
+        if isinstance(key, int) or isinstance(key, slice):
+            return sorted(nx.get_node_attributes(self.model, 'level').values(), key=lambda l: l.level_Hz)[key]
         if key in self.aliases:
             return self.aliases[key]
         if 'mF=' in key:  # match [conf] [term] F=[f] mF=[mF]
