@@ -179,11 +179,15 @@ class MPLGrotrianRenderer:
         cols = ['p0', 'p1', 'kwargs']
         df = pd.DataFrame(columns=cols)
         for i, row in grotrian.levels_df.iterrows():
-            df = pd.concat([df, pd.DataFrame(data=row['strategy'](grotrian, row['level'], **row['kwargs']), columns=cols)])
-        coords = list(zip(df['p0'].tolist(), df['p1'].tolist()))
+            df = pd.concat([df, pd.DataFrame(data=row['strategy'](grotrian, row['level'], **row['kwargs']), columns=cols)], ignore_index=True)
+        segments = list(zip(df['p0'].tolist(), df['p1'].tolist()))
+        colors = [d.get('color', (0, 0, 0, 1)) for d in df['kwargs']]
+        linewidths = [d.get('linewidth', 2) for d in df['kwargs']]
 
-        lc = matplotlib.collections.LineCollection(coords)
+        lc = matplotlib.collections.LineCollection(segments, colors=colors, linewidths=linewidths)
         axes.add_collection(lc)
+
+        # TODO: Labels
 
     @classmethod
     def render_transitions(cls):
