@@ -1,13 +1,13 @@
 """
-Eventually meant for drawing Geotrian diagrams, perhaps even modifiable ones
+Eventually meant for drawing Grotrian diagrams, perhaps even modifiable ones
 """
-from abc import ABC, abstractmethod
 
 import matplotlib.pyplot as plt
 import matplotlib
 import networkx as nx
 import pandas as pd
-from ..atom import BaseLevel, BaseTransition
+from atomtoolkit.atom import BaseLevel
+import atomtoolkit.util as util
 
 
 def draw_levels(atom, plot_type='norm', **kwargs):
@@ -34,29 +34,55 @@ RENDER_METHODS = {'matplotlib', 'bokeh'}
 RENDERER = 'matplotlib'
 
 
-def gross_structure_level_table(caller, level: BaseLevel, **kwargs):
+def gross_level_table(caller, level: BaseLevel, **kwargs):
     level = level.manifold
 
     width = kwargs.pop('width', caller.level_width)
     x0 = kwargs.pop('x0', caller.calculate_x0(level))
     x1 = kwargs.pop('x1', 0)
     y = level.manifold.level_Hz
-    return [[((x0 + x1) - width / 2, y), ((x0 + x1) + width / 2, y), kwargs]]
+    return [[(x0 + x1 - width / 2, y), (x0 + x1 + width / 2, y), kwargs]]
 
 
-def hf_stack_level_table(caller, level: BaseLevel, **kwargs):
+def hf_level_table(caller, level: BaseLevel, **kwargs):
     level = level.manifold
 
-    width = kwargs.pop('width', caller.level_width)
+    W = kwargs.pop('width', caller.level_width)
     x0 = kwargs.pop('x0', caller.calculate_x0(level))
     x1 = kwargs.pop('x1', 0)
+    offset = kwargs.pop('offset', 0.0)
+    F_null = kwargs.pop('F_null', 3.0)
     hf_scale = kwargs.pop('hf_scale', 10000.0)
+
+    b = kwargs.pop('spacing', 1.0)
+    if b == 'realistic':
+        b = 1.0
+    elif b == 'schematic':
+        b = 0.0
+    else:
+        assert 0 <= b <= 1
+
+    a = kwargs.pop('sublevel_width', 1.0)
+    if a == 'degeneracy':
+        a = 1.0
+    elif a == 'schematic':
+        a = 0.0
+    else:
+        assert 0 <= a <= 1
+
+    Fs = [s.term.F for s in level.sublevels()]
+    N = len(Fs)
+
     lvls = []
-    for sublevel in level.sublevels():
-        y = level.level_Hz + hf_scale * sublevel.shift_Hz
+    for i, sublevel in enumerate(level.sublevels()):
+        wF = W * (2 * sublevel.term.F + 1) / (2 * F_null + 1)
+        w_null = W - (N - 1) * offset * W
+        span = abs(level[f'F={util.float_to_frac(max(Fs))}'].shift_Hz - level[f'F={util.float_to_frac(min(Fs))}'].shift_Hz)
+        y = level.level_Hz + hf_scale * (b * sublevel.shift_Hz + (1 - b) * (i - N / 2) / span)
+        dx = (1 - a) * w_null / 2 + a * wF / 2
         lvls.append(
-            [((x0 + x1) - width / 2, y),
-             ((x0 + x1) + width / 2, y),
+            [(offset * W * i - dx + x1 + x0, y),
+             (offset * W * i + dx + x1 + x0, y),
              kwargs])
     return lvls
 
@@ -88,52 +114,12 @@ def zeeman_level_table(caller, level: BaseLevel, **kwargs):
     return lvls
 
 
-def hf_offset_level_table(caller, level: BaseLevel, **kwargs):
-    level = level.manifold
-
-    width = kwargs.pop('width', caller.level_width)
-    x0 = kwargs.pop('x0', caller.calculate_x0(level))
-    x1 = kwargs.pop('x1', 0)
-    sublevel_width = kwargs.pop('sublevel_width', width/1.5)
-    hf_scale = kwargs.pop('hf_scale', 10000.0)
-
-    slope = sublevel_width/len(level.sublevels())
-    lvls = []
-    for i, sublevel in enumerate(level.sublevels()):
-        y = level.level_Hz + hf_scale * sublevel.shift_Hz
-        lvls.append(
-            [((x0 + x1) - width / 2 + i * slope, y),
-             ((x0 + x1) + width / 2 + i * slope, y),
-             kwargs])
-    return lvls
-
-
-def hf_zeeman_like_level_table(caller, level: BaseLevel, **kwargs):
-    level = level.manifold
-
-    width = kwargs.pop('width', caller.level_width)
-    full_f_width = kwargs.pop('full_f_width', 4)
-    x0 = kwargs.pop('x0', caller.calculate_x0(level))
-    x1 = kwargs.pop('x1', 0)
-    hf_scale = kwargs.pop('hf_scale', 10000.0)
-
-    lvls = []
-    for i, sublevel in enumerate(level.sublevels()):
-        sublevel_width = width*(sublevel.term.F * 2 + 1)/(full_f_width * 2 + 1)
-        y = level.level_Hz + hf_scale * sublevel.shift_Hz
-        lvls.append(
-            [((x0 + x1) - sublevel_width / 2, y),
-             ((x0 + x1) + sublevel_width / 2, y),
-             kwargs])
-    return lvls
-
-
 class Grotrian:
     level_color = 'k'
     transition_color = 'spectrum'
     level_ordering = 'J'
     level_width = 0.8
-    add_level_strategy = gross_structure_level_table
+    add_level_strategy = gross_level_table
     level_width_fluid = False
 
     def __init__(self):
@@ -150,9 +136,9 @@ class Grotrian:
     def add_level(self, level, strategy=None, **kwargs):
         if strategy is None:
             strategy = self.add_level_strategy
-        width = kwargs.pop('width', self.level_width)
-        x1 = kwargs.pop('position_offset', 0.0)
-        x0 = kwargs.pop('position_override', None)
+        width = kwargs.get('width', self.level_width)
+        x1 = kwargs.get('position_offset', 0.0)
+        x0 = kwargs.get('position_override', None)
 
         args = {'level': [level], 'strategy': [strategy],
                 'w': [width], 'x1': [x1], 'x0': [x0],
@@ -165,7 +151,8 @@ class Grotrian:
                        bold=False,
                        color_func=None,
                        **kwargs):
-        if color_func is None: color_func = self.transition_color
+        if color_func is None:
+            color_func = self.transition_color
 
         args = {'l0': l0, 'l1': l1,
                 'substructure': substructure,
@@ -192,7 +179,7 @@ class MPLGrotrianRenderer:
         cols = ['p0', 'p1', 'kwargs']
         df = pd.DataFrame(columns=cols)
         for i, row in grotrian.levels_df.iterrows():
-            df = pd.concat([df, pd.DataFrame(data=row['strategy'](grotrian, row['level']), columns=cols)])
+            df = pd.concat([df, pd.DataFrame(data=row['strategy'](grotrian, row['level'], **row['kwargs']), columns=cols)])
         coords = list(zip(df['p0'].tolist(), df['p1'].tolist()))
 
         lc = matplotlib.collections.LineCollection(coords)
@@ -201,4 +188,3 @@ class MPLGrotrianRenderer:
     @classmethod
     def render_transitions(cls):
         pass
-
