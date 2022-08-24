@@ -86,6 +86,11 @@ class BaseLevel(ABC):
         """Should appropriately calculate the energy of the state (in Hz)"""
         raise NotImplementedError()
 
+    @level_Hz.setter
+    @abstractmethod
+    def level_Hz(self, value):
+        raise NotImplementedError()
+
     @property
     def level(self):
         return self.level_Hz * Hz
