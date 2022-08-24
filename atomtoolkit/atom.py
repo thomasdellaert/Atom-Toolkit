@@ -409,13 +409,13 @@ class HFLevel(BaseLevel):
         return self.compute_hf_shift()
 
     @property
+    def level_Hz(self):
+        return self.parent.level_Hz + self.shift_Hz
+
+    @property
     def level(self):
         """When asked, sublevels calculate their position relative to their parent level"""
         return (self.parent.level_Hz + self.shift_Hz) * Hz
-
-    @property
-    def level_Hz(self):
-        return self.parent.level_Hz + self.shift_Hz
 
     @level.setter
     def level(self, value: pint.Quantity):
