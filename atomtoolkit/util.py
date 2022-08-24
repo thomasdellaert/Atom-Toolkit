@@ -1,4 +1,7 @@
 import re
+from typing import *
+
+import numpy as np
 
 from .transition_strengths import JJ_to_LS, JK_to_LS, LK_to_LS
 
@@ -68,7 +71,7 @@ def float_to_frac(f: float or str) -> str or None:
         return str(int(f * 2)) + '/2'
 
 
-def term_to_LS(conf, term, j):
+def term_to_LS(conf: str, term: str, j: float):
     coupling = get_term_coupling(term)
     lc, sc, lo, so, jc, jo, l, s, k = get_quantum_nums(conf, term)
     if coupling == 'LS':
@@ -81,7 +84,7 @@ def term_to_LS(conf, term, j):
         return readable_LK_to_LS(j, l, k, sc, so)
 
 
-def _sets_to_list(sets):
+def _sets_to_list(sets: np.array) -> List[Tuple[str, float]]:
     # converts the default output of the basis conversion methods below (an unlabeled array of floats) into
     # a dict that's human-readable
     if len(sets) == 0:
@@ -89,17 +92,19 @@ def _sets_to_list(sets):
     return [(str(int(2 * s + 1)) + l_to_let(l), round(100 * ampl ** 2, 2)) for l, s, ampl in sets if ampl != 0]
 
 
-def readable_JJ_to_LS(J, Jc, Jo, lc, sc, lo, so):
+def readable_JJ_to_LS(J: float, Jc: float, Jo: float, lc: float, sc: float, lo: float, so: float) \
+        -> List[Tuple[str, float]]:
     sets = list(zip(*[list(a) for a in JJ_to_LS(J, Jc, Jo, lc, sc, lo, so)]))
     return _sets_to_list(sets)
 
 
-def readable_JK_to_LS(J, Jc, K, lc, sc, lo, so):
+def readable_JK_to_LS(J: float, Jc: float, K: float, lc: float, sc: float, lo: float, so: float) \
+        -> List[Tuple[str, float]]:
     sets = list(zip(*[list(a) for a in JK_to_LS(J, Jc, K, lc, sc, lo, so)]))
     return _sets_to_list(sets)
 
 
-def readable_LK_to_LS(J, L, K, sc, so):
+def readable_LK_to_LS(J: float, L: float, K: float, sc: float, so: float) -> List[Tuple[str, float]]:
     sets = list(zip(*[list(a) for a in LK_to_LS(J, L, K, sc, so)]))
     return _sets_to_list(sets)
 
@@ -107,7 +112,8 @@ def readable_LK_to_LS(J, L, K, sc, so):
 #                 Parsing                  #
 ############################################
 
-def get_term_coupling(term):
+
+def get_term_coupling(term: str) -> str:
     """
             :return: A string corresponding to the coupling detected in the term symbol
             """
@@ -124,7 +130,7 @@ def get_term_coupling(term):
         return "unknown"
 
 
-def get_quantum_nums(conf, term):
+def get_quantum_nums(conf: str, term: str) -> Tuple[float or None, ...]:
     """
     Calls the appropriate term parsing method in order to (hopefully) extract all usable information
     :return: a tuple of useful quantum numbers
@@ -142,7 +148,7 @@ def get_quantum_nums(conf, term):
     return lc, sc, lo, so, jc, jo, l, s, k
 
 
-def parse_LS_term(term):
+def parse_LS_term(term: str) -> Tuple[float, float]:
     """
     Parses an LS-coupled term. Looks for the following forms in self.term:
         {2S+1}{L}
@@ -157,7 +163,7 @@ def parse_LS_term(term):
     return l, s
 
 
-def parse_JK_term(conf, term):
+def parse_JK_term(conf: str, term: str) -> Tuple[float, ...]:
     """
     Parses a JK-coupled term.
     Looks for the following forms in self.term:
@@ -191,7 +197,7 @@ def parse_JK_term(conf, term):
     return lc, sc, lo, so, jc, k
 
 
-def parse_JJ_term(conf, term):
+def parse_JJ_term(conf: str, term: str) -> Tuple[float, ...]:
     """
      Parses a JJ-coupled term.
      Looks for the following in self.term:
@@ -227,7 +233,7 @@ def parse_JJ_term(conf, term):
     return lc, sc, lo, so, jc, jo
 
 
-def parse_LK_term(conf, term):
+def parse_LK_term(conf: str, term: str) -> Tuple[float, ...]:
     """
     Parses a JK-coupled term.
     Looks for the following forms in self.term:

@@ -12,7 +12,8 @@ from .wigner import wigner3j, wigner6j, wigner9j
 
 
 @functools.lru_cache(maxsize=None)
-def tkq_transition_strength(I, k, q, J0, F0, M0, J1, F1, M1):
+def tkq_transition_strength(I: float, k: int, q: int,
+                            J0: float, F0: float, M0: float, J1: float, F1: float, M1: float) -> float:
     prod = 1
     prod *= (2 * F0 + 1) * (2 * F1 + 2) * wigner6j(J0, J1, k,
                                                    F1, F0, I)**2
@@ -23,7 +24,8 @@ def tkq_transition_strength(I, k, q, J0, F0, M0, J1, F1, M1):
 
 # The tensor math for E2 (and somewhat E1) transitions is adapted from Tony's thesis (Ransford 2020)
 @functools.lru_cache(maxsize=None)
-def E1_transition_strength_geom(eps, I, J0, F0, M0, J1, F1, M1):
+def E1_transition_strength_geom(eps: np.array, I: float,
+                                J0: float, F0: float, M0: float, J1: float, F1: float, M1: float) -> float:
     eps = eps / np.linalg.norm(eps)
     tot = 0
     tot += tkq_transition_strength(I, 1, -1, J0, F0, M0, J1, F1, M1) * 0.5 * (eps[0] + eps[1])**2
@@ -33,12 +35,13 @@ def E1_transition_strength_geom(eps, I, J0, F0, M0, J1, F1, M1):
 
 
 @functools.lru_cache(maxsize=None)
-def E1_transition_strength_avg(I, J0, F0, M0, J1, F1, M1):
+def E1_transition_strength_avg(I: float, J0: float, F0: float, M0: float, J1: float, F1: float, M1: float) -> float:
     return sum([tkq_transition_strength(I, 1, q, J0, F0, M0, J1, F1, M1) for q in [-1, 0, 1]]) / 3.0
 
 
 @functools.lru_cache(maxsize=None)
-def M1_transition_strength_geom(eps, I, J0, F0, M0, J1, F1, M1):
+def M1_transition_strength_geom(eps: np.array, I: float,
+                                J0: float, F0: float, M0: float, J1: float, F1: float, M1: float) -> float:
     eps = eps / np.linalg.norm(eps)
     tot = 0
     tot += tkq_transition_strength(I, 1, -1, J0, F0, M0, J1, F1, M1) * \
@@ -50,12 +53,13 @@ def M1_transition_strength_geom(eps, I, J0, F0, M0, J1, F1, M1):
 
 
 @functools.lru_cache(maxsize=None)
-def M1_transition_strength_avg(I, J0, F0, M0, J1, F1, M1):
+def M1_transition_strength_avg(I: float, J0: float, F0: float, M0: float, J1: float, F1: float, M1: float) -> float:
     return sum([tkq_transition_strength(I, 1, q, J0, F0, M0, J1, F1, M1) for q in [-1, 0, 1]]) / 3.0
 
 
 @functools.lru_cache(maxsize=None)
-def E2_transition_strength_geom(eps, k, I, J0, F0, M0, J1, F1, M1):
+def E2_transition_strength_geom(eps: np.array, k: np.array, I: float,
+                                J0: float, F0: float, M0: float, J1: float, F1: float, M1: float) -> float:
     eps = eps / np.linalg.norm(eps)
     k = k / np.linalg.norm(k)
     if np.dot(eps, k) != 0:
@@ -75,7 +79,7 @@ def E2_transition_strength_geom(eps, k, I, J0, F0, M0, J1, F1, M1):
 
 
 @functools.lru_cache(maxsize=None)
-def E2_transition_strength_avg(I, J0, F0, M0, J1, F1, M1):
+def E2_transition_strength_avg(I: float, J0: float, F0: float, M0: float, J1: float, F1: float, M1: float) -> float:
     tot = 0
     tot += tkq_transition_strength(I, 2, -2, J0, F0, M0, J1, F1, M1) * (3.0 / 29.0)
     tot += tkq_transition_strength(I, 2, -1, J0, F0, M0, J1, F1, M1) * (9.0 / 58.0)
@@ -86,7 +90,7 @@ def E2_transition_strength_avg(I, J0, F0, M0, J1, F1, M1):
 
 
 @functools.lru_cache(maxsize=None)
-def JJ_to_LS(J, Jc, Jo, lc, sc, lo, so):
+def JJ_to_LS(J :float, Jc: float, Jo: float, lc: float, sc: float, lo: float, so: float) -> np.array:
     ls = np.arange(abs(lc - lo), abs(lc + lo) + 1)
     ss = np.arange(abs(sc - so), abs(sc + so) + 1)
     outls = np.repeat(ls, len(ss))
@@ -100,7 +104,7 @@ def JJ_to_LS(J, Jc, Jo, lc, sc, lo, so):
 
 
 @functools.lru_cache(maxsize=None)
-def JK_to_LS(J, Jc, K, lc, sc, lo, so):
+def JK_to_LS(J: float, Jc: float, K: float, lc: float, sc: float, lo: float, so: float) -> np.array:
     ls = np.arange(abs(lc - lo), abs(lc + lo) + 1)
     ss = np.arange(abs(sc - so), abs(sc + so) + 1)
     outls = np.repeat(ls, len(ss))
@@ -115,7 +119,7 @@ def JK_to_LS(J, Jc, K, lc, sc, lo, so):
 
 
 @functools.lru_cache(maxsize=None)
-def LK_to_LS(J, L, K, sc, so):
+def LK_to_LS(J: float, L: float, K: float, sc: float, so: float) -> np.array:
     ls = [L]
     ss = np.arange(abs(sc - so), abs(sc + so) + 1)
     outls = np.repeat(ls, len(ss))

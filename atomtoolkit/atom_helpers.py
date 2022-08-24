@@ -1,10 +1,12 @@
-from typing import Union
+from typing import *
 
 import networkx as nx
 
+from atom import BaseTransition, BaseLevel, Atom, EnergyLevel, Transition
+
 
 class LevelStructure:
-    def __init__(self, atom, model: nx.Graph, hf_model: nx.Graph, z_model: nx.Graph):
+    def __init__(self, atom: Atom, model: nx.Graph, hf_model: nx.Graph, z_model: nx.Graph):
         self.atom = atom
         self.model = model
         self.hf_model = hf_model
@@ -14,9 +16,9 @@ class LevelStructure:
     def __repr__(self):
         return f'LevelStructure containing {len(self)} levels of type {type(list(self.values())[0]).__name__}'
 
-    def __getitem__(self, key: Union[int, slice, str]):
+    def __getitem__(self, key: Union[int, slice, str]) -> BaseLevel or List[BaseLevel]:
         if isinstance(key, int) or isinstance(key, slice):
-            return sorted(nx.get_node_attributes(self.model, 'level').values(), key=lambda l: l.level_Hz)[key]
+            return sorted(nx.get_node_attributes(self.model, 'level').values(), key=lambda x: x.level_Hz)[key]
         if key in self.aliases:
             return self.aliases[key]
         if 'mF=' in key:  # match [conf] [term] F=[f] mF=[mF]
@@ -32,36 +34,36 @@ class LevelStructure:
         else:  # match [conf] [term]
             return nx.get_node_attributes(self.model, 'level')[key]
 
-    def __setitem__(self, key, value):
-        self.atom.add_level(value, key=key)
-
-    def __delitem__(self, key):
-        self.model.remove_node(key)
-
-    def __len__(self):
-        return len(nx.get_node_attributes(self.model, 'level'))
-
-    def __iter__(self):
-        return nx.get_node_attributes(self.model, 'level').__iter__()
-
-    def keys(self):
-        return nx.get_node_attributes(self.model, 'level').keys()
-
-    def values(self):
-        return nx.get_node_attributes(self.model, 'level').values()
-
-    def levels(self):
-        return self.values()
-
-    def append(self, value):
+    def __setitem__(self, key: str, value: EnergyLevel):
         self.atom.add_level(value)
 
-    def list_names(self):
+    def __delitem__(self, key: str):
+        self.model.remove_node(key)
+
+    def __len__(self) -> int:
+        return len(nx.get_node_attributes(self.model, 'level'))
+
+    def __iter__(self) -> Iterator:
+        return nx.get_node_attributes(self.model, 'level').__iter__()
+
+    def keys(self) -> KeysView:
+        return nx.get_node_attributes(self.model, 'level').keys()
+
+    def values(self) -> ValuesView:
+        return nx.get_node_attributes(self.model, 'level').values()
+
+    def levels(self) -> ValuesView:
+        return self.values()
+
+    def append(self, value: EnergyLevel):
+        self.atom.add_level(value)
+
+    def list_names(self) -> List[str]:
         return list(self.keys())
 
 
 class TransitionStructure:
-    def __init__(self, atom, model: nx.Graph, hf_model: nx.Graph, z_model: nx.Graph):
+    def __init__(self, atom: Atom, model: nx.Graph, hf_model: nx.Graph, z_model: nx.Graph):
         self.atom = atom
         self.model = model
         self.hf_model = hf_model
@@ -71,7 +73,7 @@ class TransitionStructure:
     def __repr__(self):
         return f'TransitionStructure containing {len(self)} transitions of type {type(list(self.values())[0]).__name__}'
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: Tuple[str, str]) -> BaseTransition:
         if key in self.aliases.keys():
             return self.aliases[key]
         lvl0 = self.atom.levels[key[0]]
@@ -99,28 +101,28 @@ class TransitionStructure:
         else:  # match [conf] [term]
             return nx.get_edge_attributes(self.model, 'transition')[(k_lower, k_upper)]
 
-    def __setitem__(self, value):
+    def __setitem__(self, value: Transition):
         self.atom.add_transition(value)
 
-    def __delitem__(self, level1, level2):
+    def __delitem__(self, level1: str, level2: str):
         self.model.remove_edge(level1, level2)
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(nx.get_edge_attributes(self.model, 'transition'))
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator:
         return nx.get_edge_attributes(self.model, 'transition').__iter__()
 
-    def keys(self):
+    def keys(self) -> KeysView:
         return nx.get_edge_attributes(self.model, 'transition').keys()
 
-    def values(self):
+    def values(self) -> ValuesView:
         return nx.get_edge_attributes(self.model, 'transition').values()
 
-    def append(self, value):
+    def append(self, value: Transition):
         self.atom.add_transition(value)
 
-    def list_names(self, hide_self_transitions=True):
+    def list_names(self, hide_self_transitions: bool = True):
         if hide_self_transitions:
             return [key for key in self.keys() if key[0] != key[1]]
         return list(self.keys())

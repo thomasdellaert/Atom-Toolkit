@@ -1,11 +1,10 @@
-numpy==1.23.2
-scipy==1.9.0
+numpy~=1.23.2
+scipy~=1.9.0
 setuptools==65.1.0
-pandas==1.4.3
+pandas~=1.4.3
 pint-pandas~=0.2
 tqdm>=4.62.3
-networkx==2.8.5
+networkx~=2.8.5
 Pint~=0.17
-py3nj~=0.1.2
 matplotlib>=3.4.3
 sympy>=1.9
