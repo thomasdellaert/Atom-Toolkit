@@ -11,13 +11,10 @@ import pandas as pd
 import pint
 from tqdm import tqdm
 
-from . import Q_, ureg, util, Hz
+from . import Q_, ureg, util, Hz, G, mu_B
 from .atom_helpers import LevelStructure, TransitionStructure
 from .term import Term, MultiTerm
 from .wigner import wigner3j, wigner6j
-
-mu_B = 1.39962449361e6  # Hz/G
-
 
 ############################################
 #                  Level                   #
@@ -479,7 +476,7 @@ class ZLevel(HFLevel):
     @property
     def shift_Hz(self) -> float:
         """A zeeman sublevel is shifted from its parent by the magnetic field. """
-        return self.gF * self.term.mF * mu_B * self.atom.B_gauss \
+        return self.gF * self.term.mF * mu_B.to(Hz/G).magnitude() * self.atom.B_gauss \
             + self.quadratic_zeeman * self.atom.B_gauss ** 2
 
     # def nonlinear_zeeman(self, B):

@@ -1,7 +1,7 @@
 import pint
 import pint_pandas
 
-# setup the unit registry
+# set up the unit registry
 ureg = pint.UnitRegistry()
 Q_ = ureg.Quantity
 
@@ -23,3 +23,6 @@ MHz = ureg.Hz * 1e6
 GHz = ureg.Hz * 1e9
 THz = ureg.Hz * 1e12
 G = ureg.G
+
+mu_B = 1.39962449361e6 * Hz / G
+
