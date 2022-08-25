@@ -476,7 +476,7 @@ class ZLevel(HFLevel):
     @property
     def shift_Hz(self) -> float:
         """A zeeman sublevel is shifted from its parent by the magnetic field. """
-        return self.gF * self.term.mF * mu_B.to(Hz/G).magnitude() * self.atom.B_gauss \
+        return self.gF * self.term.mF * mu_B.to(Hz/G).magnitude * self.atom.B_gauss \
             + self.quadratic_zeeman * self.atom.B_gauss ** 2
 
     # def nonlinear_zeeman(self, B):

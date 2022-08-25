@@ -18,10 +18,10 @@ ureg.enable_contexts('spectroscopy')
 
 c = ureg.speed_of_light
 Hz = ureg.Hz
-kHz = ureg.Hz * 1e3
-MHz = ureg.Hz * 1e6
-GHz = ureg.Hz * 1e9
-THz = ureg.Hz * 1e12
+kHz = Hz * 1e3
+MHz = Hz * 1e6
+GHz = Hz * 1e9
+THz = Hz * 1e12
 G = ureg.G
 
 mu_B = 1.39962449361e6 * Hz / G
