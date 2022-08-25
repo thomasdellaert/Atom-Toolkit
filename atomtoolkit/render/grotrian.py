@@ -31,20 +31,52 @@ def draw_levels(atom: Atom, plot_type: str = 'norm', **kwargs):
     nx.draw(model, pos=positions, node_shape="_", with_labels=True, font_size=8, edge_color=(0, 0, 0, 0.2), **kwargs)
 
 
-RENDER_METHODS = {'matplotlib', 'bokeh'}
-RENDERER = 'matplotlib'
+# RENDER_METHODS = {'matplotlib', 'bokeh'}
+# RENDERER = 'matplotlib'
 
 CoordinateList = List[List[Union[Tuple[float, float], Dict]]]
 
 
 def _process_kwargs(caller: Grotrian, level: BaseLevel, kwargs: Dict):
+    """
+    Handle all the keyword arguments that the Grotrian coordinate generating functions require, and pass the rest along
+    :param caller: the Grotrian object that is being pulled from. Used for accessing defaults
+    :param level: the level being considered
+    :param kwargs: see below
+
+    :keyword float W: the overall width of the drawing. default: 0.8
+    :keyword float x0: override the absolute x-position of the level to be drawn. By default, done in plot coordinates
+        but (I think) can be changed to absolute coordinates with matplotlib's transform. default: None
+    :keyword float x1: shift the absolute x-position of the level to be drawn. default: 0
+    :keyword float offset: if plotting HF structure, the amount by which to horizontally shift each level,
+        as a fraction of the total width. default: 0 CONSIDER: renaming 'offset' keyword
+    :keyword float hf_scale: the factor by which to scale the hyperfine structure. default: 10000.0
+    :keyword float z_scale: the factor by which to *additionally* scale the Zeeman structure. default: 5.0
+    :keyword float|bool squeeze: whether to squeeze the hyperfine/zeeman structure into the width. By default,
+        all hyperfine structure will have width W. If squeeze is set, the F=[squeeze] hyperfine sublevel will
+        have width W. If squeeze is False, all Zeeman sublevels will have the same width as the ground state
+    :keyword float|str spacing: how to space out the sublevels:
+        'realistic': plot an accurate representation of the structure
+        'schematic': plot the sublevels as being equally-spaced
+        float: interpolate between realistic (1.0) and schematic (0.0) spacings
+    :keyword float|str sublevel_width: what widths to draw hyperfine sublevels:
+        'degeneracy': the width of sublevel F = 2F+1
+        'schematic': all sublevel widths are equal to W
+        float: interpolate between degeneracy (1.0) and schematic (0.0) widths
+
+    :return: all the keyword arguments, as the generating functions expect
+    """
     W = kwargs.pop('width', caller.level_width)
     x0 = kwargs.pop('x0', caller.calculate_x0(level))
     x1 = kwargs.pop('x1', 0)
     offset = kwargs.pop('offset', 0.0)
 
     squeeze = kwargs.pop('squeeze', int((level.term.J + level.atom.I)))
-    squeeze = 2 * squeeze + 1
+    if squeeze is True:
+        squeeze = int((level.term.J + level.atom.I))
+    elif squeeze is False:
+        squeeze = max(l.term.F for l in level.atom.levels[0].values())
+    squeeze = int(2 * squeeze + 1)
 
     hf_scale = kwargs.pop('hf_scale', 10000.0)
     z_scale = kwargs.pop('z_scale', 5.0)
@@ -76,6 +108,19 @@ def bbox(l: CoordinateList) -> Tuple[float, ...]:
 
 
 def gross_level_table(caller: Grotrian, level: BaseLevel, **kwargs) -> CoordinateList:
+    """
+    Generate the points that plot the gross fine structure energy level (a single horizontal line)
+    - 2P3/2
+    :param caller: the Grotrian object that is being pulled from. Used for accessing defaults
+    :param level: the level being considered
+    :param kwargs: see below
+
+    :keyword float W: the overall width of the drawing. default: 0.8
+    :keyword float x0: override the absolute x-position of the level to be drawn. By default, done in plot coordinates
+        but (I think) can be changed to absolute coordinates with matplotlib's transform. default: None
+    :keyword float x1: shift the absolute x-position of the level to be drawn. default: 0
+    :return: a list containing pairs of points to be rendered, plus any residual keyword arguments
+    """
     level = level.manifold
 
     width, x0, x1, _, _, _, _, _, _, kwargs = _process_kwargs(caller, level, kwargs)
@@ -85,6 +130,36 @@ def gross_level_table(caller: Grotrian, level: BaseLevel, **kwargs) -> Coordinat
 
 
 def hf_level_table(caller: Grotrian, level: BaseLevel, **kwargs) -> CoordinateList:
+    """
+    Generate the points that plot the hyperfine structure of the energy level (generally I+J - |I-J| horizontal lines)
+    - 2P3/2 F=3
+    - 2P3/2 F=2
+    - 2P3/2 F=1
+    - 2P3/2 F=0
+    :param caller: the Grotrian object that is being pulled from. Used for accessing defaults
+    :param level: the level being considered
+    :param kwargs: see below
+
+    :keyword float W: the overall width of the drawing. default: 0.8
+    :keyword float x0: override the absolute x-position of the level to be drawn. By default, done in plot coordinates
+        but (I think) can be changed to absolute coordinates with matplotlib's transform. default: None
+    :keyword float x1: shift the absolute x-position of the level to be drawn. default: 0
+    :keyword float offset: the amount by which to horizontally shift each level, as a fraction of the total width.
+        default: 0.0 CONSIDER: renaming 'offset' keyword
+    :keyword float hf_scale: the factor by which to scale the hyperfine structure. default: 10000.0
+    :keyword float|bool squeeze: whether to squeeze the hyperfine/zeeman structure into the width. By default,
+        all hyperfine structure will have width W. If squeeze is set, the F=[squeeze] hyperfine sublevel will
+        have width W
+    :keyword float|str spacing: how to space out the sublevels:
+        'realistic': plot an accurate representation of the structure
+        'schematic': plot the sublevels as being equally-spaced
+        float: interpolate between realistic (1.0) and schematic (0.0) spacings
+    :keyword float|str sublevel_width: what widths to draw hyperfine sublevels:
+        'degeneracy': the width of sublevel F = 2F+1
+        'schematic': all sublevel widths are equal to W
+        float: interpolate between degeneracy (1.0) and schematic (0.0) widths
+    :return: a list containing pairs of points to be rendered, plus any residual keyword arguments
+    """
     W, x0, x1, offset, squeeze, hf_scale, _, a, b, kwargs = _process_kwargs(caller, level, kwargs)
 
     Fs = [s.term.F for s in level.manifold.sublevels()]
@@ -116,8 +191,34 @@ def hf_level_table(caller: Grotrian, level: BaseLevel, **kwargs) -> CoordinateLi
 
 
 def zeeman_level_table(caller: Grotrian, level: BaseLevel, **kwargs) -> CoordinateList:
+    """
+    Generate the points to plot the Zeeman structure of the energy level (2F+1 horizontal lines per hyperfine sublevel)
+    ------- 2P3/2 F=3 mF = -3, -2, -1, 0, 1, 2, 3
+     -----  2P3/2 F=2 mF = -2, -1, 0, 1, 2
+      ---   2P3/2 F=1 mF = -1, 0, 1
+       -    2P3/2 F=0 mF = 0
+    :param caller: the Grotrian object that is being pulled from. Used for accessing defaults
+    :param level: the level being considered
+    :param kwargs: see below
+
+    :keyword float W: the overall width of the drawing. default: 0.8
+    :keyword float x0: override the absolute x-position of the level to be drawn. By default, done in plot coordinates
+        but (I think) can be changed to absolute coordinates with matplotlib's transform. default: None
+    :keyword float x1: shift the absolute x-position of the level to be drawn. default: 0
+    # CONSIDER: should zeeman plotting be able to have an offset? I can't imagine where it would be useful...
+    :keyword float hf_scale: the factor by which to scale the hyperfine structure. default: 10000.0
+    :keyword float z_scale: the factor by which to *additionally* scale the Zeeman structure. default: 5.0
+    :keyword float|bool squeeze: whether to squeeze the hyperfine/zeeman structure into the width. By default,
+        all hyperfine structure will have width W. If squeeze is set, the F=[squeeze] hyperfine sublevel will
+        have width W
+    :keyword float|str spacing: how to space out the sublevels:
+        'realistic': plot an accurate representation of the structure
+        'schematic': plot the sublevels as being equally-spaced
+        float: interpolate between realistic (1.0) and schematic (0.0) spacings
+    :return: a list containing pairs of points to be rendered, plus any residual keyword arguments
+    """
     fill_factor = kwargs.pop('fill_factor', 0.9)
-    W, x0, x1, offset, squeeze, hf_scale, z_scale, a, b, kwargs = _process_kwargs(caller, level, kwargs)
+    W, x0, x1, _, squeeze, hf_scale, z_scale, a, b, kwargs = _process_kwargs(caller, level, kwargs)
 
     sublevel_width = fill_factor * W / squeeze
     space_width = (1 - fill_factor) * W / (squeeze - 1)
@@ -210,21 +311,17 @@ class Grotrian:
         if self.level_ordering == 'J':
             return level.term.J
 
-
-class MPLGrotrianRenderer:
-    @classmethod
-    def render(cls, grotrian: Grotrian, axes: plt.Axes = None, **kwargs):
+    def render(self, axes: plt.Axes = None, **kwargs):
         if axes is None:
             fig, axes = plt.subplots()
-        cls.render_levels(grotrian, axes, **kwargs)
-        cls.render_transitions()
+        self.render_levels(axes, **kwargs)
+        self.render_transitions()
 
-    @classmethod
-    def render_levels(cls, grotrian, axes, **kwargs):
+    def render_levels(self, axes, **kwargs):
         cols = ['p0', 'p1', 'kwargs']
         df = pd.DataFrame(columns=cols)
-        for i, row in grotrian.levels_df.iterrows():
-            df = pd.concat([df, pd.DataFrame(data=row['strategy'](grotrian, row['level'], **row['kwargs']),
+        for i, row in self.levels_df.iterrows():
+            df = pd.concat([df, pd.DataFrame(data=row['strategy'](self, row['level'], **row['kwargs']),
                                              columns=cols)], ignore_index=True)
         segments = list(zip(df['p0'].tolist(), df['p1'].tolist()))
         colors = [d.get('color', (0, 0, 0, 1)) for d in df['kwargs']]
@@ -236,6 +333,5 @@ class MPLGrotrianRenderer:
         # TODO: Bounding boxes (either as boxes or brackets)
         # TODO: Labels (either as box-levels or labels of individual lines, at the gross, F, and mF levels)
 
-    @classmethod
-    def render_transitions(cls):
+    def render_transitions(self):
         pass
