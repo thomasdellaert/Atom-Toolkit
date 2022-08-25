@@ -4,8 +4,11 @@ themselves are standard, and the LineShape class is meant as a container to enco
 terms like 'width' and 'shape' in the unique terms of each lineshape.
 
 For instance, a LorentzianLineShape has a different meaning for its 'width' than a
-GaussianLineShape might
+GaussianLineShape might: while a Lorentzian is usually characterized by its FWHM,
+a Gaussian is just as often characterized by its standard deviation
 """
+
+from abc import ABC, abstractmethod
 
 import numpy as np
 from scipy.special import jv
@@ -35,14 +38,16 @@ def mod_lorentzian(x, x0: float, gamma: float, ampl: float = 1.0, depth: float =
     return tot
 
 
-class LineShape:
+class LineShape(ABC):
     def __init__(self):
         pass
 
     @staticmethod
+    @abstractmethod
     def shape_func(x, x0, **kwargs):
         raise NotImplementedError
 
+    @abstractmethod
     def width_func(self, **kwargs):
         raise NotImplementedError
 

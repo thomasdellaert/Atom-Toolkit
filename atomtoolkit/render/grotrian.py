@@ -2,20 +2,21 @@
 Eventually meant for drawing Grotrian diagrams, perhaps even modifiable ones
 """
 
+from __future__ import annotations
+
 import matplotlib.pyplot as plt
 import matplotlib
-import networkx as nx
-import pandas as pd
-from atomtoolkit.atom import BaseLevel
+
+from atomtoolkit.atom import *
 import atomtoolkit.util as util
 
 
-def draw_levels(atom, plot_type='norm', **kwargs):
+def draw_levels(atom: Atom, plot_type: str = 'norm', **kwargs):
     """
     Draws a quick and dirty grotrian diagram.
     Placeholder for a more complete grotrian functionality
     """
-    posdict = {l.name: (l.term.J, l.level_Hz/1e12) for l in atom.levels.values()}
+    positions = {l.name: (l.term.J, l.level_Hz/1e12) for l in atom.levels.values()}
     if plot_type == 'hf':
         model = atom._hfModel.copy()
     elif plot_type == 'z':
@@ -27,20 +28,24 @@ def draw_levels(atom, plot_type='norm', **kwargs):
             model.remove_edge(node, node)
         except nx.NetworkXError:
             pass
-    nx.draw(model, pos=posdict, node_shape="_", with_labels=True, font_size=8, edge_color=(0., 0., 0., 0.2), **kwargs)
+    nx.draw(model, pos=positions, node_shape="_", with_labels=True, font_size=8, edge_color=(0, 0, 0, 0.2), **kwargs)
 
 
 RENDER_METHODS = {'matplotlib', 'bokeh'}
 RENDERER = 'matplotlib'
 
+CoordinateList = List[List[Union[Tuple[float, float], Dict]]]
 
-def _process_kwargs(caller, level, kwargs):
+
+def _process_kwargs(caller: Grotrian, level: BaseLevel, kwargs: Dict):
     W = kwargs.pop('width', caller.level_width)
     x0 = kwargs.pop('x0', caller.calculate_x0(level))
     x1 = kwargs.pop('x1', 0)
     offset = kwargs.pop('offset', 0.0)
+
     squeeze = kwargs.pop('squeeze', int((level.term.J + level.atom.I)))
     squeeze = 2 * squeeze + 1
+
     hf_scale = kwargs.pop('hf_scale', 10000.0)
     z_scale = kwargs.pop('z_scale', 5.0)
 
@@ -63,7 +68,14 @@ def _process_kwargs(caller, level, kwargs):
     return W, x0, x1, offset, squeeze, hf_scale, z_scale, a, b, kwargs
 
 
-def gross_level_table(caller, level: BaseLevel, **kwargs):
+def bbox(l: CoordinateList) -> Tuple[float, ...]:
+    """returns the bounding box of a given CoordinateList"""
+    xs = [row[0][0] for row in l] + [row[1][0] for row in l]
+    ys = [row[0][1] for row in l] + [row[1][1] for row in l]
+    return min(xs), min(ys), max(xs), max(ys)
+
+
+def gross_level_table(caller: Grotrian, level: BaseLevel, **kwargs) -> CoordinateList:
     level = level.manifold
 
     width, x0, x1, _, _, _, _, _, _, kwargs = _process_kwargs(caller, level, kwargs)
@@ -72,55 +84,83 @@ def gross_level_table(caller, level: BaseLevel, **kwargs):
     return [[(x0 + x1 - width / 2, y), (x0 + x1 + width / 2, y), kwargs]]
 
 
-def hf_level_table(caller, level: BaseLevel, **kwargs):
-    level = level.manifold
-
+def hf_level_table(caller: Grotrian, level: BaseLevel, **kwargs) -> CoordinateList:
     W, x0, x1, offset, squeeze, hf_scale, _, a, b, kwargs = _process_kwargs(caller, level, kwargs)
 
-    Fs = [s.term.F for s in level.sublevels()]
+    Fs = [s.term.F for s in level.manifold.sublevels()]
     N = len(Fs)
-    span = abs(level[f'F={util.float_to_frac(max(Fs))}'].shift_Hz - level[f'F={util.float_to_frac(min(Fs))}'].shift_Hz)
+    span = abs(level.manifold[f'F={util.float_to_frac(max(Fs))}'].shift_Hz -
+               level.manifold[f'F={util.float_to_frac(min(Fs))}'].shift_Hz)
+    w_null = W - (N - 1) * offset * W
 
-    lvls = []
-    for i, sublevel in enumerate(level.sublevels()):
-        wF = W * (2 * sublevel.term.F + 1) / (2 * squeeze + 1)
-        w_null = W - (N - 1) * offset * W
-        y = level.level_Hz + hf_scale * (b * sublevel.shift_Hz + (1 - b) * (i - N / 2) * span / N)
+    table = []
+    if isinstance(level, EnergyLevel):
+        for i, sublevel in enumerate(level.sublevels()):
+            wF = W * (2 * sublevel.term.F + 1) / (2 * squeeze + 1)
+            dx = (1 - a) * w_null / 2 + a * wF / 2
+            y = level.level_Hz + hf_scale * (b * sublevel.shift_Hz + (1 - b) * (i - N / 2) * span / N)
+            table.append(
+                [(offset * W * i - dx + x1 + x0, y),
+                 (offset * W * i + dx + x1 + x0, y),
+                 kwargs])
+    elif isinstance(level, HFLevel):
+        i = level.term.F - min(Fs)
+        wF = W * (2 * level.term.F + 1) / (2 * squeeze + 1)
         dx = (1 - a) * w_null / 2 + a * wF / 2
-        lvls.append(
+        y = level.manifold.level_Hz + hf_scale * (b * level.shift_Hz + (1 - b) * (i - N / 2) * span / N)
+        table.append(
             [(offset * W * i - dx + x1 + x0, y),
              (offset * W * i + dx + x1 + x0, y),
              kwargs])
-    return lvls
+    return table
 
 
-def zeeman_level_table(caller, level: BaseLevel, **kwargs):
-    level = level.manifold
-
+def zeeman_level_table(caller: Grotrian, level: BaseLevel, **kwargs) -> CoordinateList:
     fill_factor = kwargs.pop('fill_factor', 0.9)
     W, x0, x1, offset, squeeze, hf_scale, z_scale, a, b, kwargs = _process_kwargs(caller, level, kwargs)
 
     sublevel_width = fill_factor * W / squeeze
     space_width = (1 - fill_factor) * W / (squeeze - 1)
 
-    Fs = [s.term.F for s in level.sublevels()]
+    Fs = [s.term.F for s in level.manifold.sublevels()]
     N = len(Fs)
-    span = abs(level[f'F={util.float_to_frac(max(Fs))}'].shift_Hz - level[f'F={util.float_to_frac(min(Fs))}'].shift_Hz)
+    span = abs(level.manifold[f'F={util.float_to_frac(max(Fs))}'].shift_Hz -
+               level.manifold[f'F={util.float_to_frac(min(Fs))}'].shift_Hz)
 
-    lvls = []
-    for i, sublevel in enumerate(level.sublevels()):
-        for z_level in sublevel.sublevels():
-            y = level.level_Hz + hf_scale * (b * (sublevel.shift_Hz + z_scale * z_level.shift_Hz) + (1 - b) * (i - N / 2) * span / N)
-            lvls.append([
+    table = []
+    # TODO: how to reduce code duplication here without a weird one-off function?
+    if isinstance(level, EnergyLevel):
+        for i, sublevel in enumerate(level.sublevels()):
+            for z_level in sublevel.sublevels():
+                y = level.level_Hz + hf_scale * \
+                    (b * (sublevel.shift_Hz + z_scale * z_level.shift_Hz) + (1 - b) * (i - N / 2) * span / N)
+                table.append([
+                    ((x0 + x1) + z_level.term.mF * (sublevel_width + space_width) - sublevel_width / 2, y),
+                    ((x0 + x1) + z_level.term.mF * (sublevel_width + space_width) + sublevel_width / 2, y),
+                    kwargs])
+    elif type(level) == HFLevel:
+        i = level.term.F - min(Fs)
+        for z_level in level.sublevels():
+            y = level.manifold.level_Hz + hf_scale * \
+                (b * (level.shift_Hz + z_scale * z_level.shift_Hz) + (1 - b) * (i - N / 2) * span / N)
+            table.append([
                 ((x0 + x1) + z_level.term.mF * (sublevel_width + space_width) - sublevel_width / 2, y),
                 ((x0 + x1) + z_level.term.mF * (sublevel_width + space_width) + sublevel_width / 2, y),
                 kwargs])
+    elif type(level) == ZLevel:
+        i = level.term.F - min(Fs)
+        y = level.manifold.level_Hz + hf_scale * \
+            (b * (level.parent.shift_Hz + z_scale * level.shift_Hz) + (1 - b) * (i - N / 2) * span / N)
+        table.append([
+            ((x0 + x1) + level.term.mF * (sublevel_width + space_width) - sublevel_width / 2, y),
+            ((x0 + x1) + level.term.mF * (sublevel_width + space_width) + sublevel_width / 2, y),
+            kwargs])
 
-    return lvls
+    return table
 
 
 class Grotrian:
-    level_color = 'k'
+    level_color = (0, 0, 0, 1)
     transition_color = 'spectrum'
     level_ordering = 'J'
     level_width = 0.8
@@ -138,7 +178,7 @@ class Grotrian:
         self.levels_df = pd.DataFrame(columns=['level', 'strategy', 'w', 'x1', 'x0', 'kwargs'])
         self.transition_df = pd.DataFrame(columns=['l0', 'l1', 'substructure', 'bold', 'color_func', 'kwargs'])
 
-    def add_level(self, level, strategy=None, **kwargs):
+    def add_level(self, level: BaseLevel, strategy: Callable = None, **kwargs):
         if strategy is None:
             strategy = self.add_level_strategy
         width = kwargs.get('width', self.level_width)
@@ -151,15 +191,15 @@ class Grotrian:
 
         self.levels_df = pd.concat([self.levels_df, pd.DataFrame(args)], ignore_index=True)
 
-    def add_transition(self, l0, l1,
-                       substructure=False,
-                       bold=False,
-                       color_func=None,
+    def add_transition(self, t: BaseTransition,
+                       substructure: bool = False,
+                       bold: bool = False,
+                       color_func: Callable = None,
                        **kwargs):
         if color_func is None:
             color_func = self.transition_color
 
-        args = {'l0': l0, 'l1': l1,
+        args = {'t': t,
                 'substructure': substructure,
                 'bold': bold,
                 'color_func': color_func,
@@ -173,18 +213,19 @@ class Grotrian:
 
 class MPLGrotrianRenderer:
     @classmethod
-    def render(cls, grotrian, axes=None, **kwargs):
+    def render(cls, grotrian: Grotrian, axes: plt.Axes = None, **kwargs):
         if axes is None:
             fig, axes = plt.subplots()
-        cls.render_levels(grotrian, axes)
+        cls.render_levels(grotrian, axes, **kwargs)
         cls.render_transitions()
 
     @classmethod
-    def render_levels(cls, grotrian, axes):
+    def render_levels(cls, grotrian, axes, **kwargs):
         cols = ['p0', 'p1', 'kwargs']
         df = pd.DataFrame(columns=cols)
         for i, row in grotrian.levels_df.iterrows():
-            df = pd.concat([df, pd.DataFrame(data=row['strategy'](grotrian, row['level'], **row['kwargs']), columns=cols)], ignore_index=True)
+            df = pd.concat([df, pd.DataFrame(data=row['strategy'](grotrian, row['level'], **row['kwargs']),
+                                             columns=cols)], ignore_index=True)
         segments = list(zip(df['p0'].tolist(), df['p1'].tolist()))
         colors = [d.get('color', (0, 0, 0, 1)) for d in df['kwargs']]
         linewidths = [d.get('linewidth', 2) for d in df['kwargs']]
@@ -192,7 +233,8 @@ class MPLGrotrianRenderer:
         lc = matplotlib.collections.LineCollection(segments, colors=colors, linewidths=linewidths)
         axes.add_collection(lc)
 
-        # TODO: Labels
+        # TODO: Bounding boxes (either as boxes or brackets)
+        # TODO: Labels (either as box-levels or labels of individual lines, at the gross, F, and mF levels)
 
     @classmethod
     def render_transitions(cls):

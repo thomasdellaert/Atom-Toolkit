@@ -1,21 +1,20 @@
 """
 Tools for drawing transition spectra using matplotlib
 """
-
-import numpy as np
-from matplotlib import pyplot as plt
-import matplotlib.colors
-from atomtoolkit.atom import BaseTransition, Transition, HFTransition, ZTransition
+from __future__ import annotations
 import colorsys
+
+from matplotlib import pyplot as plt
+
+import matplotlib.colors
+from atomtoolkit.atom import *
 from .lineshapes import LineShape, LorentzianLineShape
-from typing import List, Type, Callable
-import itertools
 
 
 # TODO: Make this use the axis method instead of pyplot
 
-def plot_transitions(transitions: Type[BaseTransition] or List[Type[BaseTransition]],
-                     lineshape: Type[LineShape], **kwargs):
+def plot_transitions(transitions: BaseTransition or List[BaseTransition],
+                     lineshape: LineShape, **kwargs):
     if 'color_func' not in kwargs:
         def color_func(t):
             return None
@@ -54,8 +53,8 @@ def plot_transitions(transitions: Type[BaseTransition] or List[Type[BaseTransiti
     plt.legend()
 
 
-def plot_hyperfine_spectrum(transitions: Type[BaseTransition] or List[Type[BaseTransition]],
-                            lineshape: Type[LineShape] = LorentzianLineShape, coloring='l', **kwargs):
+def plot_hyperfine_spectrum(transitions: BaseTransition or List[BaseTransition],
+                            lineshape: LineShape = LorentzianLineShape, coloring: str = 'l', **kwargs):
     # CONSIDER: reconsider the name, since this is theoretically able to plot *any* sub-spectrum
     if isinstance(transitions, list):
         lines = list(itertools.chain.from_iterable(list(t.values() for t in transitions)))
@@ -82,8 +81,8 @@ def plot_hyperfine_spectrum(transitions: Type[BaseTransition] or List[Type[BaseT
     plot_transitions(lines, lineshape=lineshape, color_func=color_func, unit="GHz", **kwargs)
 
 
-def plot_zeeman_spectrum(transitions: Type[BaseTransition] or List[Type[BaseTransition]],
-                         lineshape: Type[LineShape] = LorentzianLineShape, coloring='transition_type', **kwargs):
+def plot_zeeman_spectrum(transitions: BaseTransition or List[BaseTransition],
+                         lineshape: LineShape = LorentzianLineShape, coloring: str = 'transition_type', **kwargs):
     if isinstance(transitions, HFTransition):
         lines = list(transitions.values())
     elif isinstance(transitions, Transition):
@@ -126,7 +125,7 @@ def plot_zeeman_spectrum(transitions: Type[BaseTransition] or List[Type[BaseTran
     plot_transitions(lines, lineshape=lineshape, color_func=color_func, unit="GHz", **kwargs)
 
 
-def color_table_from_property(items: List[Type[BaseTransition]],
+def color_table_from_property(items: List[BaseTransition],
                               property_color: Callable, property_shade: Callable = None, cmap="tab10"):
     main_props, secondary_props = [], []
     for t in items:
