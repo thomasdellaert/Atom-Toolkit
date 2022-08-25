@@ -612,7 +612,7 @@ class BaseTransition(ABC):
     def _compute_sublevel_pairs(self, attr: str) -> Iterable[Tuple[BaseLevel, BaseLevel]]:
         """
         Returns pairs of sublevels that are likely to have allowed transitions, given the type of transition
-        :param attr: the Term attribute to consider for selection rules. Can be anything in {L, J, F, mF, mJ}
+        :param attr: the Term attribute to use for selection rules. Can be anything in {L, J, F, mF, mJ}
         :return: An iterable of pairs of sublevels with possible allowed transitions
         """
         if True not in self.allowed_types:
@@ -883,8 +883,9 @@ class Atom:
         :param populate_sublevels: whether the atom should populate the sublevels upon addition. If False, the
         sublevels can still be accessed, but are populated lazily on-demand
         :param level: the EnergyLevel to be added
-        :return:
+        :return: the level that was added (in case you'd like an easy reference to it)
         """
+        # TODO: On-the-spot EnergyLevel creation?
         level.add_to_atom(self)
         if level.alias is not None:
             self.levels.aliases[level.alias] = level
@@ -892,22 +893,32 @@ class Atom:
             level.populate_sublevels()
             for sublevel in list(level.values()):
                 sublevel.add_to_atom(self)
+        return level
 
-    def add_transition(self, transition: Transition):
+    def add_transition(self, transition: Transition or Tuple, **kwargs):
         """
         Add a transition between two EnergyLevels in the atom. If either of the referenced levels aren't in the atom
         yet, they will be added.
         :param transition: the Transition to be added
-        :return:
+        :return: the transition that was added (in case you'd like an easy reference to it)
         """
-        # TODO: This should be able to take a tuple of EnergyLevels, or possibly even indices, and create the
-        #  necessary transition on the spot
-        # TODO: Should you be able to add non-top-level transitions directly to an atom?
+        # CONSIDER: Should you be able to add non-top-level transitions directly to an atom?
+        if isinstance(transition, tuple):
+            if transition in self.transitions.keys():
+                warnings.warn(f'transition {transition} is already in {self.name}')
+                transition = self.transitions[transition]
+            elif isinstance(transition[0], str):
+                transition = Transition(self.levels[transition[0]], self.levels[transition[1]], **kwargs)
+            elif isinstance(transition[0], BaseLevel):
+                transition = Transition(transition[0], transition[1], **kwargs)
+
         transition.add_to_atom(self)
         if transition.alias is not None:
             self.transitions.aliases[transition.alias] = transition
         if transition.set_freq is not None:
             self.enforce_consistency()
+
+        return transition
 
     @property
     def B(self) -> pint.Quantity:

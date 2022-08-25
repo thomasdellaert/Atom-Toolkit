@@ -3,7 +3,6 @@ Atom configuration file. This file should be able to build a full atom and save 
 """
 
 from atomtoolkit import Q_, IO
-from atomtoolkit.atom import Transition
 import pathlib
 
 absroot = pathlib.Path(__file__).parents[1]
@@ -40,12 +39,12 @@ Yb171.transitions[('4f14.5d 2D3/2', '4f13.(2F*<7/2>).5d.6s.(3D) 3[3/2]*1/2')].se
 Yb171.transitions[('4f14.6s 2S1/2', '4f14.6p 2P*1/2')].set_frequency(Q_(811.294110, 'THz'))
 
 # Add new transitions
-t = Transition(Yb171.levels['4f14.6s 2S1/2'], Yb171.levels['4f14.5d 2D5/2'], A=Q_(22, 'Hz'))
-t.add_to_atom(Yb171)
+# t = Transition(Yb171.levels['4f14.6s 2S1/2'], Yb171.levels['4f14.5d 2D5/2'], A=Q_(22, 'Hz'))
+# t.add_to_atom(Yb171)
+t = Yb171.add_transition((Yb171.levels['4f14.6s 2S1/2'], Yb171.levels['4f14.5d 2D5/2']), A=Q_(22, 'Hz'))
 t.set_frequency(Q_(729.476090, 'THz'))
 
-t = Transition(Yb171.levels['4f13.(2F*).6s2 2F*7/2'], Yb171.levels['4f13.(2F*<7/2>).5d.6s.(1D) 1[3/2]*3/2'], A=Q_(50, 'kHz'))
-t.add_to_atom(Yb171)
+t = Yb171.add_transition(Yb171.levels['4f13.(2F*).6s2 2F*7/2'], Yb171.levels['4f13.(2F*<7/2>).5d.6s.(1D) 1[3/2]*3/2'], A=Q_(50, 'kHz'))
 # t.set_frequency(Q_(394.423900, 'THz'))
 
 # Set any additional properties
