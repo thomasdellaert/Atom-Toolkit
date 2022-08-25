@@ -1,8 +1,10 @@
+from __future__ import annotations
 from typing import *
 
 import networkx as nx
 
-from atom import BaseTransition, BaseLevel, Atom, EnergyLevel, Transition
+if TYPE_CHECKING:
+    from atomtoolkit.atom import Atom, BaseLevel, BaseTransition, EnergyLevel, Transition
 
 
 class LevelStructure:
