@@ -319,30 +319,44 @@ class Grotrian:
             y_pad = (max(ys) - min(ys)) * pad
             return min(xs)-pad, min(ys)-y_pad, max(xs)+pad, max(ys)+y_pad
 
+        def bracket(x_min, y_min, x_max, y_max, h=.05):
+            return [
+                [(x_min + h, y_min), (x_min, y_min), (x_min, y_max), (x_min + h, y_max)],
+                [(x_max - h, y_min), (x_max, y_min), (x_max, y_max), (x_max - h, y_max)]
+            ]
+
         # generate the dataframe for the level drawing
         cols = ['p0', 'p1', 'kwargs']
         lines_df = pd.DataFrame(columns=cols)
         rects_list = []
+        bracket_list = []
         for i, row in self.levels_df.iterrows():
             draw_df = pd.DataFrame(data=row['strategy'](self, row['level'], **row['kwargs']), columns=cols)
             lines_df = pd.concat([lines_df, draw_df], ignore_index=True)
 
         # make bounding boxes, if desired
-            if row['kwargs'].pop('bbox', True) is not False:
+            bbox_setting = row['kwargs'].pop('bbox', True)
+            if bbox_setting is not False:
                 x_min, y_min, x_max, y_max = bbox(draw_df, pad=row['kwargs'].pop('bbox_pad', 0.05))
 
-                # TODO: bracket bounding boxes. Other shapes?
-                from matplotlib.patches import Rectangle
-                rects_list.append(Rectangle((x_min, y_min), x_max-x_min, y_max-y_min,
-                                            alpha=row['kwargs'].pop('bbox_alpha', 0.2),
-                                            color=row['kwargs'].pop('bbox_color', None),
-                                            fill=row['kwargs'].pop('bbox_fill', True)
-                                            ))
+                if bbox_setting == 'rect' or bbox_setting == 'rectangle':
+                    # TODO: Other shapes of bounding box? curly braces?
+                    from matplotlib.patches import Rectangle
+                    rects_list.append(Rectangle((x_min, y_min), x_max-x_min, y_max-y_min,
+                                                alpha=row['kwargs'].pop('bbox_alpha', 0.2),
+                                                color=row['kwargs'].pop('bbox_color', None),
+                                                fill=row['kwargs'].pop('bbox_fill', True)
+                                                ))
+                elif bbox_setting == 'bracket':
+                    bracket_list += (bracket(x_min, y_min, x_max, y_max))
 
         segments = list(zip(lines_df['p0'].tolist(), lines_df['p1'].tolist()))
         colors = [d.get('color', (0, 0, 0, 1)) for d in lines_df['kwargs']]
         linewidths = [d.get('linewidth', 2) for d in lines_df['kwargs']]
 
+        brackets = matplotlib.collections.LineCollection(bracket_list, colors=kwargs.pop('bracket_color', (0, 0, 0, 1)),
+                                                         linewidths=kwargs.pop('bracket_linewidth', 1))
+        axes.add_collection(brackets)
         rects = matplotlib.collections.PatchCollection(rects_list, match_original=True)
         axes.add_collection(rects)
         lines = matplotlib.collections.LineCollection(segments, colors=colors, linewidths=linewidths)
