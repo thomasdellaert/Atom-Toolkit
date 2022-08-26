@@ -312,43 +312,41 @@ class Grotrian:
 
     def render_levels(self, axes, **kwargs):
 
-        def bbox(d: pd.DataFrame) -> Tuple[float, ...]:
+        def bbox(d: pd.DataFrame, pad=.05) -> Tuple[float, ...]:
             """returns the bounding box of a given set of points"""
             xs = [x[0] for x in d['p0']] + [x[0] for x in d['p1']]
             ys = [x[1] for x in d['p0']] + [x[1] for x in d['p1']]
-            return min(xs), min(ys), max(xs), max(ys)
+            y_pad = (max(ys) - min(ys)) * pad
+            return min(xs)-pad, min(ys)-y_pad, max(xs)+pad, max(ys)+y_pad
 
-        # draw the actual energy levels (horizontal lines)
+        # generate the dataframe for the level drawing
         cols = ['p0', 'p1', 'kwargs']
         lines_df = pd.DataFrame(columns=cols)
+        rects_list = []
         for i, row in self.levels_df.iterrows():
             draw_df = pd.DataFrame(data=row['strategy'](self, row['level'], **row['kwargs']), columns=cols)
             lines_df = pd.concat([lines_df, draw_df], ignore_index=True)
+
+        # make bounding boxes, if desired
+            if row['kwargs'].pop('bbox', True) is not False:
+                x_min, y_min, x_max, y_max = bbox(draw_df, pad=row['kwargs'].pop('bbox_pad', 0.05))
+
+                # TODO: bracket bounding boxes. Other shapes?
+                from matplotlib.patches import Rectangle
+                rects_list.append(Rectangle((x_min, y_min), x_max-x_min, y_max-y_min,
+                                            alpha=row['kwargs'].pop('bbox_alpha', 0.2),
+                                            color=row['kwargs'].pop('bbox_color', None),
+                                            fill=row['kwargs'].pop('bbox_fill', True)
+                                            ))
 
         segments = list(zip(lines_df['p0'].tolist(), lines_df['p1'].tolist()))
         colors = [d.get('color', (0, 0, 0, 1)) for d in lines_df['kwargs']]
         linewidths = [d.get('linewidth', 2) for d in lines_df['kwargs']]
 
-        lc = matplotlib.collections.LineCollection(segments, colors=colors, linewidths=linewidths)
-        axes.add_collection(lc)
-
-        # # make bounding boxes, if desired. Repetitive bits of code, but nice for legibility
-        for i, row in self.levels_df.iterrows():
-            # FIXME: make this draw the rectangles as a PatchCollection? Could be a needless optimization
-            draw_df = pd.DataFrame(data=row['strategy'](self, row['level'], **row['kwargs']), columns=cols)
-            if row['kwargs'].pop('bbox', True):
-                x_min, y_min, x_max, y_max = bbox(draw_df)
-                pad_x = row['kwargs'].pop('bbox_x_pad', 0.05)
-                pad_y = row['kwargs'].pop('bbox_x_pad', 0)
-
-                # TODO: bracket bounding boxes. Other shapes?
-                from matplotlib.patches import Rectangle
-                axes.add_patch(Rectangle((x_min-pad_x, y_min-pad_y), x_max-x_min+2*pad_x, y_max-y_min+2*pad_y,
-                                         alpha=row['kwargs'].pop('bbox_alpha', 0.2),
-                                         color=row['kwargs'].pop('bbox_color', None),
-                                         fill=row['kwargs'].pop('bbox_fill', True),
-                                         lw=row['kwargs'].pop('bbox_linewidth', row['kwargs'].get('linewidth', 2))
-                                         ))
+        rects = matplotlib.collections.PatchCollection(rects_list, match_original=True)
+        axes.add_collection(rects)
+        lines = matplotlib.collections.LineCollection(segments, colors=colors, linewidths=linewidths)
+        axes.add_collection(lines)
 
         # TODO: Labels (either as box-levels or labels of individual lines, at the gross, F, and mF levels)
 
