@@ -100,13 +100,6 @@ def _process_kwargs(caller: Grotrian, level: BaseLevel, kwargs: Dict):
     return W, x0, x1, offset, squeeze, hf_scale, z_scale, a, b, kwargs
 
 
-def bbox(l: CoordinateList) -> Tuple[float, ...]:
-    """returns the bounding box of a given CoordinateList"""
-    xs = [row[0][0] for row in l] + [row[1][0] for row in l]
-    ys = [row[0][1] for row in l] + [row[1][1] for row in l]
-    return min(xs), min(ys), max(xs), max(ys)
-
-
 def gross_level_table(caller: Grotrian, level: BaseLevel, **kwargs) -> CoordinateList:
     """
     Generate the points that plot the gross fine structure energy level (a single horizontal line)
@@ -318,19 +311,45 @@ class Grotrian:
         self.render_transitions()
 
     def render_levels(self, axes, **kwargs):
+
+        def bbox(d: pd.DataFrame) -> Tuple[float, ...]:
+            """returns the bounding box of a given set of points"""
+            xs = [x[0] for x in d['p0']] + [x[0] for x in d['p1']]
+            ys = [x[1] for x in d['p0']] + [x[1] for x in d['p1']]
+            return min(xs), min(ys), max(xs), max(ys)
+
+        # draw the actual energy levels (horizontal lines)
         cols = ['p0', 'p1', 'kwargs']
-        df = pd.DataFrame(columns=cols)
+        lines_df = pd.DataFrame(columns=cols)
         for i, row in self.levels_df.iterrows():
-            df = pd.concat([df, pd.DataFrame(data=row['strategy'](self, row['level'], **row['kwargs']),
-                                             columns=cols)], ignore_index=True)
-        segments = list(zip(df['p0'].tolist(), df['p1'].tolist()))
-        colors = [d.get('color', (0, 0, 0, 1)) for d in df['kwargs']]
-        linewidths = [d.get('linewidth', 2) for d in df['kwargs']]
+            draw_df = pd.DataFrame(data=row['strategy'](self, row['level'], **row['kwargs']), columns=cols)
+            lines_df = pd.concat([lines_df, draw_df], ignore_index=True)
+
+        segments = list(zip(lines_df['p0'].tolist(), lines_df['p1'].tolist()))
+        colors = [d.get('color', (0, 0, 0, 1)) for d in lines_df['kwargs']]
+        linewidths = [d.get('linewidth', 2) for d in lines_df['kwargs']]
 
         lc = matplotlib.collections.LineCollection(segments, colors=colors, linewidths=linewidths)
         axes.add_collection(lc)
 
-        # TODO: Bounding boxes (either as boxes or brackets)
+        # # make bounding boxes, if desired. Repetitive bits of code, but nice for legibility
+        for i, row in self.levels_df.iterrows():
+            # FIXME: make this draw the rectangles as a PatchCollection? Could be a needless optimization
+            draw_df = pd.DataFrame(data=row['strategy'](self, row['level'], **row['kwargs']), columns=cols)
+            if row['kwargs'].pop('bbox', True):
+                x_min, y_min, x_max, y_max = bbox(draw_df)
+                pad_x = row['kwargs'].pop('bbox_x_pad', 0.05)
+                pad_y = row['kwargs'].pop('bbox_x_pad', 0)
+
+                # TODO: bracket bounding boxes. Other shapes?
+                from matplotlib.patches import Rectangle
+                axes.add_patch(Rectangle((x_min-pad_x, y_min-pad_y), x_max-x_min+2*pad_x, y_max-y_min+2*pad_y,
+                                         alpha=row['kwargs'].pop('bbox_alpha', 0.2),
+                                         color=row['kwargs'].pop('bbox_color', None),
+                                         fill=row['kwargs'].pop('bbox_fill', True),
+                                         lw=row['kwargs'].pop('bbox_linewidth', row['kwargs'].get('linewidth', 2))
+                                         ))
+
         # TODO: Labels (either as box-levels or labels of individual lines, at the gross, F, and mF levels)
 
     def render_transitions(self):
