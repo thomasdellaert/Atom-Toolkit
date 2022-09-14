@@ -177,7 +177,7 @@ class Grotrian:
         for i, row in self.level_prompts.iterrows():
             self.lines_df = pd.concat([self.lines_df, pd.DataFrame(row['strategy'](row['level'], **row['kwargs']))],
                                       ignore_index=True)
-        # make bounding boxes, if desired
+        # make bounding boxes and brackets, if desired
         rects_list = []
         bracket_list = []
         for i, row in self.lines_df.iterrows():
@@ -219,8 +219,10 @@ class Grotrian:
         for i, row in self.transition_prompts.iterrows():
             axes.add_patch(self.compute_arrow(row['t'], **row['kwargs']))
 
-    def compute_arrow(self, t: BaseTransition, **kwargs):
+    def compute_arrow(self, t: BaseTransition or Tuple, **kwargs):
         from matplotlib.patches import FancyArrowPatch, ArrowStyle, Arrow
+        if isinstance(t, BaseTransition):
+            t = (t.E_lower, t.E_upper)
         a_0 = kwargs.pop('start_anchor', 5)
         a_1 = kwargs.pop('end_anchor', 5)
         x1_0 = kwargs.pop('start_x1', 0)
@@ -229,35 +231,38 @@ class Grotrian:
         y1_1 = kwargs.pop('end_y1', 0)
         bbox_overrides = kwargs.get('override_bbox', (False, False))
 
-        def compute_bbox_pos(bbox: Tuple, anchor: int, offset: Tuple):
+        def compute_bbox_pos(bbox: Tuple, anchor: int or Tuple, offset: Tuple):
             pos_dict = {1: (1, 0, 0, 1),   2: (.5, 0, .5, 1),   3: (0, 0, 1, 1),
                         4: (1, .5, 0, .5), 5: (.5, .5, .5, .5), 6: (0, .5, 1, .5),
                         7: (1, 1, 0, 0),   8: (.5, 1, .5, 0),   9: (0, 1, 1, 0)}
-            anchor_vec = pos_dict[anchor]
+            if type(anchor) == int:
+                anchor_vec = pos_dict[anchor]
+            else:
+                anchor_vec = anchor
             return (bbox[0]*anchor_vec[0] + bbox[2]*anchor_vec[2] + offset[0],
                     bbox[1]*anchor_vec[1] + bbox[3]*anchor_vec[3] + offset[1])
 
         def compute_pos_from_level(level, a, x1, y1, bbox_override=False):
             pos = None
             if type(level) == ZLevel:
-                if level.manifold in list(self.level_prompts['level']) or bbox_override in {'manifold', 'gross', 'g'}:
-                    pos = compute_bbox_pos(list(self.level_prompts[self.level_prompts['level'] == level.manifold]['bbox'])[0], a, (x1, y1))
-                if level.parent in list(self.level_prompts['level']) or bbox_override in {'hf', 'hyperfine'}:
-                    pos = compute_bbox_pos(list(self.level_prompts[self.level_prompts['level'] == level.parent]['bbox'])[0], a, (x1, y1))
-                if level in list(self.level_prompts['level']) and bbox_override is False:
-                    pos = compute_bbox_pos(list(self.level_prompts[self.level_prompts['level'] == level]['bbox'])[0], a, (x1, y1))
+                if level.manifold in list(self.lines_df['level']) or bbox_override in {'manifold', 'gross', 'g'}:
+                    pos = compute_bbox_pos(list(self.lines_df[self.lines_df['level'] == level.manifold]['bbox'])[0], a, (x1, y1))
+                if level.parent in list(self.lines_df['level']) or bbox_override in {'hf', 'hyperfine'}:
+                    pos = compute_bbox_pos(list(self.lines_df[self.lines_df['level'] == level.parent]['bbox'])[0], a, (x1, y1))
+                if level in list(self.lines_df['level']) and bbox_override is False:
+                    pos = compute_bbox_pos(list(self.lines_df[self.lines_df['level'] == level]['bbox'])[0], a, (x1, y1))
             elif type(level) == HFLevel:
-                if level.manifold in list(self.level_prompts['level']) or bbox_override in {'manifold', 'gross', 'g'}:
-                    pos = compute_bbox_pos(list(self.level_prompts[self.level_prompts['level'] == level.manifold]['bbox'])[0], a, (x1, y1))
-                if level in list(self.level_prompts['level']) and bbox_override is False:
-                    pos = compute_bbox_pos(list(self.level_prompts[self.level_prompts['level'] == level]['bbox'])[0], a, (x1, y1))
+                if level.manifold in list(self.lines_df['level']) or bbox_override in {'manifold', 'gross', 'g'}:
+                    pos = compute_bbox_pos(list(self.lines_df[self.lines_df['level'] == level.manifold]['bbox'])[0], a, (x1, y1))
+                if level in list(self.lines_df['level']) and bbox_override is False:
+                    pos = compute_bbox_pos(list(self.lines_df[self.lines_df['level'] == level]['bbox'])[0], a, (x1, y1))
             else:
-                pos = compute_bbox_pos(list(self.level_prompts[self.level_prompts['level'] == level]['bbox'])[0], a, (x1, y1))
+                pos = compute_bbox_pos(list(self.lines_df[self.lines_df['level'] == level]['bbox'])[0], a, (x1, y1))
             return pos
 
-        pos_a = compute_pos_from_level(t.E_lower, a_0, x1_0, y1_0, bbox_overrides[0])
-        pos_b = compute_pos_from_level(t.E_upper, a_1, x1_1, y1_1, bbox_overrides[1])
-        print(kwargs)
+        pos_a = compute_pos_from_level(t[0], a_0, x1_0, y1_0, bbox_overrides[0])
+        pos_b = compute_pos_from_level(t[1], a_1, x1_1, y1_1, bbox_overrides[1])
+        # TODO: allow for some common default ArrowStyles. The default FancyArrowPatch settings are horrendous
         return FancyArrowPatch(posA=pos_a, posB=pos_b, **kwargs)
 
     def _process_level_kwargs(self, level: BaseLevel, kwargs: Dict) -> Tuple:
