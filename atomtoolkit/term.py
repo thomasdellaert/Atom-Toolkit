@@ -120,6 +120,12 @@ class MultiTerm(collections.abc.Sequence):
             return self.terms[0].__getattribute__(item)
         return object.__getattribute__(self, item)
 
+    def __repr__(self):
+        return MultiTerm(self.terms)
+
+    def __str__(self):
+        return str(self.terms[0])
+
     @property
     def full_name(self) -> str:
         return f'{self.name} ({self.percentage}%)'

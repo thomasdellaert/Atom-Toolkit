@@ -1,11 +1,8 @@
-"""
-Eventually meant for drawing Grotrian diagrams, perhaps even modifiable ones
-"""
-
 from __future__ import annotations
 
 import matplotlib.pyplot as plt
 import matplotlib
+import pandas as pd
 
 from atomtoolkit.atom import *
 import atomtoolkit.util as util
@@ -34,9 +31,6 @@ def draw_levels(atom: Atom, plot_type: str = 'norm', **kwargs):
 # RENDER_METHODS = {'matplotlib', 'bokeh'}
 # RENDERER = 'matplotlib'
 
-CoordinateList = List[List[Union[Tuple[float, float], Dict]]]
-
-
 class Grotrian:
     level_color = (0, 0, 0, 1)
     transition_color = 'spectrum'
@@ -53,14 +47,19 @@ class Grotrian:
         self.add_level_strategy = Grotrian.add_level_strategy
         self.level_width_fluid = Grotrian.level_width_fluid
 
-        self.levels_df = pd.DataFrame(columns=['level', 'strategy', 'w', 'x1', 'x0', 'kwargs'])
-        self.transition_df = pd.DataFrame(columns=['l0', 'l1', 'substructure', 'bold', 'color_func', 'kwargs'])
+        self.level_prompts = pd.DataFrame()
+        self.transition_prompts = pd.DataFrame()
 
-    def add_level(self, level: BaseLevel, strategy: str = None, **kwargs):
+        self.lines_df = pd.DataFrame(columns=['level', 'show', 'p0', 'p1', 'bbox', 'kwargs'])
+        self.transitions_df = pd.DataFrame()
+
+    def add_level(self, level: BaseLevel, strategy: str or Callable = None, **kwargs):
         """
         :param level: the level to be added
-        :param strategy: the strategy to employ - whether to draw just the gross structure, the hyperfine structure,
-            or the full Zeeman structure
+        :param strategy: the strategy to employ when drawing the level
+            'g' or 'gross': plot the gross structure
+            'hf' or 'hyperfine': plot the hyperfine structure
+            'z' or 'zeeman': plot the Zeeman structure
         :param kwargs: see below
 
         :keyword float W: the overall width of the drawing. default: 0.8
@@ -110,32 +109,44 @@ class Grotrian:
         elif strategy == 'z' or strategy == 'zeeman':
             strategy = self.zeeman_level_table
 
-        width = kwargs.get('width', self.level_width)
-        x1 = kwargs.get('x1', 0.0)
-        x0 = kwargs.get('x0', None)
-        y1 = kwargs.get('y1', 0.0)
-        y0 = kwargs.get('y0', None)
+        args = {'level': [level], 'strategy': [strategy], 'kwargs': [kwargs]}
 
-        args = {'level': [level], 'strategy': [strategy],
-                'w': [width], 'x1': [x1], 'x0': [x0], 'y1': [y1], 'y0': [y0],
-                'kwargs': [kwargs]}
+        self.level_prompts = pd.concat([self.level_prompts, pd.DataFrame(args)], ignore_index=True)
 
-        self.levels_df = pd.concat([self.levels_df, pd.DataFrame(args)], ignore_index=True)
+    def add_transition(self, t: BaseTransition, substructure: bool = False, color_func: str = None, **kwargs):
+        """
 
-    def add_transition(self, t: BaseTransition,
-                       substructure: bool = False,
-                       bold: bool = False,
-                       color_func: Callable = None,
-                       **kwargs):
+        :param t:
+        :param substructure:
+        :param color_func:
+        :param kwargs:
+
+        :keyword str style:
+            'bold'
+            'wavy'
+        :keyword int linewidth:
+        :keyword bool dash:
+        :keyword int|str start_anchor:
+        1  2  3
+        4--5--6
+        7  8  9
+        :keyword int|str end_anchor:
+        :keyword float start_x1:
+        :keyword float end_x1:
+        :keyword float start_y1:
+        :keyword float end_y1:
+        CONSIDER: general mpl arrow specs
+        :return:
+        """
         if color_func is None:
             color_func = self.transition_color
 
-        args = {'t': t,
-                'substructure': substructure,
-                'bold': bold,
-                'color_func': color_func,
-                'kwargs': kwargs}
-        pd.concat([self.transition_df, pd.DataFrame(args)])
+        args = {'t': [t],
+                'substructure': [substructure],
+                'color_func': [color_func],
+                'kwargs': [kwargs]}
+
+        self.transition_prompts = pd.concat([self.transition_prompts, pd.DataFrame(args)])
 
     def calculate_x0(self, level):
         if self.level_ordering == 'J':
@@ -144,36 +155,35 @@ class Grotrian:
     def render(self, axes: plt.Axes = None, **kwargs):
         if axes is None:
             fig, axes = plt.subplots()
-        self.render_levels(axes, **kwargs)
-        self.render_transitions()
+        self.render_levels(axes)
+        self.render_transitions(axes)
+        axes.autoscale()
 
-    def render_levels(self, axes, **kwargs):
+    @staticmethod
+    def bbox(pts: List[Tuple], pad=.05) -> Tuple[float, ...]:
+        """returns the bounding box of a given set of points"""
+        xs = [pt[0] for pt in pts]
+        ys = [pt[1] for pt in pts]
+        y_pad = (max(ys) - min(ys)) * pad
+        return min(xs) - pad, min(ys) - y_pad, max(xs) + pad, max(ys) + y_pad
 
-        def bbox(d: pd.DataFrame, pad=.05) -> Tuple[float, ...]:
-            """returns the bounding box of a given set of points"""
-            xs = [x[0] for x in d['p0']] + [x[0] for x in d['p1']]
-            ys = [x[1] for x in d['p0']] + [x[1] for x in d['p1']]
-            y_pad = (max(ys) - min(ys)) * pad
-            return min(xs)-pad, min(ys)-y_pad, max(xs)+pad, max(ys)+y_pad
+    def render_levels(self, axes):
 
         def brackets(min_x, min_y, max_x, max_y, h=.05):
             return [[(min_x + h, min_y), (min_x, min_y), (min_x, max_y), (min_x + h, max_y)],
                     [(max_x - h, min_y), (max_x, min_y), (max_x, max_y), (max_x - h, max_y)]]
 
-        # generate the dataframe for the level drawing
-        cols = ['p0', 'p1', 'kwargs']
-        lines_df = pd.DataFrame(columns=cols)
+        # build up a table of all the relevant levels AND sublevels (for bbox/transition reasons)
+        for i, row in self.level_prompts.iterrows():
+            self.lines_df = pd.concat([self.lines_df, pd.DataFrame(row['strategy'](row['level'], **row['kwargs']))],
+                                      ignore_index=True)
+        # make bounding boxes, if desired
         rects_list = []
         bracket_list = []
-        for i, row in self.levels_df.iterrows():
-            draw_df = pd.DataFrame(data=row['strategy'](row['level'], **row['kwargs']), columns=cols)
-            lines_df = pd.concat([lines_df, draw_df], ignore_index=True)
-
-        # make bounding boxes, if desired
+        for i, row in self.lines_df.iterrows():
             bbox_setting = row['kwargs'].get('bbox', None)
             if bbox_setting is not None:
-                x_min, y_min, x_max, y_max = bbox(draw_df, pad=row['kwargs'].get('bbox_pad', 0.05))
-
+                x_min, y_min, x_max, y_max = row['bbox']
                 if bbox_setting == 'rect' or bbox_setting == 'rectangle':
                     from matplotlib.patches import Rectangle
                     rects_list.append(Rectangle((x_min, y_min), x_max-x_min, y_max-y_min,
@@ -186,26 +196,71 @@ class Grotrian:
                                               h=row['kwargs'].get('bracket_h', 0.05)))
 
         # draw the brackets
-        bracket_colors = [d.get('bracket_color', (0, 0, 0, .8)) for d in lines_df['kwargs'] if d.get('bbox', False)]
-        bracket_lws = [d.get('bracket_lw', 1) for d in lines_df['kwargs'] if d.get('bbox', False)]
+        bracket_colors = [d.get('bracket_color', (0, 0, 0, .8)) for d in self.lines_df['kwargs'] if d.get('bbox', False)]
+        bracket_lws = [d.get('bracket_lw', 1) for d in self.lines_df['kwargs'] if d.get('bbox', False)]
         brackets = matplotlib.collections.LineCollection(bracket_list, colors=bracket_colors, linewidths=bracket_lws)
         axes.add_collection(brackets)
+
         # draw the rectangles
         rects = matplotlib.collections.PatchCollection(rects_list, match_original=True)
         axes.add_collection(rects)
+
         # draw the levels
-        segments = list(zip(lines_df['p0'].tolist(), lines_df['p1'].tolist()))
-        colors = [d.get('color', (0, 0, 0, 1)) for d in lines_df['kwargs']]
-        linewidths = [d.get('linewidth', 2) for d in lines_df['kwargs']]
+        filtered_df = self.lines_df[self.lines_df['show']]
+        segments = list(zip(filtered_df['p0'].tolist(), filtered_df['p1'].tolist()))
+        colors = [d.get('color', (0, 0, 0, 1)) for d in filtered_df['kwargs']]
+        linewidths = [d.get('linewidth', 2) for d in filtered_df['kwargs']]
         lines = matplotlib.collections.LineCollection(segments, colors=colors, linewidths=linewidths)
         axes.add_collection(lines)
 
         # TODO: Labels (either as box-levels or labels of individual lines, at the gross, F, and mF levels)
 
-    def render_transitions(self):
-        pass
+    def render_transitions(self, axes):
+        for i, row in self.transition_prompts.iterrows():
+            axes.add_patch(self.compute_arrow(row['t'], **row['kwargs']))
 
-    def _process_kwargs(self, level: BaseLevel, kwargs: Dict):
+    def compute_arrow(self, t: BaseTransition, **kwargs):
+        from matplotlib.patches import FancyArrowPatch, ArrowStyle, Arrow
+        a_0 = kwargs.pop('start_anchor', 5)
+        a_1 = kwargs.pop('end_anchor', 5)
+        x1_0 = kwargs.pop('start_x1', 0)
+        x1_1 = kwargs.pop('end_x1', 0)
+        y1_0 = kwargs.pop('start_y1', 0)
+        y1_1 = kwargs.pop('end_y1', 0)
+        bbox_overrides = kwargs.get('override_bbox', (False, False))
+
+        def compute_bbox_pos(bbox: Tuple, anchor: int, offset: Tuple):
+            pos_dict = {1: (1, 0, 0, 1),   2: (.5, 0, .5, 1),   3: (0, 0, 1, 1),
+                        4: (1, .5, 0, .5), 5: (.5, .5, .5, .5), 6: (0, .5, 1, .5),
+                        7: (1, 1, 0, 0),   8: (.5, 1, .5, 0),   9: (0, 1, 1, 0)}
+            anchor_vec = pos_dict[anchor]
+            return (bbox[0]*anchor_vec[0] + bbox[2]*anchor_vec[2] + offset[0],
+                    bbox[1]*anchor_vec[1] + bbox[3]*anchor_vec[3] + offset[1])
+
+        def compute_pos_from_level(level, a, x1, y1, bbox_override=False):
+            pos = None
+            if type(level) == ZLevel:
+                if level.manifold in list(self.level_prompts['level']) or bbox_override in {'manifold', 'gross', 'g'}:
+                    pos = compute_bbox_pos(list(self.level_prompts[self.level_prompts['level'] == level.manifold]['bbox'])[0], a, (x1, y1))
+                if level.parent in list(self.level_prompts['level']) or bbox_override in {'hf', 'hyperfine'}:
+                    pos = compute_bbox_pos(list(self.level_prompts[self.level_prompts['level'] == level.parent]['bbox'])[0], a, (x1, y1))
+                if level in list(self.level_prompts['level']) and bbox_override is False:
+                    pos = compute_bbox_pos(list(self.level_prompts[self.level_prompts['level'] == level]['bbox'])[0], a, (x1, y1))
+            elif type(level) == HFLevel:
+                if level.manifold in list(self.level_prompts['level']) or bbox_override in {'manifold', 'gross', 'g'}:
+                    pos = compute_bbox_pos(list(self.level_prompts[self.level_prompts['level'] == level.manifold]['bbox'])[0], a, (x1, y1))
+                if level in list(self.level_prompts['level']) and bbox_override is False:
+                    pos = compute_bbox_pos(list(self.level_prompts[self.level_prompts['level'] == level]['bbox'])[0], a, (x1, y1))
+            else:
+                pos = compute_bbox_pos(list(self.level_prompts[self.level_prompts['level'] == level]['bbox'])[0], a, (x1, y1))
+            return pos
+
+        pos_a = compute_pos_from_level(t.E_lower, a_0, x1_0, y1_0, bbox_overrides[0])
+        pos_b = compute_pos_from_level(t.E_upper, a_1, x1_1, y1_1, bbox_overrides[1])
+        print(kwargs)
+        return FancyArrowPatch(posA=pos_a, posB=pos_b, **kwargs)
+
+    def _process_level_kwargs(self, level: BaseLevel, kwargs: Dict) -> Tuple:
         """
         Handle all the keyword arguments that the Grotrian coordinate generating functions require, and pass the rest
         along. For an explanation of the kwargs, see the add_level docstring
@@ -217,7 +272,7 @@ class Grotrian:
         W = kwargs.get('width', self.level_width)
         x0 = kwargs.get('x0', self.calculate_x0(level))
         x1 = kwargs.get('x1', 0)
-        y0 = kwargs.get('y0', level.manifold.level_Hz)
+        y0 = kwargs.get('y0', level.manifold.level_Hz/1e12)
         y1 = kwargs.get('y1', 0)
         offset = kwargs.get('offset', 0.0)
 
@@ -249,14 +304,28 @@ class Grotrian:
 
         return W, x0, x1, y0, y1, offset, squeeze, hf_scale, z_scale, a, b, kwargs
 
-    def compute_level_position(self, level: EnergyLevel, **kwargs):
-        width, x0, x1, y0, y1, _, _, _, _, _, _, kwargs = self._process_kwargs(level, kwargs)
+    def compute_level_row(self, level: EnergyLevel, bbox_override=None, show=True, **kwargs) -> pd.DataFrame:
+        width, x0, x1, y0, y1, _, _, _, _, _, _, kwargs = self._process_level_kwargs(level, kwargs)
 
         y = y0 + y1
-        return [(x0 + x1 - width / 2, y), (x0 + x1 + width / 2, y), kwargs]
+        p0 = (x0 + x1 - width / 2, y)
+        p1 = (x0 + x1 + width / 2, y)
 
-    def compute_zlevel_position(self, level: ZLevel, **kwargs):
-        W, x0, x1, y0, y1, _, squeeze, hf_scale, z_scale, a, b, kwargs = self._process_kwargs(level, kwargs)
+        if bbox_override is None:
+            bbox = self.bbox([p0, p1], pad=kwargs.get('bbox_pad', 0.05))
+        else:
+            bbox = bbox_override
+
+        return pd.DataFrame({
+            'level': [level],
+            'show': [show],
+            'p0': [p0],
+            'p1': [p1],
+            'bbox': [bbox],
+            'kwargs': [kwargs]})
+
+    def compute_zlevel_row(self, level: ZLevel, show=True, **kwargs) -> pd.DataFrame:
+        W, x0, x1, y0, y1, _, squeeze, hf_scale, z_scale, a, b, kwargs = self._process_level_kwargs(level, kwargs)
         fill_factor = kwargs.pop('fill_factor', 0.9)
 
         sublevel_width = fill_factor * W / squeeze
@@ -268,28 +337,48 @@ class Grotrian:
                    level.manifold[f'F={util.float_to_frac(min(Fs))}'].shift_Hz)
         i = level.term.F - min(Fs)
 
-        y = y0 + y1 + hf_scale * \
+        y = y0 + y1 + hf_scale/1e12 * \
             (b * (level.parent.shift_Hz + z_scale * level.shift_Hz) + (1 - b) * (i - N / 2) * span / N)
-        return [((x0 + x1) + level.term.mF * (sublevel_width + space_width) - sublevel_width / 2, y),
-                ((x0 + x1) + level.term.mF * (sublevel_width + space_width) + sublevel_width / 2, y),
-                kwargs]
+        p0 = ((x0 + x1) + level.term.mF * (sublevel_width + space_width) - sublevel_width / 2, y)
+        p1 = ((x0 + x1) + level.term.mF * (sublevel_width + space_width) + sublevel_width / 2, y)
+        return pd.DataFrame({
+            'level': [level],
+            'show': [show],
+            'p0': [p0],
+            'p1': [p1],
+            'bbox': [self.bbox([p0, p1], pad=kwargs.get('bbox_pad', 0.05))],
+            'kwargs': [kwargs]})
 
-    def compute_hflevel_position(self, level: HFLevel, **kwargs):
-        W, x0, x1, y0, y1, offset, squeeze, hf_scale, _, a, b, kwargs = self._process_kwargs(level, kwargs)
+    def compute_hflevel_row(self, level: HFLevel, bbox_override=None, show=True, **kwargs) -> pd.DataFrame:
+        W, x0, x1, y0, y1, offset, squeeze, hf_scale, _, a, b, kwargs = self._process_level_kwargs(level, kwargs)
+
         Fs = [s.term.F for s in level.manifold.sublevels()]
         N = len(Fs)
         span = abs(level.manifold[f'F={util.float_to_frac(max(Fs))}'].shift_Hz -
                    level.manifold[f'F={util.float_to_frac(min(Fs))}'].shift_Hz)
-        w_null = W - (N - 1) * offset * W
         i = level.term.F - min(Fs)
+
+        w_null = W - (N - 1) * offset * W
         wF = W * (2 * level.term.F + 1) / (2 * squeeze + 1)
         dx = (1 - a) * w_null / 2 + a * wF / 2
-        y = y0 + y1 + hf_scale * (b * level.shift_Hz + (1 - b) * (i - N / 2) * span / N)
-        return [(offset * W * i - dx + x1 + x0, y),
-                (offset * W * i + dx + x1 + x0, y),
-                kwargs]
+        y = y0 + y1 + hf_scale/1e12 * (b * level.shift_Hz + (1 - b) * (i - N / 2) * span / N)
+        p0 = (offset * W * i - dx + x1 + x0, y)
+        p1 = (offset * W * i + dx + x1 + x0, y)
 
-    def gross_level_table(self, level: BaseLevel, **kwargs) -> CoordinateList:
+        if bbox_override is None:
+            bbox = self.bbox([p0, p1], pad=kwargs.get('bbox_pad', 0.05))
+        else:
+            bbox = bbox_override
+
+        return pd.DataFrame({
+            'level': [level],
+            'show': [show],
+            'p0': [p0],
+            'p1': [p1],
+            'bbox': [bbox],
+            'kwargs': [kwargs]})
+
+    def gross_level_table(self, level: BaseLevel, **kwargs) -> pd.DataFrame:
         """
         Generate the points that plot the gross fine structure energy level (a single horizontal line)
         - 2P3/2
@@ -299,9 +388,9 @@ class Grotrian:
         """
         level = level.manifold
 
-        return [self.compute_level_position(level, **kwargs)]
+        return self.compute_level_row(level, **kwargs)
 
-    def hf_level_table(self, level: BaseLevel, **kwargs) -> CoordinateList:
+    def hf_level_table(self, level: BaseLevel, **kwargs) -> pd.DataFrame:
         """
         Generate the points that plot the hyperfine structure of the energy level (generally I+J - |I-J| horizontal lines)
         - 2P3/2 F=3
@@ -315,15 +404,25 @@ class Grotrian:
         :return: a list containing pairs of points to be rendered, plus any residual keyword arguments
         """
 
-        table = []
         if isinstance(level, EnergyLevel):
+            sub_tables = []
             for i, sublevel in enumerate(level.sublevels()):
-                table.append(self.compute_hflevel_position(sublevel, **kwargs))
+                sub_kwargs = kwargs.copy()
+                sub_kwargs['bbox'] = None
+                sub_tables.append(self.hf_level_table(sublevel, **sub_kwargs))
+            table = pd.concat(sub_tables, ignore_index=True)
+            table = pd.concat([table,
+                               self.compute_level_row(level,
+                                                      bbox_override=self.bbox(
+                                                          (list(table['p0'])+list(table['p1']))),
+                                                      show=False,
+                                                      **kwargs)], ignore_index=True)
         elif isinstance(level, HFLevel):
-            table.append(self.compute_hflevel_position(level, **kwargs))
+            table = self.compute_hflevel_row(level, **kwargs)
+
         return table
 
-    def zeeman_level_table(self, level: BaseLevel, **kwargs) -> CoordinateList:
+    def zeeman_level_table(self, level: BaseLevel, **kwargs) -> pd.DataFrame:
         """
         Generate the points to plot the Zeeman structure of the level (2F+1 horizontal lines per hyperfine sublevel)
         ------- 2P3/2 F=3 mF = -3, -2, -1, 0, 1, 2, 3
@@ -336,16 +435,36 @@ class Grotrian:
 
         :return: a list containing pairs of points to be rendered, plus any residual keyword arguments
         """
-
-        table = []
         if isinstance(level, EnergyLevel):
+            sub_tables = []
             for sublevel in level.sublevels():
-                for z_level in sublevel.sublevels():
-                    table.append(self.compute_zlevel_position(z_level, **kwargs))
+                sub_kwargs = kwargs.copy()
+                sub_kwargs['bbox'] = None
+                sub_tables.append(self.zeeman_level_table(sublevel, **sub_kwargs))
+            table = pd.concat(sub_tables, ignore_index=True)
+            table = pd.concat([table,
+                               self.compute_level_row(level,
+                                                      bbox_override=self.bbox(
+                                                          (list(table['p0']) + list(table['p1']))),
+                                                      show=False,
+                                                      **kwargs)],
+                              ignore_index=True)
+
         elif type(level) == HFLevel:
+            sub_tables = []
             for z_level in level.sublevels():
-                table.append(self.compute_zlevel_position(z_level, **kwargs))
+                sub_kwargs = kwargs.copy()
+                sub_kwargs['bbox'] = None
+                sub_tables.append(self.zeeman_level_table(z_level, **sub_kwargs))
+            table = pd.concat(sub_tables, ignore_index=True)
+            table = pd.concat([table,
+                               self.compute_hflevel_row(level,
+                                                        bbox_override=self.bbox(
+                                                            (list(table['p0']) + list(table['p1']))),
+                                                        show=False,
+                                                        **kwargs)],
+                              ignore_index=True)
         elif type(level) == ZLevel:
-            table.append(self.compute_zlevel_position(level, **kwargs))
+            table = self.compute_zlevel_row(level, **kwargs)
 
         return table

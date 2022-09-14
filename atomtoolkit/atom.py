@@ -20,6 +20,7 @@ from .wigner import wigner3j, wigner6j
 #                  Level                   #
 ############################################
 
+
 class BaseLevel(ABC):
     """
     The basic form of an energy level. To be instantiated, an energy level class needs to have:
@@ -58,7 +59,7 @@ class BaseLevel(ABC):
         return self.name
 
     def __repr__(self):
-        return f'{type(self).__name__}(name = {self.name}, level={str(self.level)}, {len(self._sublevels)} sublevels)'
+        return f'<{type(self).__name__}(name = {self.name}, level={str(self.level)}, {len(self._sublevels)} sublevels)>'
 
     @abstractmethod
     def get_atom(self) -> Atom:  # pragma: no cover
