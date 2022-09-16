@@ -103,11 +103,11 @@ class Grotrian:
         if strategy is None:
             strategy = self.add_level_strategy
         if strategy == 'g' or strategy == 'gross':
-            strategy = self.gross_level_table
+            strategy = self._gross_level_table
         elif strategy == 'hf' or strategy == 'hyperfine':
-            strategy = self.hf_level_table
+            strategy = self._hf_level_table
         elif strategy == 'z' or strategy == 'zeeman':
-            strategy = self.zeeman_level_table
+            strategy = self._zeeman_level_table
 
         args = {'level': [level], 'strategy': [strategy], 'kwargs': [kwargs]}
 
@@ -309,7 +309,7 @@ class Grotrian:
 
         return W, x0, x1, y0, y1, offset, squeeze, hf_scale, z_scale, a, b, kwargs
 
-    def compute_level_row(self, level: EnergyLevel, bbox_override=None, show=True, **kwargs) -> pd.DataFrame:
+    def _compute_level_row(self, level: EnergyLevel, bbox_override=None, show=True, **kwargs) -> pd.DataFrame:
         width, x0, x1, y0, y1, _, _, _, _, _, _, kwargs = self._process_level_kwargs(level, kwargs)
 
         y = y0 + y1
@@ -329,7 +329,7 @@ class Grotrian:
             'bbox': [bbox],
             'kwargs': [kwargs]})
 
-    def compute_zlevel_row(self, level: ZLevel, show=True, **kwargs) -> pd.DataFrame:
+    def _compute_zlevel_row(self, level: ZLevel, show=True, **kwargs) -> pd.DataFrame:
         W, x0, x1, y0, y1, _, squeeze, hf_scale, z_scale, a, b, kwargs = self._process_level_kwargs(level, kwargs)
         fill_factor = kwargs.pop('fill_factor', 0.9)
 
@@ -354,7 +354,7 @@ class Grotrian:
             'bbox': [self.bbox([p0, p1], pad=kwargs.get('bbox_pad', 0.05))],
             'kwargs': [kwargs]})
 
-    def compute_hflevel_row(self, level: HFLevel, bbox_override=None, show=True, **kwargs) -> pd.DataFrame:
+    def _compute_hflevel_row(self, level: HFLevel, bbox_override=None, show=True, **kwargs) -> pd.DataFrame:
         W, x0, x1, y0, y1, offset, squeeze, hf_scale, _, a, b, kwargs = self._process_level_kwargs(level, kwargs)
 
         Fs = [s.term.F for s in level.manifold.sublevels()]
@@ -383,7 +383,7 @@ class Grotrian:
             'bbox': [bbox],
             'kwargs': [kwargs]})
 
-    def gross_level_table(self, level: BaseLevel, **kwargs) -> pd.DataFrame:
+    def _gross_level_table(self, level: BaseLevel, **kwargs) -> pd.DataFrame:
         """
         Generate the points that plot the gross fine structure energy level (a single horizontal line)
         - 2P3/2
@@ -393,9 +393,9 @@ class Grotrian:
         """
         level = level.manifold
 
-        return self.compute_level_row(level, **kwargs)
+        return self._compute_level_row(level, **kwargs)
 
-    def hf_level_table(self, level: BaseLevel, **kwargs) -> pd.DataFrame:
+    def _hf_level_table(self, level: BaseLevel, **kwargs) -> pd.DataFrame:
         """
         Generate the points that plot the hyperfine structure of the energy level (generally I+J - |I-J| horizontal lines)
         - 2P3/2 F=3
@@ -414,20 +414,20 @@ class Grotrian:
             for i, sublevel in enumerate(level.sublevels()):
                 sub_kwargs = kwargs.copy()
                 sub_kwargs['bbox'] = None
-                sub_tables.append(self.hf_level_table(sublevel, **sub_kwargs))
+                sub_tables.append(self._hf_level_table(sublevel, **sub_kwargs))
             table = pd.concat(sub_tables, ignore_index=True)
             table = pd.concat([table,
-                               self.compute_level_row(level,
-                                                      bbox_override=self.bbox(
+                               self._compute_level_row(level,
+                                                       bbox_override=self.bbox(
                                                           (list(table['p0'])+list(table['p1']))),
-                                                      show=False,
-                                                      **kwargs)], ignore_index=True)
+                                                       show=False,
+                                                       **kwargs)], ignore_index=True)
         elif isinstance(level, HFLevel):
-            table = self.compute_hflevel_row(level, **kwargs)
+            table = self._compute_hflevel_row(level, **kwargs)
 
         return table
 
-    def zeeman_level_table(self, level: BaseLevel, **kwargs) -> pd.DataFrame:
+    def _zeeman_level_table(self, level: BaseLevel, **kwargs) -> pd.DataFrame:
         """
         Generate the points to plot the Zeeman structure of the level (2F+1 horizontal lines per hyperfine sublevel)
         ------- 2P3/2 F=3 mF = -3, -2, -1, 0, 1, 2, 3
@@ -445,14 +445,14 @@ class Grotrian:
             for sublevel in level.sublevels():
                 sub_kwargs = kwargs.copy()
                 sub_kwargs['bbox'] = None
-                sub_tables.append(self.zeeman_level_table(sublevel, **sub_kwargs))
+                sub_tables.append(self._zeeman_level_table(sublevel, **sub_kwargs))
             table = pd.concat(sub_tables, ignore_index=True)
             table = pd.concat([table,
-                               self.compute_level_row(level,
-                                                      bbox_override=self.bbox(
+                               self._compute_level_row(level,
+                                                       bbox_override=self.bbox(
                                                           (list(table['p0']) + list(table['p1']))),
-                                                      show=False,
-                                                      **kwargs)],
+                                                       show=False,
+                                                       **kwargs)],
                               ignore_index=True)
 
         elif type(level) == HFLevel:
@@ -460,16 +460,16 @@ class Grotrian:
             for z_level in level.sublevels():
                 sub_kwargs = kwargs.copy()
                 sub_kwargs['bbox'] = None
-                sub_tables.append(self.zeeman_level_table(z_level, **sub_kwargs))
+                sub_tables.append(self._zeeman_level_table(z_level, **sub_kwargs))
             table = pd.concat(sub_tables, ignore_index=True)
             table = pd.concat([table,
-                               self.compute_hflevel_row(level,
-                                                        bbox_override=self.bbox(
+                               self._compute_hflevel_row(level,
+                                                         bbox_override=self.bbox(
                                                             (list(table['p0']) + list(table['p1']))),
-                                                        show=False,
-                                                        **kwargs)],
+                                                         show=False,
+                                                         **kwargs)],
                               ignore_index=True)
         elif type(level) == ZLevel:
-            table = self.compute_zlevel_row(level, **kwargs)
+            table = self._compute_zlevel_row(level, **kwargs)
 
         return table
