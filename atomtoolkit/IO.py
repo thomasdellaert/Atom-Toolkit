@@ -18,7 +18,6 @@ def load_NIST_data(species, term_ordered=False, save=False):
     df = pd.read_csv(
         'https://physics.nist.gov/cgi-bin/ASD/energy1.pl?de=0' +
         '&spectrum=' + species.replace(' ', '+') +
-        '&submit=Retrieve+Data' +
         '&units=0' +
         '&format=2' +
         '&output=0' +
@@ -27,12 +26,12 @@ def load_NIST_data(species, term_ordered=False, save=False):
         '&conf_out=on' +
         '&term_out=on' +
         '&level_out=on' +
-        '&unc_out=0' +
+        '&unc_out=on' +
         '&j_out=on' +
         '&lande_out=on' +
         '&perc_out=on' +
-        '&biblio=0' +
-        '&temp=',
+        '&temp=' +
+        '&submit=Retrieve+Data',
         index_col=False)
 
     p_bar.update(1)
