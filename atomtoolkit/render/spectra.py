@@ -8,7 +8,7 @@ from matplotlib import pyplot as plt
 
 import matplotlib.colors
 from atomtoolkit.atom import *
-from .lineshapes import LineShape, LorentzianLineShape
+from .lineshapes import *
 
 
 # TODO: Make this use the axis method instead of pyplot
@@ -16,8 +16,7 @@ from .lineshapes import LineShape, LorentzianLineShape
 def plot_transitions(transitions: BaseTransition or List[BaseTransition],
                      lineshape: LineShape, **kwargs):
     if 'color_func' not in kwargs:
-        def color_func(t):
-            return None
+        def color_func(t): return 0, 0, 0, 1
     else:
         color_func = kwargs['color_func']
     label_func = kwargs.pop('label_func', lambda t: f"{t.E_lower.term.short_name} → {t.E_upper.term.short_name}")
@@ -28,8 +27,7 @@ def plot_transitions(transitions: BaseTransition or List[BaseTransition],
     for transition in transitions:
         fGHz = transition.freq.to(unit).magnitude
         ampl = transition.rel_strength
-        if 'ampl_dict' in kwargs:
-            ampl *= kwargs['ampl_dict'][transition.name]
+        ampl *= kwargs.get('ampl_dict', {transition.name: 1.0})[transition.name]
         x_values, y_values = lineshape.compute(fGHz, ampl=ampl, **kwargs)
         all_x.append(x_values)
         all_y.append(y_values)
@@ -53,32 +51,15 @@ def plot_transitions(transitions: BaseTransition or List[BaseTransition],
     plt.legend()
 
 
-def plot_hyperfine_spectrum(transitions: BaseTransition or List[BaseTransition],
+def plot_hyperfine_spectrum(transitions: Transition or List[Transition] or List[HFTransition],
                             lineshape: LineShape = LorentzianLineShape, coloring: str = 'l', **kwargs):
-    # CONSIDER: reconsider the name, since this is theoretically able to plot *any* sub-spectrum
+    # FIXME: lineshape parameter doesn't make sense rn
     if isinstance(transitions, list):
         lines = list(itertools.chain.from_iterable(list(t.values() for t in transitions)))
     else:
         lines = list(transitions.values())
 
-    if coloring == 'l':
-        color_dict = color_table_from_property(lines,
-                                               property_color=lambda t: t.E_lower.term.F,
-                                               property_shade=lambda t: t.E_upper.term.F,
-                                               cmap=kwargs.pop('cmap', 'tab10'))
-        color_func = lambda t: color_dict[t]
-    elif coloring == 'u':
-        color_dict = color_table_from_property(lines,
-                                               property_color=lambda t: t.E_upper.term.F,
-                                               property_shade=lambda t: t.E_lower.term.F,
-                                               cmap=kwargs.pop('cmap', 'tab10'))
-        color_func = lambda t: color_dict[t]
-    elif isinstance(coloring, Callable):
-        color_func = coloring
-    else:
-        color_func = None
-
-    plot_transitions(lines, lineshape=lineshape, color_func=color_func, unit="GHz", **kwargs)
+    plot_spectrum(lines, lineshape=lineshape, coloring=coloring, unit="GHz", **kwargs)
 
 
 def plot_zeeman_spectrum(transitions: BaseTransition or List[BaseTransition],
@@ -153,3 +134,68 @@ def color_table_from_property(items: List[BaseTransition],
         return col
 
     return {t: color_by_properties(t) for t in items}
+
+
+def plot_spectrum(transitions: BaseTransition or List[BaseTransition],
+                  lineshape: str or LineShape = None,
+                  coloring: str or Callable = None,
+                  temp: pint.Quantity = None,
+                  laser_linewidth: pint.Quantity = Q_(0, 'Hz'),
+                  mass: pint.Quantity = None,
+                  ampl_dict: Dict = None,
+                  polarization: Tuple = None,
+                  **kwargs
+                  ):
+    lines = transitions
+    if not isinstance(transitions, list):
+        lines = list(transitions.values())
+    # determine the lineshape:
+    if lineshape is not None:
+        lineshape_func = lineshape
+    elif temp.magnitude == 0:
+        lineshape_func = LorentzianLineShape(gamma=laser_linewidth.to(GHz).magnitude)
+    else:
+        assert mass is not None, "thermal lineshape requires mass to be given"
+        lineshape_func = ThermalLineShape(T=temp, m=mass, gamma=laser_linewidth.to(GHz).magnitude)
+
+    # parse the color function CONSIDER: move this to a separate function for cleaner code?
+    def color_func(t): pass
+    if type(lines[0]) == Transition:
+        def color_func(t): return (0, 0, 0, 1)
+    elif type(transitions[0]) == HFTransition:
+        if coloring == 'l':
+            color_dict = color_table_from_property(lines,
+                                                   property_color=lambda t: t.E_lower.term.F,
+                                                   property_shade=lambda t: t.E_upper.term.F,
+                                                   cmap=kwargs.pop('cmap', 'tab10'))
+
+            def color_func(t): return color_dict[t]
+        elif coloring == 'u':
+            color_dict = color_table_from_property(lines,
+                                                   property_color=lambda t: t.E_upper.term.F,
+                                                   property_shade=lambda t: t.E_lower.term.F,
+                                                   cmap=kwargs.pop('cmap', 'tab10'))
+    elif type(transitions[0]) == ZTransition:
+        if coloring == 'l':
+            color_dict = color_table_from_property(lines,
+                                                   property_color=lambda t: t.E_lower.term.mF,
+                                                   property_shade=lambda t: t.E_upper.term.mF,
+                                                   cmap=kwargs.pop('cmap', 'tab10'))
+
+            def color_func(t): return color_dict[t]
+        elif coloring == 'u':
+            color_dict = color_table_from_property(lines,
+                                                   property_color=lambda t: t.E_upper.term.mF,
+                                                   property_shade=lambda t: t.E_lower.term.mF,
+                                                   cmap=kwargs.pop('cmap', 'tab10'))
+
+            def color_func(t): return color_dict[t]
+        elif coloring == 'transition_type':
+            color_dict = color_table_from_property(lines,
+                                                   property_color=lambda t: t.E_upper.term.mF - t.E_lower.term.mF,
+                                                   property_shade=lambda t: t.E_lower.term.mF,
+                                                   cmap=kwargs.pop('cmap', 'tab10'))
+
+            def color_func(t): return color_dict[t]
+
+    plot_transitions(transitions, lineshape_func, ampl_dict=ampl_dict, color_func=color_func)

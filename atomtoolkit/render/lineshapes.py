@@ -11,8 +11,9 @@ a Gaussian is just as often characterized by its standard deviation
 from abc import ABC, abstractmethod
 
 import numpy as np
-from scipy.special import jv
-from scipy.special import voigt_profile
+from scipy.special import jv, voigt_profile
+
+from atomtoolkit import *
 
 
 def lorentzian(x, x0, gamma: float, ampl: float = 1.0):
@@ -42,7 +43,6 @@ class LineShape(ABC):
     def __init__(self):
         pass
 
-    @staticmethod
     @abstractmethod
     def shape_func(x, x0, **kwargs):
         raise NotImplementedError
@@ -56,6 +56,9 @@ class LineShape(ABC):
         x_values = np.linspace(x0 - width, x0 + width, num_points)
         y_values = self.shape_func(x_values, x0, **kwargs)
         return x_values, y_values
+
+    def __add__(self, other):
+        return
 
 
 class LorentzianLineShape(LineShape):
@@ -127,6 +130,41 @@ class GaussianLineShape(LineShape):
         if 'ampl' in kwargs:
             ampl = kwargs['ampl']
         return gaussian(x, x0, self.sigma, ampl=ampl)
+
+    def width_func(self, padding=20.0, **kwargs):
+        return padding * self.sigma
+
+
+class ThermalGaussianLineShape(LineShape):
+    def __init__(self, T, m):
+        super().__init__()
+        self.sigma = (8*ureg.k*T/(m*c**2))**0.5
+        self.fwhm = self.sigma * 2.355
+
+    def shape_func(self, x, x0, **kwargs):
+        ampl = kwargs.get('ampl', 1.0)
+        return gaussian(x, x0, self.sigma*x0, ampl=ampl)
+
+    def width_func(self, padding=20.0, **kwargs):
+        return padding * self.sigma
+
+
+class ThermalLineShape(LineShape):
+    cutoff = 25
+
+    def __init__(self, T, m, gamma):
+        super().__init__()
+        self.sigma = (8 * ureg.k * T / (m * c ** 2)) ** 0.5
+        self.fwhm = self.sigma * 2.355
+        self.gamma = gamma
+
+    def shape_func(self, x, x0, **kwargs):
+        ampl = kwargs.get('ampl', 1.0)
+        if self.gamma/(self.sigma*x0) > self.cutoff:
+            return lorentzian(x, x0, gamma=self.gamma, ampl=ampl)
+        elif (self.sigma*x0)/self.gamma > self.cutoff:
+            return gaussian(x, x0, self.sigma*x0, ampl=ampl)
+        return voigt(x, x0, sigma=self.sigma*x0, gamma=self.gamma, ampl=ampl)
 
     def width_func(self, padding=20.0, **kwargs):
         return padding * self.sigma
