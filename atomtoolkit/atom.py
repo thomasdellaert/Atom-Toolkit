@@ -21,6 +21,21 @@ from .wigner import wigner3j, wigner6j
 ############################################
 
 
+def lazy_compute_sublevels(func: Callable) -> Callable:
+    """
+    Called before the main text of any level that references the sublevels of the atom. If the level hasn't
+    populated its sublevels yet, it computes them before returning any data.
+    """
+    def wrapper(self, *args, **kwargs):
+        if len(self._sublevels) == 0:
+            self._assign_models()
+            self.populate_sublevels()
+            for sublevel in self.sublevels():
+                self._submodel.add_node(sublevel.name, level=sublevel)
+        func(self, *args, **kwargs)
+    return wrapper
+
+
 class BaseLevel(ABC):
     """
     The basic form of an energy level. To be instantiated, an energy level class needs to have:
@@ -152,14 +167,14 @@ class BaseLevel(ABC):
                 sublevel.add_to_atom(atom)
 
     # region dict-like methods
+    @lazy_compute_sublevels
     def __len__(self) -> int:
-        self._lazy_compute_sublevels()
         return len(self._sublevels)
 
+    @lazy_compute_sublevels
     def __getitem__(self, key) -> BaseLevel:
         """Returns the sublevel associated with the key. For atoms with I=0, mJ is usually used instead of mF
         and F is not used, so this is supported"""
-        self._lazy_compute_sublevels()
         if self.atom.I == 0 and 'mJ' in key:
             return self._sublevels[f'F={self.term.J_frac}'][key.replace('mJ', 'mF')]
         return self._sublevels[key]
@@ -171,38 +186,27 @@ class BaseLevel(ABC):
     def __delitem__(self, key: str):
         del self._sublevels[key]
 
+    @lazy_compute_sublevels
     def __iter__(self) -> Iterator:
-        self._lazy_compute_sublevels()
         return iter(self._sublevels)
 
+    @lazy_compute_sublevels
     def values(self) -> ValuesView:
-        self._lazy_compute_sublevels()
         return self._sublevels.values()
 
+    @lazy_compute_sublevels
     def sublevels(self) -> List:
-        self._lazy_compute_sublevels()
         return list(self._sublevels.values())
 
+    @lazy_compute_sublevels
     def keys(self) -> KeysView:
-        self._lazy_compute_sublevels()
         return self._sublevels.keys()
 
+    @lazy_compute_sublevels
     def items(self) -> ItemsView:
-        self._lazy_compute_sublevels()
         return self._sublevels.items()
 
     # endregion
-
-    def _lazy_compute_sublevels(self):
-        """
-        Called before the main text of any level that references the sublevels of the atom. If the level hasn't
-        populated its sublevels yet, it computes them before returning any data.
-        """
-        if len(self._sublevels) == 0:
-            self._assign_models()
-            self.populate_sublevels()
-            for sublevel in self.sublevels():
-                self._submodel.add_node(sublevel.name, level=sublevel)
 
 
 class EnergyLevel(BaseLevel):
@@ -492,6 +496,18 @@ class ZLevel(HFLevel):
 #               Transition                 #
 ############################################
 
+def lazy_compute_subtransitions(func):
+    def wrapper(self, *args, **kwargs):
+        if len(self._subtransitions) == 0:
+            assert len(self.E_1.sublevels()) != 0
+            assert len(self.E_2.sublevels()) != 0
+            self.populate_subtransitions()
+            for transition in self.subtransitions():
+                transition.add_to_atom(self.atom)
+        func(self, *args, **kwargs)
+    return wrapper
+
+
 class BaseTransition(ABC):
     """
     A transition contains information about the transition between two levels. When instantiated
@@ -622,22 +638,14 @@ class BaseTransition(ABC):
         return ((l1, l2) for l1, l2 in itertools.product(self.E_1.sublevels(), self.E_2.sublevels())
                 if abs(l1.term.__getattribute__(attr) - l2.term.__getattribute__(attr)) <= max_delta)
 
-    def _lazy_compute_subtransitions(self):
-        if len(self._subtransitions) == 0:
-            assert len(self.E_1.sublevels()) != 0
-            assert len(self.E_2.sublevels()) != 0
-            self.populate_subtransitions()
-            for transition in self.subtransitions():
-                transition.add_to_atom(self.atom)
-
     # region: dict-like-methods
 
+    @lazy_compute_subtransitions
     def __len__(self) -> int:
-        self._lazy_compute_subtransitions()
         return len(self._subtransitions)
 
+    @lazy_compute_subtransitions
     def __getitem__(self, item: Tuple[str, str]) -> BaseTransition:
-        self._lazy_compute_subtransitions()
         try:
             return self._subtransitions[(item[1], item[0])]
         except KeyError:
@@ -649,24 +657,24 @@ class BaseTransition(ABC):
     def __delitem__(self, key: Tuple[str, str]):
         del self._subtransitions[key]
 
+    @lazy_compute_subtransitions
     def __iter__(self) -> Iterator:
-        self._lazy_compute_subtransitions()
         return iter(self._subtransitions)
 
+    @lazy_compute_subtransitions
     def values(self) -> ValuesView:
-        self._lazy_compute_subtransitions()
         return self._subtransitions.values()
 
+    @lazy_compute_subtransitions
     def subtransitions(self) -> List:
-        self._lazy_compute_subtransitions()
         return list(self._subtransitions.values())
 
+    @lazy_compute_subtransitions
     def keys(self) -> KeysView:
-        self._lazy_compute_subtransitions()
         return self._subtransitions.keys()
 
+    @lazy_compute_subtransitions
     def items(self) -> ItemsView:
-        self._lazy_compute_subtransitions()
         return self._subtransitions.items()
 
     # endregion
