@@ -1,6 +1,7 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
 import itertools
+import functools
 import pickle
 import warnings
 from typing import *
@@ -26,13 +27,14 @@ def lazy_compute_sublevels(func: Callable) -> Callable:
     Called before the main text of any level that references the sublevels of the atom. If the level hasn't
     populated its sublevels yet, it computes them before returning any data.
     """
+    @functools.wraps(func)
     def wrapper(self, *args, **kwargs):
         if len(self._sublevels) == 0:
             self._assign_models()
             self.populate_sublevels()
-            for sublevel in self.sublevels():
+            for sublevel in list(self._sublevels.values()):
                 self._submodel.add_node(sublevel.name, level=sublevel)
-        func(self, *args, **kwargs)
+        return func(self, *args, **kwargs)
     return wrapper
 
 
@@ -497,14 +499,15 @@ class ZLevel(HFLevel):
 ############################################
 
 def lazy_compute_subtransitions(func):
+    @functools.wraps(func)
     def wrapper(self, *args, **kwargs):
         if len(self._subtransitions) == 0:
             assert len(self.E_1.sublevels()) != 0
             assert len(self.E_2.sublevels()) != 0
             self.populate_subtransitions()
-            for transition in self.subtransitions():
+            for transition in list(self._subtransitions.values()):
                 transition.add_to_atom(self.atom)
-        func(self, *args, **kwargs)
+        return func(self, *args, **kwargs)
     return wrapper
 
 
@@ -623,7 +626,7 @@ class BaseTransition(ABC):
         self._assign_models()
         self._model.add_edge(self.E_lower.name, self.E_upper.name, transition=self)
         if len(self._subtransitions) != 0:
-            for subtransition in self.subtransitions():
+            for subtransition in self._subtransitions:
                 subtransition.add_to_atom(atom)
 
     def _compute_sublevel_pairs(self, attr: str) -> Iterable[Tuple[BaseLevel, BaseLevel]]:

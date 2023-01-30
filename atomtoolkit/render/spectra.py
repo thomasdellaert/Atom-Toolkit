@@ -25,9 +25,11 @@ def plot_transitions(transitions: BaseTransition or List[BaseTransition],
 
     all_x, all_y = [], []
     for transition in transitions:
+
         fGHz = transition.freq.to(unit).magnitude
         ampl = transition.rel_strength
-        ampl *= kwargs.get('ampl_dict', {transition.name: 1.0})[transition.name]
+        if kwargs.get('ampl_dict', True) is not None:
+            ampl *= kwargs.get('ampl_dict', {transition.name: 1.0})[transition.name]
         x_values, y_values = lineshape.compute(fGHz, ampl=ampl, **kwargs)
         all_x.append(x_values)
         all_y.append(y_values)
@@ -168,34 +170,30 @@ def plot_spectrum(transitions: BaseTransition or List[BaseTransition],
                                                    property_color=lambda t: t.E_lower.term.F,
                                                    property_shade=lambda t: t.E_upper.term.F,
                                                    cmap=kwargs.pop('cmap', 'tab10'))
-
-            def color_func(t): return color_dict[t]
         elif coloring == 'u':
             color_dict = color_table_from_property(lines,
                                                    property_color=lambda t: t.E_upper.term.F,
                                                    property_shade=lambda t: t.E_lower.term.F,
                                                    cmap=kwargs.pop('cmap', 'tab10'))
+
+        def color_func(t): return color_dict[t]
     elif type(transitions[0]) == ZTransition:
         if coloring == 'l':
             color_dict = color_table_from_property(lines,
                                                    property_color=lambda t: t.E_lower.term.mF,
                                                    property_shade=lambda t: t.E_upper.term.mF,
                                                    cmap=kwargs.pop('cmap', 'tab10'))
-
-            def color_func(t): return color_dict[t]
         elif coloring == 'u':
             color_dict = color_table_from_property(lines,
                                                    property_color=lambda t: t.E_upper.term.mF,
                                                    property_shade=lambda t: t.E_lower.term.mF,
                                                    cmap=kwargs.pop('cmap', 'tab10'))
-
-            def color_func(t): return color_dict[t]
         elif coloring == 'transition_type':
             color_dict = color_table_from_property(lines,
                                                    property_color=lambda t: t.E_upper.term.mF - t.E_lower.term.mF,
                                                    property_shade=lambda t: t.E_lower.term.mF,
                                                    cmap=kwargs.pop('cmap', 'tab10'))
 
-            def color_func(t): return color_dict[t]
+        def color_func(t): return color_dict[t]
 
-    plot_transitions(transitions, lineshape_func, ampl_dict=ampl_dict, color_func=color_func)
+    plot_transitions(transitions, lineshape_func, color_func=color_func, ampl_dict=ampl_dict)
