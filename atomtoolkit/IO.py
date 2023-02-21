@@ -11,10 +11,17 @@ from .atom import Atom
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 
-def load_NIST_data(species, term_ordered=False, save=False):
-    p_bar = tqdm(total=7)
-    p_bar.update(1)
-    p_bar.set_description('loading data')
+def load_NIST_data(species: str, term_ordered: bool = False, save: bool = False) -> pd.DataFrame:
+    """
+    Loads data from the NIST ASD Levels form
+
+    :param species: The species to grab data from.
+        Should use astronomical notation, with the element name followed by a roman numeral (Ca II, Rb I, etc)
+    :param term_ordered: whether to order by term. If False, it will order by energy
+    :param save: whether to save the imported and cleaned data as a csv file
+    :return: a dataframe with the following columns:
+    """
+
     df = pd.read_csv(
         'https://physics.nist.gov/cgi-bin/ASD/energy1.pl?de=0' +
         '&spectrum=' + species.replace(' ', '+') +
@@ -34,12 +41,9 @@ def load_NIST_data(species, term_ordered=False, save=False):
         '&submit=Retrieve+Data',
         index_col=False)
 
-    p_bar.update(1)
-    p_bar.set_description('data loaded')
     # === strip the data of extraneous symbols ===
     df_clean = df.applymap(lambda k: k.strip(' ="?'))
-    p_bar.update(1)
-    p_bar.set_description('data stripped')
+
     # === coerce types ===
     df_clean['Configuration'] = df_clean['Configuration'].astype('str')
     df_clean['Term'] = df_clean['Term'].astype('str')
@@ -51,27 +55,33 @@ def load_NIST_data(species, term_ordered=False, save=False):
         df_clean['Lande'] = None
     df_clean['Lande'] = pd.to_numeric(df_clean['Lande'], errors='coerce')
 
-    # Parsing NIST's leading percentages column is extremely complicated
-
-    #    Not all NIST ASD tables even include leading percentages
+    # === Parsing NIST's leading percentages column is extremely complicated ===
+    #    Not all NIST ASD tables even include leading percentages, so insert 100% where none is given
     if 'Leading percentages' not in df_clean.columns:
         df_clean['Leading percentages'] = '100.0'
-    #    terms with insufficient first percentage have everything stored in the leading percentages column
+    #    Terms with insufficient first percentage have everything stored in the leading percentages column
+    #    so find the terms with only '*' or '' and get the term from the leading percentage
     df_clean.loc[df_clean["Term"] == ('*' or ''), 'Term'] = \
-        df_clean['Leading percentages'].str.extract(r'\ *\d+\ +(.+?)\ *:\ *\d+\ +.+?(:?\ +.+?)?\ *$', expand=False)
+        df_clean['Leading percentages'].str.extract(r'\ *\d+\ +(.+?)\ *.*\ :\ *\d+\ +.+?(:?\ +.+?)?\ *$', expand=False)
     #    extract the relevant data available in the config leading percentage
+    #    [percentage 1][spaces][text] :[spaces][percentage 2][spaces][configuration 2][spaces][term 2]
     df_clean[['Percentage', 'Percentage_2', 'Configuration_2', 'Term_2']] = \
-        df_clean['Leading percentages'].str.extract(r'\ *(\d+)\ +.+?\ *:\ *(\d+)\ +(.+?)(?:\ +(.+?))?\ *$')
+        df_clean['Leading percentages'].str.extract(r'\ *(\d+)\ +.+?\ *.*:\ *(\d+)\ +(.+?)(?:\ +(.+?))?\ *$')
     #    NIST doesn't see fit to give the jj-coupled terms in their second percentages,
-    #    so we extract from the configuration
+    #    so we extract the j values from the configuration and store them in Term_2_int
     df_clean.loc[df_clean["Term_2"].isnull(), 'Term_2_int'] = df_clean['Configuration_2'].str.findall(r'\<(.+?)\>')
+    #    catch the following edge case: 49             :    45                   2D
+    df_clean.loc[~df_clean["Term_2_int"].isnull(), 'Term_2'] = df_clean['Configuration_2']
+    df_clean.loc[~df_clean["Term_2_int"].isnull(), 'Configuration_2'] = df_clean['Configuration']
+    df_clean.loc[~df_clean["Term_2_int"].isnull(), "Term_2_int"] = None
+    # take the j values from Term_2_int and create a JJ term symbol from them
     df_clean.loc[~df_clean["Term_2_int"].isnull(), 'Term_2'] = \
         df_clean["Term_2_int"].map(lambda k: '({}, {})'.format(*k), na_action='ignore')
     df_clean = df_clean.drop("Term_2_int", axis=1)
     #    Finally, we have to add back in the parts of the second configuration that NIST deemed redundant and left out
 
     def reconstitute_conf(c0, c1):
-        #    grab any info in c0 that has been removed from c1 and put it back where it belongs
+        """grab any info in c0 that has been removed from c1 and put it back where it belongs"""
         if type(c1) != str:
             return
         if re.match(r'\(.+?\)\(.+?\)', c1):
@@ -89,28 +99,23 @@ def load_NIST_data(species, term_ordered=False, save=False):
     df_clean['Percentage'] = df_clean['Percentage'].fillna(value=100.0)
     df_clean = df_clean.drop('Leading percentages', axis=1)
 
-    p_bar.update(1)
-    p_bar.set_description('data typed')
     # drop rows that don't have a defined level
     df_clean = df_clean.dropna(subset=['Level (cm-1)'])
-    p_bar.update(1)
-    p_bar.set_description('empty levels dropped')
+
     # convert levels to pint Quantities
     df_clean['Level (cm-1)'] = df_clean['Level (cm-1)'].astype('pint[cm**-1]')
     df_clean['Level (Hz)'] = df_clean['Level (cm-1)'].pint.to('Hz')
-    p_bar.update(1)
-    p_bar.set_description('pint quantities created')
 
-    df_clean = df_clean.loc[
-               :(df_clean['Term'] == 'Limit').idxmax() - 1]  # remove any terms above ionization, and the ionization row
-    df_clean = df_clean[df_clean.J.str.contains(",") == False]  # happens when J is unknown
+    # remove any terms above ionization, and the ionization row
+    df_clean = df_clean.loc[:(df_clean['Term'] == 'Limit').idxmax() - 1]
+    # split up levels with multiple J
+    df_clean.J = df_clean.J.str.split(",")
+    df_clean = df_clean.explode('J')
     # reset the indices, since we may have dropped some rows
     df_clean.reset_index(drop=True, inplace=True)
-
-    p_bar.update(1)
-    p_bar.set_description('data finalized')
-
-    p_bar.close()
+    # drop some common extra columns that contain nothing useful
+    df_clean = df_clean.drop('Prefix', axis=1)
+    df_clean = df_clean.drop('Suffix', axis=1)
 
     if save:
         if type(save) == str:
