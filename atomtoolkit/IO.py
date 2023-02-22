@@ -11,14 +11,14 @@ from .atom import Atom
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 
-def load_NIST_data(species: str, term_ordered: bool = False, save: bool = False) -> pd.DataFrame:
+def load_NIST_data(species: str, term_ordered: bool = False, save: bool or str = False) -> pd.DataFrame:
     """
     Loads data from the NIST ASD Levels form
 
     :param species: The species to grab data from.
         Should use astronomical notation, with the element name followed by a roman numeral (Ca II, Rb I, etc)
     :param term_ordered: whether to order by term. If False, it will order by energy
-    :param save: whether to save the imported and cleaned data as a csv file
+    :param save: whether to save the imported and cleaned data as a csv file. If a string, this is the name of the csv
     :return: a dataframe with the following columns:
     """
 
@@ -56,21 +56,27 @@ def load_NIST_data(species: str, term_ordered: bool = False, save: bool = False)
     df_clean['Lande'] = pd.to_numeric(df_clean['Lande'], errors='coerce')
 
     # === Parsing NIST's leading percentages column is extremely complicated ===
-    #    Not all NIST ASD tables even include leading percentages, so insert 100% where none is given
+
+    #    Not all NIST ASD tables even include leading percentages, so insert the column if not present
     if 'Leading percentages' not in df_clean.columns:
         df_clean['Leading percentages'] = '100.0'
     #    Terms with insufficient first percentage have everything stored in the leading percentages column
     #    so find the terms with only '*' or '' and get the term from the leading percentage
+    #       35  3[5/2]*       :    30                                 (2F*<7/2>)(3F) 3[3/2]*
+    #       36  (7/2,1)       :    25  (2F*<7/2>).5d.6p.(1P*<1>)
     df_clean.loc[df_clean["Term"] == ('*' or ''), 'Term'] = \
         df_clean['Leading percentages'].str.extract(r'\ *\d+\ +(.+?)\ *.*\ :\ *\d+\ +.+?(:?\ +.+?)?\ *$', expand=False)
-    #    extract the relevant data available in the config leading percentage
-    #    [percentage 1][spaces][text] :[spaces][percentage 2][spaces][configuration 2][spaces][term 2]
+    #    extract the relevant data available in the config leading percentage. Example cases:
+    #       81                :    11  (2F*<5/2>).5d2.(1D)            1[7/2]*
+    #       35  3[5/2]*       :    30                                 (2F*<7/2>)(3F) 3[3/2]*
     df_clean[['Percentage', 'Percentage_2', 'Configuration_2', 'Term_2']] = \
         df_clean['Leading percentages'].str.extract(r'\ *(\d+)\ +.+?\ *.*:\ *(\d+)\ +(.+?)(?:\ +(.+?))?\ *$')
     #    NIST doesn't see fit to give the jj-coupled terms in their second percentages,
     #    so we extract the j values from the configuration and store them in Term_2_int
+    #       54                :    19                                 (2F*<5/2>)(3F*<2>)
     df_clean.loc[df_clean["Term_2"].isnull(), 'Term_2_int'] = df_clean['Configuration_2'].str.findall(r'\<(.+?)\>')
-    #    catch the following edge case: 49             :    45                   2D
+    #    catch the following edge case that I found in Na I, where the configuration is repeated between the two terms:
+    #       49                :    45                                 2D
     df_clean.loc[~df_clean["Term_2_int"].isnull(), 'Term_2'] = df_clean['Configuration_2']
     df_clean.loc[~df_clean["Term_2_int"].isnull(), 'Configuration_2'] = df_clean['Configuration']
     df_clean.loc[~df_clean["Term_2_int"].isnull(), "Term_2_int"] = None
@@ -78,10 +84,15 @@ def load_NIST_data(species: str, term_ordered: bool = False, save: bool = False)
     df_clean.loc[~df_clean["Term_2_int"].isnull(), 'Term_2'] = \
         df_clean["Term_2_int"].map(lambda k: '({}, {})'.format(*k), na_action='ignore')
     df_clean = df_clean.drop("Term_2_int", axis=1)
+    df_clean['Term'] = df_clean['Term'].fillna('')
+    df_clean['Term_2'] = df_clean['Term_2'].fillna('')
     #    Finally, we have to add back in the parts of the second configuration that NIST deemed redundant and left out
 
     def reconstitute_conf(c0, c1):
-        """grab any info in c0 that has been removed from c1 and put it back where it belongs"""
+        """
+        grab any info in c0 that has been removed from c1 and put it back where it belongs. For instance:
+        4f13.(2F*<7/2>).5d2.(3P) + (2F*<7/2>)(3F) ==> 4f13.(2F*<7/2>).5d2.(3F)
+        """
         if type(c1) != str:
             return
         if re.match(r'\(.+?\)\(.+?\)', c1):
@@ -90,10 +101,9 @@ def load_NIST_data(species: str, term_ordered: bool = False, save: bool = False)
             return c0.split('(')[0]+c1
         else:
             return c1
-    df_clean['Term'] = df_clean['Term'].fillna('')
-    df_clean['Term_2'] = df_clean['Term_2'].fillna('')
-    df_clean['Configuration_2'] = df_clean.apply(lambda k: reconstitute_conf(k['Configuration'],
-                                                                             k['Configuration_2']), axis=1)
+
+    df_clean['Configuration_2'] = df_clean.apply(
+        lambda k: reconstitute_conf(k['Configuration'], k['Configuration_2']), axis=1)
     df_clean['Percentage'] = pd.to_numeric(df_clean['Percentage'], errors='coerce')
     df_clean['Percentage_2'] = pd.to_numeric(df_clean['Percentage_2'], errors='coerce')
     df_clean['Percentage'] = df_clean['Percentage'].fillna(value=100.0)
@@ -113,9 +123,10 @@ def load_NIST_data(species: str, term_ordered: bool = False, save: bool = False)
     df_clean = df_clean.explode('J')
     # reset the indices, since we may have dropped some rows
     df_clean.reset_index(drop=True, inplace=True)
-    # drop some common extra columns that contain nothing useful
-    df_clean = df_clean.drop('Prefix', axis=1)
-    df_clean = df_clean.drop('Suffix', axis=1)
+
+    df_clean = df_clean[['Level (cm-1)', 'Level (Hz)', 'J', 'Lande',
+                         'Configuration', 'Term', 'Percentage',
+                         'Configuration_2', 'Term_2', 'Percentage_2']]
 
     if save:
         if type(save) == str:
