@@ -3,23 +3,19 @@ import re
 import warnings
 
 import pandas as pd
-from tqdm import tqdm
 
 from . import *
 from .atom import Atom
 
-warnings.filterwarnings("ignore", category=RuntimeWarning)
+
+# When printing or displaying DataFrames, pint_pandas really likes to throw UnitStrippedWarnings,
+# so we'll turn them off if the module is imported
+warnings.filterwarnings("ignore", category=pint.UnitStrippedWarning)
 
 
-def load_NIST_data(species: str, term_ordered: bool = False, save: bool or str = False) -> pd.DataFrame:
+def _load_NIST_data(species: str, term_ordered: bool = False, save: bool or str = False) -> pd.DataFrame:
     """
-    Loads data from the NIST ASD Levels form
-
-    :param species: The species to grab data from.
-        Should use astronomical notation, with the element name followed by a roman numeral (Ca II, Rb I, etc)
-    :param term_ordered: whether to order by term. If False, it will order by energy
-    :param save: whether to save the imported and cleaned data as a csv file. If a string, this is the name of the csv
-    :return: a dataframe with the following columns:
+    See docstring of load_NIST_data
     """
 
     df = pd.read_csv(
@@ -138,6 +134,34 @@ def load_NIST_data(species: str, term_ordered: bool = False, save: bool or str =
 
     return df_clean
     #  TODO: uncertainty
+
+
+def load_NIST_data(species: str, term_ordered: bool = False, save: bool or str = False) -> pd.DataFrame:
+    """
+    Loads data from the NIST ASD Levels form
+
+    :param species: The species to grab data from.
+        Should use astronomical notation, with the element name followed by a roman numeral (Ca II, Rb I, etc)
+    :param term_ordered: whether to order by term. If False, it will order by energy
+    :param save: whether to save the imported and cleaned data as a csv file. If a string, this is the name of the csv
+    :return: a dataframe with the following columns:
+        [
+        'Level (cm-1)': pint[1 / centimeter],
+        'Level (Hz)': pint[hertz],
+        'J': str (fraction),
+        'Lande': float64,
+        'Configuration': str,
+        'Term': str,
+        'Percentage': float64,
+        'Configuration_2: str',
+        'Term_2': str,
+        'Percentage_2': float64
+        ]
+    """
+    # Sometimes pint throws divide by zero warnings. So we disable while the parsing is happening
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=RuntimeWarning)
+        return _load_NIST_data(species, term_ordered, save)
 
 
 def load_transition_data(filename: str, columns: dict = None, **kwargs):
