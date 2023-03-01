@@ -60,8 +60,9 @@ def _load_NIST_data(species: str, term_ordered: bool = False, save: bool or str 
     #    so find the terms with only '*' or '' and get the term from the leading percentage
     #       35  3[5/2]*       :    30                                 (2F*<7/2>)(3F) 3[3/2]*
     #       36  (7/2,1)       :    25  (2F*<7/2>).5d.6p.(1P*<1>)
-    df_clean.loc[df_clean["Term"] == ('*' or ''), 'Term'] = \
-        df_clean['Leading percentages'].str.extract(r'\ *\d+\ +(.+?)\ *.*\ :\ *\d+\ +.+?(:?\ +.+?)?\ *$', expand=False)
+    reg = r'\ *\d+\ +([^\ ]+)\ *.*\ :\ *\d+\ +.+?(?:\ +.+?)?\ *$'
+    df_clean.loc[df_clean["Term"] == '', 'Term'] = df_clean['Leading percentages'].str.extract(reg, expand=False)
+    df_clean.loc[df_clean["Term"] == '*', 'Term'] = df_clean['Leading percentages'].str.extract(reg, expand=False)
     #    extract the relevant data available in the config leading percentage. Example cases:
     #       81                :    11  (2F*<5/2>).5d2.(1D)            1[7/2]*
     #       35  3[5/2]*       :    30                                 (2F*<7/2>)(3F) 3[3/2]*
@@ -71,14 +72,14 @@ def _load_NIST_data(species: str, term_ordered: bool = False, save: bool or str 
     #    so we extract the j values from the configuration and store them in Term_2_int
     #       54                :    19                                 (2F*<5/2>)(3F*<2>)
     df_clean.loc[df_clean["Term_2"].isnull(), 'Term_2_int'] = df_clean['Configuration_2'].str.findall(r'\<(.+?)\>')
-    #    catch the following edge case that I found in Na I, where the configuration is repeated between the two terms:
-    #       49                :    45                                 2D
-    df_clean.loc[~df_clean["Term_2_int"].isnull(), 'Term_2'] = df_clean['Configuration_2']
-    df_clean.loc[~df_clean["Term_2_int"].isnull(), 'Configuration_2'] = df_clean['Configuration']
-    df_clean.loc[~df_clean["Term_2_int"].isnull(), "Term_2_int"] = None
-    # take the j values from Term_2_int and create a JJ term symbol from them
-    df_clean.loc[~df_clean["Term_2_int"].isnull(), 'Term_2'] = \
-        df_clean["Term_2_int"].map(lambda k: '({}, {})'.format(*k), na_action='ignore')
+    #    take the j values from Term_2_int and create a JJ term symbol from them
+    try:
+        df_clean.loc[~df_clean["Term_2_int"].isnull(), 'Term_2'] = \
+            df_clean["Term_2_int"].map(lambda k: '({}, {})'.format(*k), na_action='ignore')
+    except IndexError:
+        # sometimes Term_2_int isn't JJ coupled.
+        # Usually in this case you can just leave it be as it's already formatted correctly
+        pass
     df_clean = df_clean.drop("Term_2_int", axis=1)
     df_clean['Term'] = df_clean['Term'].fillna('')
     df_clean['Term_2'] = df_clean['Term_2'].fillna('')
