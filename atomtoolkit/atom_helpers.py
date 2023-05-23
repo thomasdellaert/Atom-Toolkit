@@ -8,6 +8,10 @@ if TYPE_CHECKING:
 
 
 class LevelStructure:
+    """
+    A LevelStructure provides a dict-like interface to the *nodes* of an Atom's internal networkx Graph.
+    It supports access to levels by various equivalent keys, as well as by user-assigned aliases
+    """
     def __init__(self, atom: Atom, model: nx.Graph, hf_model: nx.Graph, z_model: nx.Graph):
         self.atom = atom
         self.model = model
@@ -19,6 +23,22 @@ class LevelStructure:
         return f'LevelStructure containing {len(self)} levels of type {type(list(self.values())[0]).__name__}'
 
     def __getitem__(self, key: Union[int, slice, str]) -> BaseLevel or List[BaseLevel]:
+        """
+        Parses the key to return the associated level. Supports various kinds of access. Access by:
+            - integer:
+                returns the nth-lowest-lying level
+            - slice:
+                returns the levels indexed by the slice
+            - alias
+            - [configuration] [term] F=[F] mF=[mF]
+            - [configuration] [term] mJ=[mF]
+                when I=0, F = I + J = J, so mF==mJ. Often, the F nomenclature is then ignored
+            - [configuration] [term] F=[F]
+            - [configuration] [term]
+
+        :param key: the key to get
+        :return: the level associated with the key
+        """
         if isinstance(key, int) or isinstance(key, slice):
             return sorted(nx.get_node_attributes(self.model, 'level').values(), key=lambda x: x.level_Hz)[key]
         if key in self.aliases:
@@ -26,18 +46,18 @@ class LevelStructure:
         if 'mF=' in key:  # match [conf] [term] F=[f] mF=[mF]
             main, hf, z = key.rsplit(' ', maxsplit=2)
             return nx.get_node_attributes(self.model, 'level')[main][hf][z]
-        elif 'mJ=' in key:
+        elif 'mJ=' in key:  # match [conf] [term] mJ=[mJ] --- only applies when I=0
             main, z = key.rsplit(' mJ=', maxsplit=1)
             l = nx.get_node_attributes(self.model, 'level')[main]
             return l[f'F={l.term.J_frac}'][f'mF={z}']
-        elif 'F=' in key:  # match [conf] [term] F=[f]
+        elif 'F=' in key:  # match [conf] [term] F=[F]
             main, hf = key.rsplit(' ', maxsplit=1)
             return nx.get_node_attributes(self.model, 'level')[main][hf]
         else:  # match [conf] [term]
             return nx.get_node_attributes(self.model, 'level')[key]
 
     def __setitem__(self, key: str, value: EnergyLevel):
-        self.atom.add_level(value)
+        self.atom.add_level(value, alias=key)
 
     def __delitem__(self, key: str):
         self.model.remove_node(key)
@@ -65,6 +85,10 @@ class LevelStructure:
 
 
 class TransitionStructure:
+    """
+    A TransitionStructure provides a dict-like interface to the *edges* of an Atom's internal networkx Graph.
+    It supports access to transitions by various equivalent keys, as well as by user-assigned aliases
+    """
     def __init__(self, atom: Atom, model: nx.Graph, hf_model: nx.Graph, z_model: nx.Graph):
         self.atom = atom
         self.model = model
@@ -75,12 +99,24 @@ class TransitionStructure:
     def __repr__(self):
         return f'TransitionStructure containing {len(self)} transitions of type {type(list(self.values())[0]).__name__}'
 
-    def __getitem__(self, key: Tuple[str, str]) -> BaseTransition:
+    def __getitem__(self, key: Tuple[str, str] or Tuple[int, int]) -> BaseTransition:
+        """
+        Parses the key to return the associated transition. Supports various kinds of access. Access by:
+            - Tuple[int, int]:
+                 (n, m) returns the transition between the nth-lowest-lying level and the mth-lowest-lying level
+            - alias
+            - ([conf] [term] F=[F] mF=[mF], [conf] [term] F=[F] mF=[mF])
+            - ([conf] [term] mJ=[mJ], [conf] [term] mJ=[mj])
+            - ([conf] [term] F=[F], [conf] [term] F=[F])
+            - ([conf] [term], [conf] [term])
+
+        :param key: the key to get
+        :return: the transition associated with the key
+        """
         if key in self.aliases.keys():
             return self.aliases[key]
-        lvl0 = self.atom.levels[key[0]]
-        lvl1 = self.atom.levels[key[1]]
-        if lvl0.level > lvl1.level:
+        # Regardless of the order the keys are passed, internally they will always be processed as (lower, upper)
+        if self.atom.levels[key[0]].level > self.atom.levels[key[1]].level:
             k_lower, k_upper = key[1], key[0]
         else:
             k_lower, k_upper = key[0], key[1]
@@ -125,6 +161,12 @@ class TransitionStructure:
         self.atom.add_transition(value)
 
     def list_names(self, hide_self_transitions: bool = True):
+        """
+        lists the names of all the transitions in the structure
+        :param hide_self_transitions: if True, transitions between a level and itself will be ignored
+            (for instance, hyperfine transitions within a level)
+        :return: a list of level names
+        """
         if hide_self_transitions:
             return [key for key in self.keys() if key[0] != key[1]]
         return list(self.keys())

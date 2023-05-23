@@ -28,8 +28,8 @@ def plot_transitions(transitions: BaseTransition or List[BaseTransition],
 
         fGHz = transition.freq.to(unit).magnitude
         ampl = transition.rel_strength
-        if kwargs.get('ampl_dict', True) is not None:
-            ampl *= kwargs.get('ampl_dict', {transition.name: 1.0})[transition.name]
+        if kwargs.get('ampl_dict') is not None:
+            ampl *= kwargs.get('ampl_dict')[transition.name]
         x_values, y_values = lineshape.compute(fGHz, ampl=ampl, **kwargs)
         all_x.append(x_values)
         all_y.append(y_values)

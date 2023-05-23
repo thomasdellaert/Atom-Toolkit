@@ -5,8 +5,18 @@ c = ureg.speed_of_light
 
 
 class LightField:
-    def __init__(self, k: np.array, i: float, pol: np.array = np.array([0., 0., 1.])):
+    def __init__(self, k: np.array, i: float, pol: np.array = np.array([0., 0., 1.], dtype=np.complex_)):
+        """
+
+        :param k:
+        :param i:
+        :param pol: the polarization of the light: a complex array in the lab frame [x, y, z]
+            linear vertical = [0, 0, 1]
+            linear in x = [1, 0, 0]
+            right circular = 2**(-0.5) * [1, 1j, 0]
+        """
         self.k = k
+        assert np.linalg.norm(pol) - 1 < 1e-6, "polarization must be a unit vector"
         self.pol = pol
         self.intensity = i
 

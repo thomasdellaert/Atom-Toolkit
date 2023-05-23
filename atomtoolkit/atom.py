@@ -24,7 +24,7 @@ from .wigner import wigner3j, wigner6j
 
 def lazy_compute_sublevels(func: Callable) -> Callable:
     """
-    Called before the main text of any level that references the sublevels of the atom. If the level hasn't
+    Wraps any function that references the sublevels of the level. If the level hasn't
     populated its sublevels yet, it computes them before returning any data.
     """
     @functools.wraps(func)
@@ -87,8 +87,14 @@ class BaseLevel(ABC):
     def _assign_models(self):
         """
         Should assign the data structures to self._model and self._submodel
-        For an example, see the implementation in EnergyLevel
-        TODO: Reword this docstring
+        self._model should refer to the LevelStructure that contains the level
+        self._submodel should refer to the LevelStructure that contains the level's sublevels
+
+        BaseLevel instances are implemented as nodes in the internal graphs of an Atom object.
+        For instance
+            an EnergyLevel's associated model is self.atom.levels.model
+            an EnergyLevel's associated submodel is self.atom.levels.hfmodel
+
         """
         raise NotImplementedError()
 
@@ -115,6 +121,7 @@ class BaseLevel(ABC):
 
     @property
     def level(self) -> pint.Quantity:
+        """The absolute energy of the state (as a Quantity)"""
         return self.level_Hz * Hz
 
     @level.setter
@@ -123,16 +130,25 @@ class BaseLevel(ABC):
 
     @property
     @abstractmethod
-    def shift_Hz(self) -> float:  # pragma: no cover
+    def shift_Hz(self) -> float:
         """Should return the shift relative to the parent (in Hz)"""
         raise NotImplementedError()
 
     @property
     def shift(self) -> pint.Quantity:
+        """The level's shift relative to its parent (as a Quantity)"""
         return self.shift_Hz * Hz
 
     @property
     def alias(self) -> str:
+        """
+        An alias is a string that acts as a shortened key that can be used to access the level in an Atom
+        For instance:
+            TmII = Atom(. . .)
+            TmII.levels['4f13(2F*<7/2>).6s<1/2> (7/2, 1/2)*4'].alias = 'ground_state'
+        allows you to access the level using a simpler key:
+            TmII.levels['ground_state']
+        """
         return self._alias
 
     @alias.setter
@@ -499,6 +515,10 @@ class ZLevel(HFLevel):
 ############################################
 
 def lazy_compute_subtransitions(func):
+    """
+    Wraps any function that references the subtransitions of the transition. If the transition hasn't
+    populated its subtransitions yet, it computes them before returning any data.
+    """
     @functools.wraps(func)
     def wrapper(self, *args, **kwargs):
         if len(self._subtransitions) == 0:
@@ -565,7 +585,7 @@ class BaseTransition(ABC):
         return self.name
 
     def __repr__(self):
-        return f'{type(self).__name__}({self.name}, freq={str(self.freq)}, A={str(self.A)}'
+        return f'<{type(self).__name__}({self.name}, freq={str(self.freq)}, A={str(self.A)}>'
 
     @property
     def freq_Hz(self) -> float:
@@ -821,6 +841,7 @@ class ZTransition(BaseTransition):
         self._submodel = None
 
     def populate_subtransitions(self):
+        """A ZTransition is the lowest-level transition"""
         pass
 
     def set_frequency(self, freq: pint.Quantity):
@@ -886,19 +907,25 @@ class Atom:
                 self.add_transition(transition)
 
     def __repr__(self):
-        return f'Atom(name={self.name}, I={self.I}, {len(self.levels)} levels)'
+        return f'<Atom(name={self.name}, I={self.I}, {len(self.levels)} levels)>'
 
-    def add_level(self, level: EnergyLevel, populate_sublevels: bool = False):
+    def __str__(self):
+        return self.name
+
+    def add_level(self, level: EnergyLevel, populate_sublevels: bool = False, alias=None):
         """
         Adds a level to the internal graph model. When the level is added, it calculates its sublevels, and the
         sublevels are then also added
         :param populate_sublevels: whether the atom should populate the sublevels upon addition. If False, the
         sublevels can still be accessed, but are populated lazily on-demand
         :param level: the EnergyLevel to be added
+        :param alias: an alias for accessing the EnergyLevel
         :return: the level that was added (in case you'd like an easy reference to it)
         """
         # TODO: On-the-spot EnergyLevel creation?
         level.add_to_atom(self)
+        if alias is not None:
+            level.alias = alias
         if level.alias is not None:
             self.levels.aliases[level.alias] = level
         if populate_sublevels:
@@ -993,7 +1020,7 @@ class Atom:
                 pass
         return a
 
-    def populate_transitions(self, allowed: Tuple[bool] = (True, True, True), **_):
+    def populate_transitions(self, allowed: Tuple[bool, ...] = (True, True, True), **_):
         """
         Iterate through every pair of levels in the atom, checking whether a given transition is 'allowed'
         and adding it if it is. Since this involves calculating Clebsch-Gordan coefficients for every possible
@@ -1113,29 +1140,30 @@ class Atom:
         # make a subgraph of the full model containing only the fixed edges
         set_edges = [(u, v) for u, v, e in self._levelsModel.edges(data=True) if e['transition'].set_freq is not None]
         set_graph = self._levelsModel.edge_subgraph(set_edges)
-        ccs = (set_graph.subgraph(c) for c in nx.connected_components(set_graph))
-        for sg in ccs:
+        connected_components = (set_graph.subgraph(c) for c in nx.connected_components(set_graph))
+        for subgraph in connected_components:
             if node_or_trans:
-                if not (node_or_trans in sg or node_or_trans in sg.edges()):
+                # check that the node/transition that triggered the enforcement call is contained in the subgraph
+                if not (node_or_trans in subgraph or node_or_trans in subgraph.edges()):
                     continue
             # find the lowest lying level in the subgraph
-            nodes = sg.nodes(data='level')
-            l, kl = None, None
-            for k, n in nodes:
-                if l is None:
-                    l, kl = n, k
-                elif n.level_Hz < l.level_Hz:
-                    l, kl = n, k
+            nodes = subgraph.nodes(data='level')
+            lowest, key_lowest = None, None
+            for key, node in nodes:
+                if lowest is None:
+                    lowest, key_lowest = node, key
+                elif node.level_Hz < lowest.level_Hz:
+                    lowest, key_lowest = node, key
             # perform a depth first search starting from the lowest energy node in the subgraph,
             # setting subsequent levels one at a time
-            search = nx.dfs_edges(sg, source=kl)
+            search = nx.dfs_edges(subgraph, source=key_lowest)
             for edge in search:
-                t = sg.edges()[edge]['transition']
-                el, eu, freq = t.E_lower, t.E_upper, t.set_freq.to(Hz).magnitude
-                if el.fixed and eu.fixed and freq != abs(el.level_Hz - eu.level_Hz):
+                t = subgraph.edges()[edge]['transition']
+                e_l, e_u, freq = t.E_lower, t.E_upper, t.set_freq.to(Hz).magnitude
+                if e_l.fixed and e_u.fixed and freq != abs(e_l.level_Hz - e_u.level_Hz):
                     warnings.warn(f'Constraint problem encountered when checking {edge}. Loop of fixed transitions?')
-                elif eu.fixed:
-                    el.level_Hz = eu.level_Hz - freq
+                elif e_u.fixed:
+                    e_l.level_Hz = e_u.level_Hz - freq
                 else:
-                    eu.level_Hz = el.level_Hz + freq
-                eu.fixed = el.fixed = True
+                    e_u.level_Hz = e_l.level_Hz + freq
+                e_u.fixed = e_l.fixed = True
