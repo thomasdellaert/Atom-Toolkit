@@ -3,7 +3,7 @@
   <component name="CsvFileAttributes">
     <option name="attributeMap">
       <map>
-        <entry key="\resources\.ipynb_checkpoints\173Yb_Hyperfine-checkpoint.csv">
+        <entry key="/resources/173Yb_Hyperfine.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />

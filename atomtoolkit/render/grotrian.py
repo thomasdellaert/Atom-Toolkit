@@ -28,9 +28,6 @@ def draw_levels(atom: Atom, plot_type: str = 'norm', **kwargs):
     nx.draw(model, pos=positions, node_shape="_", with_labels=True, font_size=8, edge_color=(0, 0, 0, 0.2), **kwargs)
 
 
-# RENDER_METHODS = {'matplotlib', 'bokeh'}
-# RENDERER = 'matplotlib'
-
 class Grotrian:
     level_color = (0, 0, 0, 1)
     transition_color = 'spectrum'
@@ -113,28 +110,30 @@ class Grotrian:
 
         self.level_prompts = pd.concat([self.level_prompts, pd.DataFrame(args)], ignore_index=True)
 
-    def add_transition(self, t: BaseTransition, substructure: bool = False, color_func: str = None, **kwargs):
+    def add_transition(self, t: BaseTransition or Tuple, substructure: bool = False, color_func: str = None, **kwargs):
         """
 
-        :param t:
-        :param substructure:
-        :param color_func:
+        :param t: a tuple containing the start level and the end level of the transition, or a BaseTransition,
+            specifying the transition to be rendered
+        TODO :param substructure: Whether to also draw subtransitions. Default: False
+        TODO :param color_func: callable or str, specifies automatic coloring rules for the level
         :param kwargs:
 
-        :keyword str style:
+        TODO :keyword str style:
             'bold'
             'wavy'
-        :keyword int linewidth:
-        :keyword bool dash:
-        :keyword int|str start_anchor:
+        TODO :keyword int linewidth:
+        TODO :keyword bool dash:
+        :keyword int|str start_anchor: Where to draw the start of the line, relative to the transition bounding box.
+        For example, 1 is the top-left corner, 5 is the center, and 9 is the bottom-right corner. See below:
         1  2  3
         4--5--6
         7  8  9
-        :keyword int|str end_anchor:
-        :keyword float start_x1:
-        :keyword float end_x1:
-        :keyword float start_y1:
-        :keyword float end_y1:
+        :keyword int|str end_anchor: Same as start_anchor but for the end of the line
+        :keyword float start_x1: offset x for the start of the line
+        :keyword float end_x1: offset y for the start of the line
+        :keyword float start_y1: offset x for the end of the line
+        :keyword float end_y1: offset y for the end of the line
         CONSIDER: general mpl arrow specs
         :return:
         """
@@ -264,6 +263,8 @@ class Grotrian:
         pos_b = compute_pos_from_level(t[1], a_1, x1_1, y1_1, bbox_overrides[1])
         # TODO: allow for some common default ArrowStyles. The default FancyArrowPatch settings are horrendous
         return FancyArrowPatch(posA=pos_a, posB=pos_b, **kwargs)
+
+    # region: level computation methods
 
     def _process_level_kwargs(self, level: BaseLevel, kwargs: Dict) -> Tuple:
         """
@@ -424,6 +425,8 @@ class Grotrian:
                                                        **kwargs)], ignore_index=True)
         elif isinstance(level, HFLevel):
             table = self._compute_hflevel_row(level, **kwargs)
+        else:
+            table = None
 
         return table
 
@@ -454,7 +457,6 @@ class Grotrian:
                                                        show=False,
                                                        **kwargs)],
                               ignore_index=True)
-
         elif type(level) == HFLevel:
             sub_tables = []
             for z_level in level.sublevels():
@@ -471,5 +473,9 @@ class Grotrian:
                               ignore_index=True)
         elif type(level) == ZLevel:
             table = self._compute_zlevel_row(level, **kwargs)
+        else:
+            table = None
 
         return table
+
+    # endregion

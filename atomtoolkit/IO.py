@@ -77,8 +77,8 @@ def _load_NIST_data(species: str, term_ordered: bool = False, save: bool or str 
         df_clean.loc[~df_clean["Term_2_int"].isnull(), 'Term_2'] = \
             df_clean["Term_2_int"].map(lambda k: '({}, {})'.format(*k), na_action='ignore')
     except IndexError:
-        # sometimes Term_2_int isn't JJ coupled.
-        # Usually in this case you can just leave it be as it's already formatted correctly
+        # FIXME sometimes some values in Term_2_int aren't JJ coupled (so far only seen in Na I, above ionization).
+        #   I do not have time for this right now, and if any Rydberg people wanna get mad at me later they can fix it
         pass
     df_clean = df_clean.drop("Term_2_int", axis=1)
     df_clean['Term'] = df_clean['Term'].fillna('')
@@ -116,6 +116,7 @@ def _load_NIST_data(species: str, term_ordered: bool = False, save: bool or str 
     # remove any terms above ionization, and the ionization row
     df_clean = df_clean.loc[:(df_clean['Term'] == 'Limit').idxmax() - 1]
     # split up levels with multiple J
+    df_clean.J = df_clean.J.str.replace(" or", ",")
     df_clean.J = df_clean.J.str.split(",")
     df_clean = df_clean.explode('J')
     # reset the indices, since we may have dropped some rows
