@@ -541,7 +541,7 @@ class BaseTransition(ABC):
 
     def __init__(self, E1: BaseLevel, E2: BaseLevel,
                  freq: pint.Quantity = None, A: pint.Quantity = None,
-                 name: str = None, parent: BaseTransition = None, alias: str = None):
+                 name: str = None, parent: BaseTransition = None, alias: str = None, add: bool = True):
         """
         :param E1: EnergyLevel 1
         :param E2: EnergyLevel 2
@@ -549,6 +549,10 @@ class BaseTransition(ABC):
                      convert to a frequency, such as a wavenumber or a wavelength)
         :param A: The Einstein A coefficient of the transition, corresponding to the natural linewidth
         :param name: the name of the transition
+        :param parent: the parent of the transition, the thing that contains it
+        :param alias: an alias for the transition
+        :param add: whether to add the transition to the atom upon creation. This should be disabled if you're
+                    instantiating the transition to check selection rules, for instance
         """
 
         self.parent = parent
@@ -566,7 +570,7 @@ class BaseTransition(ABC):
             self.E_lower = self.E_2
         # Check if in an atom
         self.atom = self.E_1.atom
-        if self.atom is not None:
+        if (self.atom is not None) and add:
             self.add_to_atom(self.atom)
         # Names
         self.model_name = (self.E_1.name, self.E_2.name)
@@ -955,7 +959,7 @@ class Atom:
         if transition.alias is not None:
             self.transitions.aliases[transition.alias] = transition
         if transition.set_freq is not None:
-            self.enforce_consistency()
+            self.enforce_consistency(node_or_trans=transition)
 
         return transition
 
@@ -1038,7 +1042,7 @@ class Atom:
         # The keys of js are J values, and the values are lists of levels with that J value
         js = {J: [lvl for lvl in self.levels.values() if lvl.term.J == J]
               for J in np.arange(0, max_to_try + 1, 0.5)}
-        for delta_j in allowed_deltas:  # range(int(len(allowed)+2/2)):
+        for delta_j in allowed_deltas:
             set0 = [js[j] for j in list(js.keys())]
             # don't include the last several j values to avoid IndexErrors
             set1 = [js[j + delta_j] for j in list(js.keys())[:int(-(delta_j * 2 + 1))]]
@@ -1046,7 +1050,7 @@ class Atom:
             level_pairs = tqdm(list(itertools.chain.from_iterable([itertools.product(j1, j2) for j1, j2 in j_pairs])))
             for pair in level_pairs:
                 if self.transitions[(pair[0].name, pair[1].name)] is None:
-                    t = Transition(pair[0], pair[1])
+                    t = Transition(pair[0], pair[1], add=False)
                     if np.any(np.array(t.allowed_types) & np.array(allowed)):
                         level_pairs.set_description(f'processing ΔJ={delta_j:3} transition {t.name:93}')
                         self.add_transition(t)
