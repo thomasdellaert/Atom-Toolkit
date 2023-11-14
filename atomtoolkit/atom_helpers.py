@@ -54,7 +54,10 @@ class LevelStructure:
             main, hf = key.rsplit(' ', maxsplit=1)
             return nx.get_node_attributes(self.model, 'level')[main][hf]
         else:  # match [conf] [term]
-            return nx.get_node_attributes(self.model, 'level')[key]
+            try:
+                return nx.get_node_attributes(self.model, 'level')[key]
+            except KeyError:
+                return None
 
     def __setitem__(self, key: str, value: EnergyLevel):
         self.atom.add_level(value, alias=key)
@@ -137,7 +140,10 @@ class TransitionStructure:
             main_1, hf_1 = k_upper.rsplit(' ', maxsplit=1)
             return nx.get_edge_attributes(self.model, 'transition')[(main_0, main_1)][(hf_0, hf_1)]
         else:  # match [conf] [term]
-            return nx.get_edge_attributes(self.model, 'transition')[(k_lower, k_upper)]
+            try:
+                return nx.get_edge_attributes(self.model, 'transition')[(k_lower, k_upper)]
+            except KeyError:
+                return None
 
     def __setitem__(self, value: Transition):
         self.atom.add_transition(value)
