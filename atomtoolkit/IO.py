@@ -2,6 +2,7 @@ import csv
 import re
 import warnings
 
+import numpy as np
 import pandas as pd
 
 from . import *
@@ -68,6 +69,13 @@ def _load_NIST_data(species: str, term_ordered: bool = False, save: bool or str 
     #       35  3[5/2]*       :    30                                 (2F*<7/2>)(3F) 3[3/2]*
     df_clean[['Percentage', 'Percentage_2', 'Configuration_2', 'Term_2']] = \
         df_clean['Leading percentages'].str.extract(r'\ *(\d+)\ +.+?\ *.*:\ *(\d+)\ +(.+?)(?:\ +(.+?))?\ *$')
+    #    sometimes, nist likes to give alternate assignments using the word "or", which doesn't make it into the
+    #    API CSV. For now, just drop these alternate assignments and replace with None
+    #    TODO: Allow term objects to have alternate coupling schemes. Almost always, normal coupling conversion
+    #     yields the same result, so this is low priority and could even be auto-detected
+    df_clean.loc[pd.to_numeric(df_clean['Percentage'], errors='coerce') + pd.to_numeric(df_clean['Percentage_2'], errors='coerce') > 100.0, 'Configuration_2'] = 'None'
+    df_clean.loc[pd.to_numeric(df_clean['Percentage'], errors='coerce') + pd.to_numeric(df_clean['Percentage_2'], errors='coerce') > 100.0, 'Term_2'] = ''
+    df_clean.loc[pd.to_numeric(df_clean['Percentage'], errors='coerce') + pd.to_numeric(df_clean['Percentage_2'], errors='coerce') > 100.0, 'Percentage_2'] = ''
     #    NIST doesn't see fit to give the jj-coupled terms in their second percentages,
     #    so we extract the j values from the configuration and store them in Term_2_int
     #       54                :    19                                 (2F*<5/2>)(3F*<2>)
@@ -83,7 +91,6 @@ def _load_NIST_data(species: str, term_ordered: bool = False, save: bool or str 
     df_clean = df_clean.drop("Term_2_int", axis=1)
     df_clean['Term'] = df_clean['Term'].fillna('')
     df_clean['Term_2'] = df_clean['Term_2'].fillna('')
-    #    Finally, we have to add back in the parts of the second configuration that NIST deemed redundant and left out
 
     def reconstitute_conf(c0, c1):
         """
