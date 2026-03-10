@@ -40,11 +40,11 @@ def mod_lorentzian(x, x0: float, gamma: float, ampl: float = 1.0, depth: float =
 
 
 class LineShape(ABC):
-    def __init__(self):
+    def __init__(self, **kwargs):
         pass
 
     @abstractmethod
-    def shape_func(x, x0, **kwargs):
+    def shape_func(self, x, x0, **kwargs):
         raise NotImplementedError
 
     @abstractmethod
@@ -88,12 +88,11 @@ class ModLorentzianLineShape(LineShape):
         self.gamma = gamma
         self.mod_freq_GHz = mod_freq_GHz
         self.depth = depth
-        self.num_sidebands = 0
+        self.num_sidebands = num_sidebands
         if num_sidebands is None:
+            self.num_sidebands = 0
             while (self.depth / 2) ** self.num_sidebands > 0.01 * np.math.factorial(self.num_sidebands):
                 self.num_sidebands += 1
-        else:
-            self.num_sidebands = num_sidebands
 
     def shape_func(self, x, x0, **kwargs):
         if 'ampl' not in kwargs:

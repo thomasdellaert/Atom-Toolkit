@@ -57,7 +57,7 @@ class LevelStructure:
             try:
                 return nx.get_node_attributes(self.model, 'level')[key]
             except KeyError:
-                return None
+                raise
 
     def __setitem__(self, key: str, value: EnergyLevel):
         self.atom.add_level(value, alias=key)

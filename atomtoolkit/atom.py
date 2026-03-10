@@ -258,10 +258,13 @@ class EnergyLevel(BaseLevel):
         super().__init__(term, parent, alias)
         self._level_Hz = level.to(Hz).magnitude
         self.hfA_Hz, self.hfB_Hz, self.hfC_Hz = hfA.to(Hz).magnitude, hfB.to(Hz).magnitude, hfC.to(Hz).magnitude
-        if lande is None:
+        try:
+            if lande is None or np.isnan(lande):
+                self.lande = self.compute_gJ()
+            else:
+                self.lande = lande
+        except TypeError:
             self.lande = self.compute_gJ()
-        else:
-            self.lande = lande
 
     def get_manifold(self) -> EnergyLevel:
         """A fine structure level *is* a manifold."""
@@ -355,8 +358,8 @@ class EnergyLevel(BaseLevel):
             J = term.J
             ls, ss, percents = terms
 
-            total += pct * sum(percents * (1 + 1.0023 * (J * (J + 1) + ss * (ss + 1) - ls * (ls + 1))
-                                           / (2 * J * (J + 1))))
+            total += pct/100.0 * sum(percents * (1 + 1.0023 * (J * (J + 1) + ss * (ss + 1) - ls * (ls + 1))
+                                     / (2 * J * (J + 1))))
         return total
 
     @classmethod
@@ -608,6 +611,10 @@ class BaseTransition(ABC):
     def wl(self) -> pint.Quantity:
         return self.freq.to(ureg.nanometer)
 
+    @property
+    def omega(self) -> pint.Quantity:
+        return self.freq * 2 * np.pi
+
     def compute_linewidth(self) -> Tuple[pint.Quantity or None, float]:
         """
         computes the linewidth of the transition, including angular momentum factors
@@ -661,7 +668,7 @@ class BaseTransition(ABC):
         """
         if True not in self.allowed_types:
             return itertools.product(self.E_1.sublevels(), self.E_2.sublevels())
-        max_delta = (2 if (self.allowed_types[2] and not self.allowed_types[1]) else 1)
+        max_delta = (2 if (self.allowed_types[2]) else 1)
         return ((l1, l2) for l1, l2 in itertools.product(self.E_1.sublevels(), self.E_2.sublevels())
                 if abs(l1.term.__getattribute__(attr) - l2.term.__getattribute__(attr)) <= max_delta)
 
@@ -821,7 +828,7 @@ class ZTransition(BaseTransition):
         if self.parent.allowed_types[0] or self.parent.allowed_types[1]:
             factor = sum([wigner3j(F1, 1, F2, -mF1, q, mF2) ** 2 for q in [-1, 0, 1]])
         elif self.parent.allowed_types[2]:
-            factor = sum([wigner3j(F1, 2, F1, -mF1, q, mF2) ** 2 for q in [-2, -1, 0, 1, 2]])
+            factor = sum([wigner3j(F1, 2, F2, -mF1, q, mF2) ** 2 for q in [-2, -1, 0, 1, 2]])
         else:
             factor = 0.0
         return self.parent.A * factor, float(factor)
@@ -1024,7 +1031,7 @@ class Atom:
                 pass
         return a
 
-    def populate_transitions(self, allowed: Tuple[bool, ...] = (True, True, True), **_):
+    def populate_transitions(self, allowed: Tuple[bool, ...] = (True, False, False), **_):
         """
         Iterate through every pair of levels in the atom, checking whether a given transition is 'allowed'
         and adding it if it is. Since this involves calculating Clebsch-Gordan coefficients for every possible
@@ -1097,7 +1104,7 @@ class Atom:
             for k, trans in self.linked_levels(level.parent.name).items():
                 trans.populate_subtransitions()
         adjacent = level.model.adj[key]
-        return {k: t['transition'] for k, t in adjacent.items() if k != key}
+        return {self.levels[k]: t['transition'] for k, t in adjacent.items() if k != key}
 
     def state_lifetime(self, key: str) -> pint.Quantity:
         """

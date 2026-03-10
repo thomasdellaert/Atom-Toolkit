@@ -50,7 +50,7 @@ def plot_transitions(transitions: BaseTransition or List[BaseTransition],
         plt.plot(x_values, y_values, "k:", label="Total", alpha=0.5)
     plt.ylim(0, None)
     plt.xlabel("Frequency (GHz)")
-    plt.legend()
+    plt.legend(fontsize=16)
 
 
 def plot_hyperfine_spectrum(transitions: Transition or List[Transition] or List[HFTransition],

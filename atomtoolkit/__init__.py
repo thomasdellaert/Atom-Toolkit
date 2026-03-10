@@ -11,18 +11,20 @@ pint_pandas.PintType.ureg = ureg
 # add wavenumbers to the pint spectroscopy context
 _c = pint.Context('spectroscopy')
 _c.add_transformation('[wavenumber]', '[frequency]',
-                      lambda ureg, x: x * ureg.speed_of_light)
+                      lambda u, x: x * u.speed_of_light)
 _c.add_transformation('[frequency]', '[wavenumber]',
-                      lambda ureg, x: x / ureg.speed_of_light)
+                      lambda u, x: x / u.speed_of_light)
 ureg.enable_contexts('spectroscopy')
 
 c = ureg.speed_of_light
+e = ureg.elementary_charge
+hb = ureg.planck_constant / (2*ureg.pi)
 Hz = ureg.Hz
 kHz = Hz * 1e3
 MHz = Hz * 1e6
 GHz = Hz * 1e9
 THz = Hz * 1e12
 G = ureg.G
+a0 = 5.29e-11 * ureg.meter
 
 mu_B = 1.39962449361e6 * Hz / G
-

@@ -33,12 +33,12 @@ def l_to_let(l: int or float) -> str:
 
 def frac_to_float(frac: float or str) -> float or None:
     """
-        :param frac: a string formatted as "1/2", "5/2", "3", etc
+        :param frac: a string formatted as "1/2", "5/2", "3", etc.
         :return: the corresponding float
         """
     if frac is (None or ''):
         return None
-    if type(frac) == str:
+    if isinstance(frac, str):
         if '/' in frac:
             (f1, f2) = frac.split('/')
             return float(f1) / float(f2)
@@ -58,7 +58,7 @@ def float_to_frac(f: float or str) -> str or None:
     if f is None:
         return None
     # Assumes n/2, since all the fractions that appear in term symbols are of that form
-    if type(f) == str:
+    if isinstance(f, str):
         if '/' in f:
             return f
         try:

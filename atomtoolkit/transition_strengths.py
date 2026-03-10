@@ -7,8 +7,25 @@ this may eventually get moved either into the Term class or into a module of its
 import warnings
 import functools
 import numpy as np
+from . import ureg, c, hb, e, a0
 
 from .wigner import wigner3j, wigner6j, wigner9j
+
+
+def A_to_oscillator_strength():
+    raise NotImplementedError  # TODO
+
+
+def oscillator_strength_to_A():
+    raise NotImplementedError  # TODO
+
+
+def A_to_dipole_mel(A, J0, J1, omega):
+    return ((A * (2 * J1 + 1) * 3 * np.pi * ureg.epsilon_0 * hb * c ** 3 / omega ** 3) ** 0.5).to(ureg.a0 * ureg.e)
+
+
+def dipole_mel_to_A(mel, J0, J1, omega):
+    return ((omega ** 3 / (3 * np.pi * hb * (c ** 3) * ureg.epsilon_0)) * 1 / (2 * J1 + 1) * mel ** 2).to(ureg.Hz)
 
 
 @functools.lru_cache(maxsize=None)
@@ -77,11 +94,11 @@ def M1_transition_strength_geom(eps: np.array, I: float,
                                 J0: float, F0: float, M0: float, J1: float, F1: float, M1: float) -> float:
     eps = eps / np.linalg.norm(eps)
     tot = 0
-    tot += tkq_transition_strength(I, 1, -1, J0, F0, M0, J1, F1, M1) * \
-           0.5 * (eps[0] ** 2 + eps[1] ** 2)
+    tot += (tkq_transition_strength(I, 1, -1, J0, F0, M0, J1, F1, M1) *
+            0.5 * (eps[0] ** 2 + eps[1] ** 2))
     tot += tkq_transition_strength(I, 1, 0, J0, F0, M0, J1, F1, M1) * eps[2] ** 2
-    tot += tkq_transition_strength(I, 1, 1, J0, F0, M0, J1, F1, M1) * \
-           0.5 * (eps[0] ** 2 + eps[1] ** 2)
+    tot += (tkq_transition_strength(I, 1, 1, J0, F0, M0, J1, F1, M1) *
+            0.5 * (eps[0] ** 2 + eps[1] ** 2))
     return tot
 
 
@@ -98,16 +115,16 @@ def E2_mel_geom(eps: np.array, k: np.array, I: float,
     if np.dot(eps, k) != 0:
         warnings.warn("k-vector and polarization are not orthogonal")
     tot = 0
-    tot += tkq_mel(I, 2, -2, J0, F0, M0, J1, F1, M1) * \
-           (eps[0] * k[0] - 1j * (k[0] * eps[1] + k[1] + eps[0]) - k[1] * eps[1])
-    tot += tkq_mel(I, 2, -1, J0, F0, M0, J1, F1, M1) * \
-           (-(k[0] * eps[2] + k[2] * eps[0]) + 1j * (k[1] * eps[2] + k[2] * eps[1]))
-    tot += tkq_mel(I, 2, 0, J0, F0, M0, J1, F1, M1) * \
-           (-6 ** 0.5 * k[0] * eps[0] + 6 ** 0.5 * k[1] * eps[1] + (2. / 3.) * 6 ** 0.5 * k[2] * eps[2])
-    tot += tkq_mel(I, 2, 1, J0, F0, M0, J1, F1, M1) * \
-           ((k[0] * eps[2] + k[2] * eps[0]) + 1j * (k[1] * eps[2] + k[2] * eps[1]))
-    tot += tkq_mel(I, 2, 2, J0, F0, M0, J1, F1, M1) * \
-           (eps[0] * k[0] + 1j * (k[0] * eps[1] + k[1] + eps[0]) - k[1] * eps[1])
+    tot += (tkq_mel(I, 2, -2, J0, F0, M0, J1, F1, M1) *
+            (eps[0] * k[0] - 1j * (k[0] * eps[1] + k[1] + eps[0]) - k[1] * eps[1]))
+    tot += (tkq_mel(I, 2, -1, J0, F0, M0, J1, F1, M1) *
+            (-(k[0] * eps[2] + k[2] * eps[0]) + 1j * (k[1] * eps[2] + k[2] * eps[1])))
+    tot += (tkq_mel(I, 2, 0, J0, F0, M0, J1, F1, M1) *
+            (-6 ** 0.5 * k[0] * eps[0] + 6 ** 0.5 * k[1] * eps[1] + (2. / 3.) * 6 ** 0.5 * k[2] * eps[2]))
+    tot += (tkq_mel(I, 2, 1, J0, F0, M0, J1, F1, M1) *
+            ((k[0] * eps[2] + k[2] * eps[0]) + 1j * (k[1] * eps[2] + k[2] * eps[1])))
+    tot += (tkq_mel(I, 2, 2, J0, F0, M0, J1, F1, M1) *
+            (eps[0] * k[0] + 1j * (k[0] * eps[1] + k[1] + eps[0]) - k[1] * eps[1]))
     return tot
 
 
@@ -119,16 +136,16 @@ def E2_transition_strength_geom(eps: np.array, k: np.array, I: float,
     if np.dot(eps, k) != 0:
         warnings.warn("k-vector and polarization are not orthogonal")
     tot = 0
-    tot += tkq_transition_strength(I, 2, -2, J0, F0, M0, J1, F1, M1) * \
-           (eps[0] ** 2 + eps[1] ** 2) * (k[0] ** 2 + k[1] ** 2)
-    tot += tkq_transition_strength(I, 2, -1, J0, F0, M0, J1, F1, M1) * \
-           (eps[2] * k[0] + eps[0] * k[2]) ** 2 + (eps[1] * k[0] + eps[0] * k[1]) ** 2
-    tot += tkq_transition_strength(I, 2, 0, J0, F0, M0, J1, F1, M1) * \
-           (2. / 3.) * (3 * k[0] * eps[0] + 3 * k[1] * eps[1] + 2 * k[2] * eps[2]) ** 2
-    tot += tkq_transition_strength(I, 2, 1, J0, F0, M0, J1, F1, M1) * \
-           (eps[2] * k[0] + eps[0] * k[2]) ** 2 + (eps[1] * k[0] + eps[0] * k[1]) ** 2
-    tot += tkq_transition_strength(I, 2, 2, J0, F0, M0, J1, F1, M1) * \
-           (eps[0] ** 2 + eps[1] ** 2) * (k[0] ** 2 + k[1] ** 2)
+    tot += (tkq_transition_strength(I, 2, -2, J0, F0, M0, J1, F1, M1) *
+            (eps[0] ** 2 + eps[1] ** 2) * (k[0] ** 2 + k[1] ** 2))
+    tot += (tkq_transition_strength(I, 2, -1, J0, F0, M0, J1, F1, M1) *
+            (eps[2] * k[0] + eps[0] * k[2]) ** 2 + (eps[1] * k[0] + eps[0] * k[1]) ** 2)
+    tot += (tkq_transition_strength(I, 2, 0, J0, F0, M0, J1, F1, M1) *
+            (2. / 3.) * (3 * k[0] * eps[0] + 3 * k[1] * eps[1] + 2 * k[2] * eps[2]) ** 2)
+    tot += (tkq_transition_strength(I, 2, 1, J0, F0, M0, J1, F1, M1) *
+            (eps[2] * k[0] + eps[0] * k[2]) ** 2 + (eps[1] * k[0] + eps[0] * k[1]) ** 2)
+    tot += (tkq_transition_strength(I, 2, 2, J0, F0, M0, J1, F1, M1) *
+            (eps[0] ** 2 + eps[1] ** 2) * (k[0] ** 2 + k[1] ** 2))
     return tot
 
 
@@ -163,10 +180,10 @@ def JK_to_LS(J: float, Jc: float, K: float, lc: float, sc: float, lo: float, so:
     ss = np.arange(abs(sc - so), abs(sc + so) + 1)
     outls = np.repeat(ls, len(ss))
     outss = np.tile(ss, len(ls))
-    outpercs = np.array([float((-1) ** (-lc - lo - 2 * sc - so - K - outls[i] - J) * \
-                               np.sqrt((2 * Jc + 1) * (2 * outls[i] + 1) * (2 * K + 1) * (2 * outss[i] + 1)) * \
+    outpercs = np.array([float((-1) ** (-lc - lo - 2 * sc - so - K - outls[i] - J) *
+                               np.sqrt((2 * Jc + 1) * (2 * outls[i] + 1) * (2 * K + 1) * (2 * outss[i] + 1)) *
                                wigner6j(sc, lc, Jc,
-                                        lo, K, outls[i]) * \
+                                        lo, K, outls[i]) *
                                wigner6j(outls[i], sc, K,
                                         so, J, outss[i])) for i in range(len(outls))])
     return np.stack([outls, outss, outpercs])

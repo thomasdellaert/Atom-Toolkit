@@ -2,7 +2,6 @@ import csv
 import re
 import warnings
 
-import numpy as np
 import pandas as pd
 
 from . import *
@@ -22,10 +21,10 @@ def _load_NIST_data(species: str, term_ordered: bool = False, save: bool or str 
     df = pd.read_csv(
         'https://physics.nist.gov/cgi-bin/ASD/energy1.pl?de=0' +
         '&spectrum=' + species.replace(' ', '+') +
+        '&submit=Retrieve+Data' +
         '&units=0' +
-        '&format=2' +
+        '&format=3' +
         '&output=0' +
-        '&page_size=15' +
         '&multiplet_ordered=' + ('on' if term_ordered else '0') +
         '&conf_out=on' +
         '&term_out=on' +
@@ -34,8 +33,7 @@ def _load_NIST_data(species: str, term_ordered: bool = False, save: bool or str 
         '&j_out=on' +
         '&lande_out=on' +
         '&perc_out=on' +
-        '&temp=' +
-        '&submit=Retrieve+Data',
+        '&temp=',
         index_col=False)
 
     # === strip the data of extraneous symbols ===
@@ -73,9 +71,12 @@ def _load_NIST_data(species: str, term_ordered: bool = False, save: bool or str 
     #    API CSV. For now, just drop these alternate assignments and replace with None
     #    TODO: Allow term objects to have alternate coupling schemes. Almost always, normal coupling conversion
     #     yields the same result, so this is low priority and could even be auto-detected
-    df_clean.loc[pd.to_numeric(df_clean['Percentage'], errors='coerce') + pd.to_numeric(df_clean['Percentage_2'], errors='coerce') > 100.0, 'Configuration_2'] = 'None'
-    df_clean.loc[pd.to_numeric(df_clean['Percentage'], errors='coerce') + pd.to_numeric(df_clean['Percentage_2'], errors='coerce') > 100.0, 'Term_2'] = ''
-    df_clean.loc[pd.to_numeric(df_clean['Percentage'], errors='coerce') + pd.to_numeric(df_clean['Percentage_2'], errors='coerce') > 100.0, 'Percentage_2'] = ''
+    df_clean.loc[pd.to_numeric(df_clean['Percentage'], errors='coerce') +
+                 pd.to_numeric(df_clean['Percentage_2'], errors='coerce') > 100.0, 'Configuration_2'] = 'None'
+    df_clean.loc[pd.to_numeric(df_clean['Percentage'], errors='coerce') +
+                 pd.to_numeric(df_clean['Percentage_2'], errors='coerce') > 100.0, 'Term_2'] = ''
+    df_clean.loc[pd.to_numeric(df_clean['Percentage'], errors='coerce') +
+                 pd.to_numeric(df_clean['Percentage_2'], errors='coerce') > 100.0, 'Percentage_2'] = ''
     #    NIST doesn't see fit to give the jj-coupled terms in their second percentages,
     #    so we extract the j values from the configuration and store them in Term_2_int
     #       54                :    19                                 (2F*<5/2>)(3F*<2>)
@@ -134,7 +135,7 @@ def _load_NIST_data(species: str, term_ordered: bool = False, save: bool or str 
                          'Configuration_2', 'Term_2', 'Percentage_2']]
 
     if save:
-        if type(save) == str:
+        if isinstance(save, str):
             if save[-4:] != '.csv':
                 save += '.csv'
         else:
@@ -150,7 +151,7 @@ def load_NIST_data(species: str, term_ordered: bool = False, save: bool or str =
     Loads data from the NIST ASD Levels form
 
     :param species: The species to grab data from.
-        Should use astronomical notation, with the element name followed by a roman numeral (Ca II, Rb I, etc)
+        Should use astronomical notation, with the element name followed by a roman numeral (Ca II, Rb I, etc.)
     :param term_ordered: whether to order by term. If False, it will order by energy
     :param save: whether to save the imported and cleaned data as a csv file. If a string, this is the name of the csv
     :return: a dataframe with the following columns:
@@ -317,6 +318,6 @@ def generate_full_from_dataframe(df, name, I=0.0, **kwargs):
         else:
             a.populate_transitions(**kwargs)
     else:
-        a.populate_transitions(allowed=(True, False, False), **kwargs)
+        a.populate_transitions(**kwargs)
     a.populate_internal_transitions()
     return a

@@ -4,8 +4,58 @@ import numpy as np
 c = ureg.speed_of_light
 
 
+class Polarization:
+    def __init__(self, pol):
+        if not isinstance(pol, np.ndarray):
+            pol = np.array(pol)
+        pol = pol.astype(np.complex64)
+        pol = pol/np.linalg.norm(pol)
+        assert np.linalg.norm(pol) - 1 < 1e-6
+        self._pol = pol
+
+    @property
+    def xyz(self):
+        return self._pol
+
+    @xyz.setter
+    def xyz(self, pol):
+        self._pol = pol
+
+    @property
+    def spherical(self):
+        return self.xyz_to_sigma(self._pol)
+
+    @spherical.setter
+    def spherical(self, pol_spherical):
+        self._pol = self.sigma_to_xyz(pol_spherical)
+
+    @staticmethod
+    def xyz_to_sigma(pol):
+        """
+        Convert between the frame defined by the external magnetic field,
+        and the spherical tensor frame of sigma-, pi, sigma+
+        :param pol: the polarization of the input light in the xyz frame, with the z axis defined as the quantization axis
+        :return: the polarization components as spherical tensors
+        """
+        return np.dot(np.array([[2 ** (-0.5), -2j ** (-0.5), 0],
+                                [0, 0, 1],
+                                [2 ** (-0.5), 2j ** (-0.5), 0]]), pol)
+
+    @staticmethod
+    def sigma_to_xyz(pol):
+        """
+        Convert between the frame defined by spherical tensor frame of sigma-, pi, sigma+,
+        and the one defined by the external magnetic field in cartesian coordinates
+        :param pol: the polarization of the input light in the xyz frame, with the z axis defined as the quantization axis
+        :return: the polarization components as spherical tensors
+        """
+        return np.dot(np.array([[0.5, 0, 0.5],
+                                [0.5j, 0, -0.5j],
+                                [0, 1, 0]]), pol)
+
+
 class LightField:
-    def __init__(self, k: np.array, i: float, pol: np.array = np.array([0., 0., 1.], dtype=np.complex_)):
+    def __init__(self, k: np.array, i: float, pol: Polarization = Polarization([0, 0, 1])):
         """
 
         :param k:
@@ -16,12 +66,11 @@ class LightField:
             right circular = 2**(-0.5) * [1, 1j, 0]
         """
         self.k = k
-        assert np.linalg.norm(pol) - 1 < 1e-6, "polarization must be a unit vector"
         self.pol = pol
         self.intensity = i
 
     def E(self, **_):
-        return self.pol * (2 * self.intensity / (c * ureg.vacuum_permittivity)) ** 0.5
+        return self.pol.xyz * (2 * self.intensity / (c * ureg.vacuum_permittivity)) ** 0.5
 
     def B(self, **_):
         return 1 / c * np.cross(self.k, self.E())
@@ -45,10 +94,10 @@ class GaussianBeam(LightField):
         self.zr = np.pi * w0 ** 2 * c * k
 
     def E(self, z, r=0.0):
-        return self.pol * self.E0 * self.w0 / self.w(z) * np.exp(-r * r / self.w(z) ** 2)
+        return self.pol.xyz * self.E0 * self.w0 / self.w(z) * np.exp(-r * r / self.w(z) ** 2)
 
     def B(self, z, r=0.0):
-        return 1 / c * np.cross(self.E(z, r), self.pol)
+        return 1 / c * np.cross(self.E(z, r), self.pol.xyz)
 
     def phase_at(self, z):
         return np.arctan(z / self.zr)

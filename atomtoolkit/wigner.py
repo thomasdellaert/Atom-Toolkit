@@ -26,7 +26,7 @@ def triangle(a, b, c):
     return a + b >= c, b + c >= a, c + a >= b
 
 
-def wignerPicker(func):
+def _wignerPicker(func):
     def wrapper(*args):
         if PY3NJ_INSTALLED:
             # py3nj takes the arguments doubled, and requires them to be integers
@@ -46,6 +46,6 @@ def wignerPicker(func):
     return wrapper
 
 
-wigner3j = (functools.lru_cache(maxsize=None))(wignerPicker(_wigner3j))
-wigner6j = (functools.lru_cache(maxsize=None))(wignerPicker(_wigner6j))
-wigner9j = (functools.lru_cache(maxsize=None))(wignerPicker(_wigner9j))
+wigner3j = (functools.lru_cache(maxsize=None))(_wignerPicker(_wigner3j))
+wigner6j = (functools.lru_cache(maxsize=None))(_wignerPicker(_wigner6j))
+wigner9j = (functools.lru_cache(maxsize=None))(_wignerPicker(_wigner9j))
