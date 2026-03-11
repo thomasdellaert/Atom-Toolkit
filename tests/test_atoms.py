@@ -1,8 +1,9 @@
+import json
 import itertools
 
 import pytest
 from atomtoolkit.atom import Atom, Transition, EnergyLevel
-from atomtoolkit.term import Term
+from atomtoolkit.term import Term, MultiTerm
 from atomtoolkit import *
 import numpy as np
 
@@ -412,3 +413,230 @@ class TestIO:
         applied_hz = a2.levels['1s2.2s 2S1/2'].hfA.to(Hz).magnitude
         expected_hz = Q_(0.5, 'GHz').to(Hz).magnitude
         assert applied_hz == pytest.approx(expected_hz, rel=1e-5)
+
+
+# ---------------------------------------------------------------------------
+# TestJSONSerialization
+# ---------------------------------------------------------------------------
+
+class TestJSONSerialization:
+    """Tests for Atom.to_dict / from_dict / save_json / load_json."""
+
+    @pytest.fixture
+    def rich_atom(self):
+        """
+        Atom with I=1/2, multi-term level, hyperfine coefficients, lande,
+        two transitions (one with alias), and quadratic Zeeman overrides.
+        """
+        a = Atom(name="test_json", I=0.5, B=Q_(1.0, 'G'))
+
+        gs = EnergyLevel(Term('1s2.2s', '2S', 0.5),
+                         level=0.0 * Hz, hfA=1 * GHz, lande=2.002,
+                         alias='ground')
+        ex = EnergyLevel(Term('1s2.2p', '2P*', 1.5),
+                         level=100 * THz, hfA=200 * MHz)
+
+        # A multi-term level with two mixed configurations
+        ex_mt = EnergyLevel(
+            MultiTerm(
+                Term('1s2.3d', '2D', 2.5, percentage=80.0),
+                Term('1s2.4d', '2D', 2.5, percentage=20.0),
+            ),
+            level=200 * THz,
+            hfA=50 * MHz,
+        )
+
+        a.add_level(gs)
+        a.add_level(ex)
+        a.add_level(ex_mt)
+
+        t1 = Transition(gs, ex, A=10 * MHz, alias='cooling')
+        t2 = Transition(gs, ex_mt, A=5 * MHz)
+
+        # Force-compute ZLevels so quadratic_zeeman survives to_dict
+        a.levels['1s2.2s 2S1/2']['F=0']['mF=0'].quadratic_zeeman = -155.305
+        a.levels['1s2.2s 2S1/2']['F=1']['mF=0'].quadratic_zeeman = 155.305
+
+        return a
+
+    # ------------------------------------------------------------------
+    # to_dict structure
+    # ------------------------------------------------------------------
+
+    def test_schema_version_present(self, rich_atom):
+        d = rich_atom.to_dict()
+        assert '_schema' in d
+        assert isinstance(d['_schema'], int)
+
+    def test_metadata_round_trip(self, rich_atom):
+        d = rich_atom.to_dict()
+        assert d['name'] == 'test_json'
+        assert d['I'] == pytest.approx(0.5)
+        assert d['B_gauss'] == pytest.approx(1.0)
+
+    def test_level_count(self, rich_atom):
+        d = rich_atom.to_dict()
+        assert len(d['levels']) == 3
+
+    def test_level_energy_stored(self, rich_atom):
+        d = rich_atom.to_dict()
+        energies = sorted(lvl['level_Hz'] for lvl in d['levels'])
+        assert energies[0] == pytest.approx(0.0, abs=1.0)
+        assert energies[1] == pytest.approx(100e12, rel=1e-6)
+
+    def test_hyperfine_stored(self, rich_atom):
+        d = rich_atom.to_dict()
+        gs_data = next(l for l in d['levels'] if l['level_Hz'] == pytest.approx(0.0, abs=1.0))
+        assert gs_data['hfA_Hz'] == pytest.approx(1e9, rel=1e-6)
+
+    def test_lande_stored(self, rich_atom):
+        d = rich_atom.to_dict()
+        gs_data = next(l for l in d['levels'] if l['level_Hz'] == pytest.approx(0.0, abs=1.0))
+        assert gs_data['lande'] == pytest.approx(2.002, rel=1e-4)
+
+    def test_alias_stored(self, rich_atom):
+        d = rich_atom.to_dict()
+        gs_data = next(l for l in d['levels'] if l['level_Hz'] == pytest.approx(0.0, abs=1.0))
+        assert gs_data['alias'] == 'ground'
+
+    def test_multiterm_stored(self, rich_atom):
+        d = rich_atom.to_dict()
+        ex_alt = next(l for l in d['levels'] if l['level_Hz'] == pytest.approx(200e12, rel=1e-6))
+        assert len(ex_alt['terms']) == 2
+        pcts = sorted(t['percentage'] for t in ex_alt['terms'])
+        assert pcts == pytest.approx([20.0, 80.0], rel=1e-6)
+
+    def test_transition_count(self, rich_atom):
+        d = rich_atom.to_dict()
+        assert len(d['transitions']) == 2
+
+    def test_transition_A_stored(self, rich_atom):
+        d = rich_atom.to_dict()
+        A_vals = sorted(t['A_Hz'] for t in d['transitions'])
+        assert A_vals[0] == pytest.approx(5e6, rel=1e-6)
+        assert A_vals[1] == pytest.approx(10e6, rel=1e-6)
+
+    def test_transition_alias_stored(self, rich_atom):
+        d = rich_atom.to_dict()
+        cooling = next((t for t in d['transitions'] if t.get('alias') == 'cooling'), None)
+        assert cooling is not None
+
+    def test_quadratic_zeeman_stored(self, rich_atom):
+        d = rich_atom.to_dict()
+        gs_data = next(l for l in d['levels'] if l['level_Hz'] == pytest.approx(0.0, abs=1.0))
+        qz = gs_data['quadratic_zeeman']
+        assert 'F=0 mF=0' in qz
+        assert qz['F=0 mF=0'] == pytest.approx(-155.305, rel=1e-5)
+        assert 'F=1 mF=0' in qz
+        assert qz['F=1 mF=0'] == pytest.approx(155.305, rel=1e-5)
+
+    def test_self_transitions_excluded(self, rich_atom):
+        d = rich_atom.to_dict()
+        for t in d['transitions']:
+            assert t['lower'] != t['upper']
+
+    # ------------------------------------------------------------------
+    # from_dict reconstruction
+    # ------------------------------------------------------------------
+
+    def test_from_dict_name(self, rich_atom):
+        a2 = Atom.from_dict(rich_atom.to_dict())
+        assert a2.name == rich_atom.name
+
+    def test_from_dict_I(self, rich_atom):
+        a2 = Atom.from_dict(rich_atom.to_dict())
+        assert a2.I == pytest.approx(rich_atom.I)
+
+    def test_from_dict_level_count(self, rich_atom):
+        a2 = Atom.from_dict(rich_atom.to_dict())
+        assert len(a2.levels) == len(rich_atom.levels)
+
+    def test_from_dict_level_energies(self, rich_atom):
+        a2 = Atom.from_dict(rich_atom.to_dict())
+        orig = sorted(l.level_Hz for l in rich_atom.levels.values())
+        loaded = sorted(l.level_Hz for l in a2.levels.values())
+        for o, l in zip(orig, loaded):
+            assert o == pytest.approx(l, rel=1e-9)
+
+    def test_from_dict_hfA(self, rich_atom):
+        a2 = Atom.from_dict(rich_atom.to_dict())
+        gs2 = a2.levels['1s2.2s 2S1/2']
+        assert gs2.hfA.to('GHz').magnitude == pytest.approx(1.0, rel=1e-6)
+
+    def test_from_dict_lande(self, rich_atom):
+        a2 = Atom.from_dict(rich_atom.to_dict())
+        assert a2.levels['1s2.2s 2S1/2'].lande == pytest.approx(2.002, rel=1e-4)
+
+    def test_from_dict_alias(self, rich_atom):
+        a2 = Atom.from_dict(rich_atom.to_dict())
+        # alias should resolve to the same level
+        assert a2.levels['ground'].name == '1s2.2s 2S1/2'
+
+    def test_from_dict_transition_A(self, rich_atom):
+        a2 = Atom.from_dict(rich_atom.to_dict())
+        t = a2.transitions[('1s2.2s 2S1/2', '1s2.2p 2P*3/2')]
+        assert t.A.to('MHz').magnitude == pytest.approx(10.0, rel=1e-6)  # cooling transition
+
+    def test_from_dict_transition_alias(self, rich_atom):
+        a2 = Atom.from_dict(rich_atom.to_dict())
+        # alias should resolve to the cooling transition
+        t = a2.transitions.aliases.get('cooling')
+        assert t is not None
+        assert t.A.to('MHz').magnitude == pytest.approx(10.0, rel=1e-6)
+
+    def test_from_dict_quadratic_zeeman(self, rich_atom):
+        a2 = Atom.from_dict(rich_atom.to_dict())
+        qz = a2.levels['1s2.2s 2S1/2']['F=0']['mF=0'].quadratic_zeeman
+        assert qz == pytest.approx(-155.305, rel=1e-5)
+
+    def test_from_dict_hf_sublevels_still_lazy(self, rich_atom):
+        """Levels not in quadratic_zeeman should not be eagerly computed."""
+        a2 = Atom.from_dict(rich_atom.to_dict())
+        ex = a2.levels['1s2.2p 2P*3/2']   # cooling level — no quadratic_zeeman entries
+        assert len(ex._sublevels) == 0   # not yet populated
+
+    # ------------------------------------------------------------------
+    # File I/O
+    # ------------------------------------------------------------------
+
+    def test_save_load_json_roundtrip(self, rich_atom, tmp_path):
+        path = str(tmp_path / "atom.json")
+        rich_atom.save_json(path)
+        a2 = Atom.load_json(path)
+        assert a2.name == rich_atom.name
+        assert len(a2.levels) == len(rich_atom.levels)
+
+    def test_load_dispatches_to_json(self, rich_atom, tmp_path):
+        """Atom.load() should auto-detect .json and use the JSON loader."""
+        path = str(tmp_path / "atom.json")
+        rich_atom.save_json(path)
+        a2 = Atom.load(path)
+        assert isinstance(a2, Atom)
+        assert a2.name == rich_atom.name
+
+    def test_json_extension_appended(self, rich_atom, tmp_path):
+        path = str(tmp_path / "atom")   # no extension
+        rich_atom.save_json(path)
+        assert (tmp_path / "atom.json").exists()
+
+    def test_json_is_valid_utf8_text(self, rich_atom, tmp_path):
+        path = str(tmp_path / "atom.json")
+        rich_atom.save_json(path)
+        with open(path, encoding='utf-8') as f:
+            data = json.load(f)
+        assert isinstance(data, dict)
+
+    def test_no_A_transition_roundtrip(self, tmp_path):
+        """Transitions with A=None should survive the roundtrip."""
+        a = Atom(name="no_A", I=0)
+        gs = EnergyLevel(Term('1s2.2s', '2S', 0.5), level=0.0 * Hz)
+        ex = EnergyLevel(Term('1s2.2p', '2P*', 0.5), level=50 * THz)
+        a.add_level(gs)
+        a.add_level(ex)
+        Transition(gs, ex)   # A=None
+
+        path = str(tmp_path / "no_a.json")
+        a.save_json(path)
+        a2 = Atom.load_json(path)
+        t = a2.transitions[('1s2.2s 2S1/2', '1s2.2p 2P*1/2')]  # E1 allowed, parity changes
+        assert t.A is None

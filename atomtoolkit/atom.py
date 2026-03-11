@@ -2,6 +2,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 import itertools
 import functools
+import json
 import pickle
 import warnings
 from typing import *
@@ -864,6 +865,33 @@ class ZTransition(BaseTransition):
 #                   Atom                   #
 ############################################
 
+_ATOM_JSON_SCHEMA = 1   # bump when the to_dict format changes
+
+
+def _migrate_atom_dict(d: dict, from_schema: int) -> dict:
+    """
+    Apply forward-compatibility migrations to a dict loaded from a JSON file
+    whose ``_schema`` version is older than the current :data:`_ATOM_JSON_SCHEMA`.
+
+    Add a new entry to ``_migrations`` whenever a breaking change is made to the
+    ``to_dict`` format, and increment ``_ATOM_JSON_SCHEMA``.  Each migration
+    function receives the dict at the *previous* schema version and must return
+    it at the *next* schema version.
+
+    Example — adding a new required field in schema 2::
+
+        _migrations = {
+            1: lambda d: {**d, 'new_field': d.get('old_field', default_value)},
+        }
+    """
+    _migrations: dict = {
+        # 1 → 2 would go here
+    }
+    for version in range(from_schema, _ATOM_JSON_SCHEMA):
+        d = _migrations[version](d)
+    return d
+
+
 class Atom:
     """
     An Atom is a container for spectroscopic and atomic physics data. It contains a connected hierarchy of three
@@ -980,8 +1008,14 @@ class Atom:
 
     def save(self, filename: str):
         """
-        Pickles the Atom to a .atom file for loading later
-        :param filename: the filename
+        Pickles the Atom to a ``.atom`` file.
+
+        .. deprecated::
+            Prefer :meth:`save_json` for anything that should survive changes to
+            the Atom class.  Pickle files break silently whenever internal class
+            attributes are renamed, added, or removed.
+
+        :param filename: the filename (without extension, or with ``.atom``)
         """
         if filename is None:
             filename = self.name
@@ -996,15 +1030,196 @@ class Atom:
     @classmethod
     def load(cls, filename: str) -> Atom:
         """
-        Loads a pickled atom file.
-        :param filename:
-        :return:
+        Load an Atom from a file.
+
+        Dispatches automatically based on extension:
+
+        - ``.json`` → :meth:`load_json` (recommended)
+        - ``.atom`` → pickle (legacy)
+
+        :param filename: path to the file
+        :return: a fully-initialised Atom
         """
+        if filename.endswith('.json'):
+            return cls.load_json(filename)
         with open(filename, "rb") as file:
             p = pickle.load(file)
             if not isinstance(p, Atom):
                 raise IOError("The indicated file does not contain an Atom object")
             return p
+
+    # ------------------------------------------------------------------
+    # JSON serialisation
+    # ------------------------------------------------------------------
+
+    def to_dict(self) -> dict:
+        """
+        Export the atom to a plain-Python dict that is directly JSON-serialisable.
+
+        Only *source-of-truth* data is stored — EnergyLevel energies and quantum
+        numbers, hyperfine coefficients, and Transition A coefficients.  Derived
+        objects (HFLevel, ZLevel, HFTransition, ZTransition) are excluded and will
+        be regenerated lazily as usual when the atom is reloaded.
+
+        The ``"_schema"`` key records the format version so that future changes can
+        be migrated automatically via :func:`_migrate_atom_dict`.
+        """
+        levels = []
+        for lvl in self.levels.values():
+            # Serialise the MultiTerm as an ordered list of Term dicts
+            if isinstance(lvl.term, MultiTerm):
+                term_list = [
+                    {"conf": t.conf, "term": t.term,
+                     "J": t.J_frac, "percentage": t.percentage}
+                    for t in lvl.term.terms
+                ]
+            else:
+                term_list = [
+                    {"conf": lvl.term.conf, "term": lvl.term.term,
+                     "J": lvl.term.J_frac, "percentage": lvl.term.percentage}
+                ]
+
+            # Collect non-default quadratic Zeeman values from already-populated
+            # ZLevels without triggering lazy computation on anything new.
+            quad_z = {}
+            for hf_key, hfl in lvl._sublevels.items():
+                for z_key, zl in hfl._sublevels.items():
+                    if zl.quadratic_zeeman != 0.0:
+                        quad_z[f"{hf_key} {z_key}"] = zl.quadratic_zeeman
+
+            levels.append({
+                "terms":            term_list,
+                "level_Hz":         lvl.level_Hz,
+                "hfA_Hz":           lvl.hfA_Hz,
+                "hfB_Hz":           lvl.hfB_Hz,
+                "hfC_Hz":           lvl.hfC_Hz,
+                "lande":            lvl.lande,
+                "alias":            lvl._alias,
+                "quadratic_zeeman": quad_z,
+            })
+
+        transitions = []
+        for (lower_name, upper_name), t in self.transitions.items():
+            if lower_name == upper_name:   # skip internal M1 self-transitions
+                continue
+            transitions.append({
+                "lower":  lower_name,
+                "upper":  upper_name,
+                "A_Hz":   t.A.to('Hz').magnitude if t.A is not None else None,
+                "alias":  t._alias,
+            })
+
+        return {
+            "_schema":     _ATOM_JSON_SCHEMA,
+            "name":        self.name,
+            "I":           self.I,
+            "B_gauss":     self.B_gauss,
+            "levels":      levels,
+            "transitions": transitions,
+        }
+
+    def save_json(self, filename: str):
+        """
+        Save the atom to a human-readable JSON file.
+
+        Prefer this over :meth:`save` (pickle) for anything that should survive
+        code changes.  The file can be reloaded with :meth:`load_json` or
+        :meth:`load` (extension is detected automatically).
+
+        :param filename: output path; ``.json`` is appended if absent
+        """
+        if not filename.endswith('.json'):
+            filename += '.json'
+        with open(filename, 'w', encoding='utf-8') as f:
+            json.dump(self.to_dict(), f, indent=2)
+
+    @classmethod
+    def from_dict(cls, d: dict) -> Atom:
+        """
+        Reconstruct an Atom from a plain-Python dict produced by :meth:`to_dict`.
+
+        Migration hooks (``_migrate_atom_dict``) are applied automatically when
+        the stored schema version is older than the current one.
+
+        :param d: the dict to reconstruct from
+        :return: a fully-initialised Atom
+        """
+        schema = d.get('_schema', 1)
+        d = _migrate_atom_dict(d, schema)
+
+        a = cls(d['name'], I=d['I'], B=Q_(d['B_gauss'], 'G'))
+
+        # --- levels -------------------------------------------------------
+        aliases_to_set = {}   # level_name → alias  (applied after add_level)
+        for lvl_data in d['levels']:
+            terms = [
+                Term(t['conf'], t['term'], t['J'], percentage=t['percentage'])
+                for t in lvl_data['terms']
+            ]
+            mt = MultiTerm(*terms) if len(terms) > 1 else terms[0]
+
+            e = EnergyLevel(
+                mt,
+                level=lvl_data['level_Hz'] * Hz,
+                lande=lvl_data.get('lande'),
+                hfA=lvl_data['hfA_Hz'] * Hz,
+                hfB=lvl_data['hfB_Hz'] * Hz,
+                hfC=lvl_data['hfC_Hz'] * Hz,
+            )
+            a.add_level(e)
+
+            if lvl_data.get('alias'):
+                aliases_to_set[e.name] = lvl_data['alias']
+
+        for level_name, alias in aliases_to_set.items():
+            a.levels[level_name].alias = alias
+
+        # --- transitions --------------------------------------------------
+        tr_aliases = {}   # (lower, upper) → alias
+        for tr_data in d['transitions']:
+            try:
+                lower = a.levels[tr_data['lower']]
+                upper = a.levels[tr_data['upper']]
+            except KeyError:
+                warnings.warn(
+                    f"Skipping transition ({tr_data['lower']!r}, "
+                    f"{tr_data['upper']!r}): level not found in atom"
+                )
+                continue
+            A = Q_(tr_data['A_Hz'], 'Hz') if tr_data.get('A_Hz') is not None else None
+            t = Transition(lower, upper, A=A)
+            if tr_data.get('alias'):
+                tr_aliases[(tr_data['lower'], tr_data['upper'])] = tr_data['alias']
+
+        a.populate_internal_transitions()
+
+        for (ln, un), alias in tr_aliases.items():
+            a.transitions[(ln, un)].alias = alias
+
+        # --- quadratic Zeeman (force-populate the affected sublevels) -----
+        for lvl_data in d['levels']:
+            if not lvl_data.get('quadratic_zeeman'):
+                continue
+            level_name = a.levels[  # derive name from first term + J
+                f"{lvl_data['terms'][0]['conf']} "
+                f"{lvl_data['terms'][0]['term']}{lvl_data['terms'][0]['J']}"
+            ].name
+            for sublevel_key, qz_val in lvl_data['quadratic_zeeman'].items():
+                hf_key, z_key = sublevel_key.rsplit(' ', maxsplit=1)
+                a.levels[level_name][hf_key][z_key].quadratic_zeeman = qz_val
+
+        return a
+
+    @classmethod
+    def load_json(cls, filename: str) -> Atom:
+        """
+        Load an atom from a JSON file produced by :meth:`save_json`.
+
+        :param filename: path to the ``.json`` file
+        :return: a fully-initialised Atom
+        """
+        with open(filename, encoding='utf-8') as f:
+            return cls.from_dict(json.load(f))
 
     @classmethod
     def from_dataframe(cls, df: pd.DataFrame, name: str,

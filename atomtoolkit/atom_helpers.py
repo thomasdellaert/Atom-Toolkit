@@ -163,6 +163,9 @@ class TransitionStructure:
     def values(self) -> ValuesView:
         return nx.get_edge_attributes(self.model, 'transition').values()
 
+    def items(self) -> ItemsView:
+        return nx.get_edge_attributes(self.model, 'transition').items()
+
     def append(self, value: Transition):
         self.atom.add_transition(value)
 
