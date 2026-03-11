@@ -1,7 +1,39 @@
+from __future__ import annotations
+from typing import List
+
 from . import Q_, ureg
 import numpy as np
 
 c = ureg.speed_of_light
+
+
+class Environment:
+    """
+    Describes the external fields acting on an atom.
+
+    Bundles the static magnetic field and any optical fields so they can be
+    passed together to dynamics functions rather than being baked into the
+    Atom object.  The Atom stores only intrinsic properties (I, energy levels,
+    hyperfine coefficients, transition A values); everything set by the lab
+    belongs here.
+
+    :param B: static magnetic field as a pint Quantity (default 0 G)
+    :param fields: list of LightField objects driving the atom (default empty)
+
+    Example::
+
+        env = Environment(B=Q_(5.36, 'G'), fields=[cooling_laser, repump_laser])
+        H0, Hs = generate_hamiltonian(atom, states, env)
+        c_ops = generate_dynamics_matrix(atom, states, env)
+    """
+
+    def __init__(self, B: 'pint.Quantity' = None,
+                 fields: 'List[LightField]' = None):
+        if B is None:
+            B = Q_(0.0, 'G')
+        self.B = B.to(ureg.gauss)
+        self.B_gauss: float = float(self.B.magnitude)
+        self.fields: List[LightField] = fields if fields is not None else []
 
 
 class Polarization:

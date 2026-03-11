@@ -4,7 +4,7 @@ from typing import List, Tuple
 import numpy as np
 
 from .atom import Atom, BaseLevel, BaseTransition, ZLevel
-from .environment import LightField
+from .environment import Environment, LightField
 from . import transition_strengths as ts
 from . import hb, e, Hz
 
@@ -47,7 +47,8 @@ def mel_to_rabi_frequency(mel, light: LightField):
 
 
 def generate_dynamics_matrix(atom: Atom,
-                             states: List[BaseLevel]) -> List:
+                             states: List[BaseLevel],
+                             environment: Environment = None) -> List:
     """
     Generate Lindblad collapse operators for open-system (master equation) dynamics.
 
@@ -97,7 +98,8 @@ def generate_dynamics_matrix(atom: Atom,
     if not z_states:
         raise ValueError("No Zeeman sublevels found in the provided states")
 
-    z_states = sorted(z_states, key=lambda s: s.level_Hz)
+    B_gauss = environment.B_gauss if environment is not None else 0.0
+    z_states = sorted(z_states, key=lambda s: s.level_hz_at(B_gauss))
     n = len(z_states)
     I = atom.I
 
@@ -173,16 +175,16 @@ def generate_dynamics_matrix(atom: Atom,
 
 def generate_hamiltonian(atom: Atom,
                          states: List[BaseLevel],
-                         fields: List[LightField]) -> Tuple:
+                         environment: Environment) -> Tuple:
     """
-    Generate a bare qutip Hamiltonian for a given atom, state basis, and light fields.
+    Generate a bare qutip Hamiltonian for a given atom, state basis, and environment.
 
     Returns ``(H0, coupling_Hs)`` where:
 
     - ``H0`` — diagonal ``qutip.Qobj`` of shape (n, n) with bare state energies in rad/s,
       zeroed to the lowest-energy state in the basis.
-    - ``coupling_Hs`` — list of ``qutip.Qobj`` (one per field), each Hermitian with
-      off-diagonal element [i, j] equal to Ω_ij/2 in rad/s (RWA convention).
+    - ``coupling_Hs`` — list of ``qutip.Qobj`` (one per field in the environment), each
+      Hermitian with off-diagonal element [i, j] equal to Ω_ij/2 in rad/s (RWA convention).
 
     These can be assembled into a qutip time-dependent Hamiltonian::
 
@@ -194,7 +196,7 @@ def generate_hamiltonian(atom: Atom,
     :param atom: the Atom object
     :param states: basis — any mix of EnergyLevel, HFLevel, or ZLevel. Non-Zeeman levels
         are expanded to all their Zeeman sublevels. The final basis is sorted by energy.
-    :param fields: LightField objects driving the transitions
+    :param environment: an Environment object containing the magnetic field and LightFields
     :return: (H0, coupling_Hs)
     :raises ImportError: if qutip is not installed
     :raises ValueError: if the expanded basis is empty
@@ -219,16 +221,17 @@ def generate_hamiltonian(atom: Atom,
     if not z_states:
         raise ValueError("No Zeeman sublevels found in the provided states")
 
-    z_states = sorted(z_states, key=lambda s: s.level_Hz)
+    B_gauss = environment.B_gauss
+    z_states = sorted(z_states, key=lambda s: s.level_hz_at(B_gauss))
     n = len(z_states)
     I = atom.I
 
     # H0: diagonal energies in rad/s relative to the lowest state
-    ground_Hz = z_states[0].level_Hz
-    H0 = qutip.Qobj(np.diag([2 * np.pi * (s.level_Hz - ground_Hz) for s in z_states]))
+    ground_Hz = z_states[0].level_hz_at(B_gauss)
+    H0 = qutip.Qobj(np.diag([2 * np.pi * (s.level_hz_at(B_gauss) - ground_Hz) for s in z_states]))
 
     coupling_Hs = []
-    for field in fields:
+    for field in environment.fields:
         H_mat = np.zeros((n, n), dtype=complex)
         pol = tuple(field.pol.xyz.astype(complex))
         E0 = np.linalg.norm(field.E())  # V/m (requires pint units on field.intensity)

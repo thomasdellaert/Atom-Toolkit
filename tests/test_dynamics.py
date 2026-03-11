@@ -12,7 +12,7 @@ qutip = pytest.importorskip('qutip')
 
 from atomtoolkit.atom import Atom, EnergyLevel, Transition
 from atomtoolkit.term import Term
-from atomtoolkit.environment import LightField, Polarization
+from atomtoolkit.environment import Environment, LightField, Polarization
 from atomtoolkit.dynamics import generate_hamiltonian
 from atomtoolkit import Q_, MHz, Hz, THz
 
@@ -81,7 +81,7 @@ class TestGenerateHamiltonian:
         """H0 should be (n, n) for n = total z_states."""
         a, gs, ex, t = e1_atom
         all_states = list(a.levels.values())  # both EnergyLevels
-        H0, _ = generate_hamiltonian(a, all_states, [_pi_field()])
+        H0, _ = generate_hamiltonian(a, all_states, Environment(fields=[_pi_field()]))
         # Count ZLevels: for I=0, each HFLevel expands to (2J+1) ZLevels
         n = sum(len(list(hfl.sublevels())) for hfl in gs.sublevels()) + \
             sum(len(list(hfl.sublevels())) for hfl in ex.sublevels())  # 1 + 3 = 4
@@ -91,7 +91,7 @@ class TestGenerateHamiltonian:
         """H0 should be diagonal: all off-diagonal elements zero."""
         a, gs, ex, t = e1_atom
         all_states = list(a.levels.values())
-        H0, _ = generate_hamiltonian(a, all_states, [_pi_field()])
+        H0, _ = generate_hamiltonian(a, all_states, Environment(fields=[_pi_field()]))
         H0_arr = H0.full()
         n = H0_arr.shape[0]
         for i in range(n):
@@ -103,14 +103,14 @@ class TestGenerateHamiltonian:
         """H0[0,0] should be zero (zeroed to lowest state)."""
         a, gs, ex, t = e1_atom
         all_states = list(a.levels.values())
-        H0, _ = generate_hamiltonian(a, all_states, [_pi_field()])
+        H0, _ = generate_hamiltonian(a, all_states, Environment(fields=[_pi_field()]))
         assert H0.full()[0, 0] == pytest.approx(0.0, abs=1e-6)
 
     def test_H0_energies(self, e1_atom):
         """H0[3,3] - H0[0,0] should ≈ 2π * 100e12 rad/s."""
         a, gs, ex, t = e1_atom
         all_states = list(a.levels.values())
-        H0, _ = generate_hamiltonian(a, all_states, [_pi_field()])
+        H0, _ = generate_hamiltonian(a, all_states, Environment(fields=[_pi_field()]))
         H0_arr = H0.full()
         expected = 2 * math.pi * 100e12
         # Indices 1,2,3 are ex sublevels; all degenerate at B=0
@@ -120,7 +120,7 @@ class TestGenerateHamiltonian:
         """H0 should be Hermitian (H0 == H0†)."""
         a, gs, ex, t = e1_atom
         all_states = list(a.levels.values())
-        H0, _ = generate_hamiltonian(a, all_states, [_pi_field()])
+        H0, _ = generate_hamiltonian(a, all_states, Environment(fields=[_pi_field()]))
         H0_arr = H0.full()
         np.testing.assert_allclose(H0_arr, H0_arr.conj().T, atol=1e-10)
 
@@ -132,7 +132,7 @@ class TestGenerateHamiltonian:
         """Each coupling matrix should have the same shape as H0."""
         a, gs, ex, t = e1_atom
         all_states = list(a.levels.values())
-        H0, coupling_Hs = generate_hamiltonian(a, all_states, [_pi_field()])
+        H0, coupling_Hs = generate_hamiltonian(a, all_states, Environment(fields=[_pi_field()]))
         assert len(coupling_Hs) == 1
         assert coupling_Hs[0].shape == H0.shape
 
@@ -140,7 +140,7 @@ class TestGenerateHamiltonian:
         """The coupling matrix should be Hermitian."""
         a, gs, ex, t = e1_atom
         all_states = list(a.levels.values())
-        _, coupling_Hs = generate_hamiltonian(a, all_states, [_pi_field()])
+        _, coupling_Hs = generate_hamiltonian(a, all_states, Environment(fields=[_pi_field()]))
         H_c = coupling_Hs[0].full()
         np.testing.assert_allclose(H_c, H_c.conj().T, atol=1e-10)
 
@@ -148,7 +148,7 @@ class TestGenerateHamiltonian:
         """At least one element should be nonzero when the transition has A."""
         a, gs, ex, t = e1_atom
         all_states = list(a.levels.values())
-        _, coupling_Hs = generate_hamiltonian(a, all_states, [_pi_field()])
+        _, coupling_Hs = generate_hamiltonian(a, all_states, Environment(fields=[_pi_field()]))
         H_c = coupling_Hs[0].full()
         assert np.any(np.abs(H_c) > 1e-6)
 
@@ -156,7 +156,7 @@ class TestGenerateHamiltonian:
         """Without A coefficient, coupling matrix should be all zeros."""
         a, gs, ex, t = e1_atom_no_A
         all_states = list(a.levels.values())
-        _, coupling_Hs = generate_hamiltonian(a, all_states, [_pi_field()])
+        _, coupling_Hs = generate_hamiltonian(a, all_states, Environment(fields=[_pi_field()]))
         H_c = coupling_Hs[0].full()
         np.testing.assert_allclose(np.abs(H_c), 0.0, atol=1e-10)
 
@@ -168,7 +168,7 @@ class TestGenerateHamiltonian:
         """π pol: H_coupling[0,1] and H_coupling[0,3] must be zero (Δm≠0)."""
         a, gs, ex, t = e1_atom
         all_states = list(a.levels.values())
-        _, coupling_Hs = generate_hamiltonian(a, all_states, [_pi_field()])
+        _, coupling_Hs = generate_hamiltonian(a, all_states, Environment(fields=[_pi_field()]))
         H_c = coupling_Hs[0].full()
         # idx 0: gs mJ=0, idx 1: ex mJ=-1, idx 3: ex mJ=+1
         assert H_c[0, 1] == pytest.approx(0.0, abs=1e-10)
@@ -178,7 +178,7 @@ class TestGenerateHamiltonian:
         """π pol: H_coupling[0,2] must be nonzero (Δm=0)."""
         a, gs, ex, t = e1_atom
         all_states = list(a.levels.values())
-        _, coupling_Hs = generate_hamiltonian(a, all_states, [_pi_field()])
+        _, coupling_Hs = generate_hamiltonian(a, all_states, Environment(fields=[_pi_field()]))
         H_c = coupling_Hs[0].full()
         # idx 0: gs mJ=0, idx 2: ex mJ=0
         assert abs(H_c[0, 2]) > 1e-6
@@ -191,7 +191,7 @@ class TestGenerateHamiltonian:
         """σ+ pol: H_coupling[0,1] (Δm=-1) and H_coupling[0,2] (Δm=0) must be zero."""
         a, gs, ex, t = e1_atom
         all_states = list(a.levels.values())
-        _, coupling_Hs = generate_hamiltonian(a, all_states, [_sigma_plus_field()])
+        _, coupling_Hs = generate_hamiltonian(a, all_states, Environment(fields=[_sigma_plus_field()]))
         H_c = coupling_Hs[0].full()
         assert H_c[0, 1] == pytest.approx(0.0, abs=1e-10)
         assert H_c[0, 2] == pytest.approx(0.0, abs=1e-10)
@@ -200,7 +200,7 @@ class TestGenerateHamiltonian:
         """σ+ pol: H_coupling[0,3] (Δm=+1) must be nonzero."""
         a, gs, ex, t = e1_atom
         all_states = list(a.levels.values())
-        _, coupling_Hs = generate_hamiltonian(a, all_states, [_sigma_plus_field()])
+        _, coupling_Hs = generate_hamiltonian(a, all_states, Environment(fields=[_sigma_plus_field()]))
         H_c = coupling_Hs[0].full()
         # idx 3: ex mJ=+1
         assert abs(H_c[0, 3]) > 1e-6
@@ -213,7 +213,7 @@ class TestGenerateHamiltonian:
         """Passing EnergyLevel objects should expand to all ZLevels."""
         a, gs, ex, t = e1_atom
         all_states = list(a.levels.values())  # [gs, ex]
-        H0, _ = generate_hamiltonian(a, all_states, [_pi_field()])
+        H0, _ = generate_hamiltonian(a, all_states, Environment(fields=[_pi_field()]))
         # 1 gs ZLevel + 3 ex ZLevels = 4
         assert H0.shape == (4, 4)
 
@@ -221,7 +221,7 @@ class TestGenerateHamiltonian:
         """Passing an empty states list should raise ValueError."""
         a, gs, ex, t = e1_atom
         with pytest.raises(ValueError):
-            generate_hamiltonian(a, [], [_pi_field()])
+            generate_hamiltonian(a, [], Environment(fields=[_pi_field()]))
 
     # ------------------------------------------------------------------
     # Multiple fields
@@ -232,7 +232,7 @@ class TestGenerateHamiltonian:
         a, gs, ex, t = e1_atom
         all_states = list(a.levels.values())
         H0, coupling_Hs = generate_hamiltonian(a, all_states,
-                                               [_pi_field(), _sigma_plus_field()])
+                                               Environment(fields=[_pi_field(), _sigma_plus_field()]))
         assert len(coupling_Hs) == 2
         assert coupling_Hs[0].shape == H0.shape
         assert coupling_Hs[1].shape == H0.shape
@@ -242,7 +242,7 @@ class TestGenerateHamiltonian:
         a, gs, ex, t = e1_atom
         all_states = list(a.levels.values())
         _, coupling_Hs = generate_hamiltonian(a, all_states,
-                                              [_pi_field(), _sigma_plus_field()])
+                                              Environment(fields=[_pi_field(), _sigma_plus_field()]))
         H_pi = coupling_Hs[0].full()
         H_sp = coupling_Hs[1].full()
         # They should NOT be identical

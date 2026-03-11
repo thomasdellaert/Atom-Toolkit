@@ -51,13 +51,12 @@ class TestAtom:
     def test_init(self, dummy_atom):
         assert dummy_atom.name == 'dummy'
         assert dummy_atom.I == 0
-        assert dummy_atom.B_gauss == 0
 
     def test_str(self, dummy_atom):
         assert str(dummy_atom) == 'dummy'
 
     def test_repr(self, dummy_atom):
-        assert dummy_atom.__repr__().startswith('Atom')
+        assert 'Atom' in dummy_atom.__repr__()
 
     def test_add_level_and_transition(self, dummy_atom):
         d = EnergyLevel(Term('1s2.4s', '2S', 0.5), level=10.0 * THz)
@@ -66,12 +65,6 @@ class TestAtom:
 
         td = Transition(d, dummy_atom.levels['1s2.2s 2S1/2'], A=50 * MHz)
         dummy_atom.add_transition(td)
-
-    def test_B(self, dummy_atom):
-        assert dummy_atom.B == Q_(0.0, 'G')
-        dummy_atom.B = Q_(10.0, 'G')
-        assert dummy_atom.B_gauss == 10.0
-        assert dummy_atom.B == Q_(10.0, 'G')
 
     def test_save(self, dummy_atom):
         dummy_atom.save('dummy')
@@ -262,35 +255,27 @@ class TestZeemanShift:
 
     def test_zlevel_shift_zero_at_zero_B(self, zeeman_atom):
         """At B=0, all ZLevel Zeeman shifts should be zero."""
-        a = zeeman_atom
-        assert a.B_gauss == 0.0
-        gs = a.levels['1s2.2s 2S1/2']
+        gs = zeeman_atom.levels['1s2.2s 2S1/2']
         for zlevel in gs['F=1/2'].sublevels():
-            assert zlevel.shift_Hz == pytest.approx(0.0, abs=1e-10)
+            assert zlevel.shift_hz_at(0.0) == pytest.approx(0.0, abs=1e-10)
 
     def test_zlevel_shift_linear_in_B(self, zeeman_atom):
         """Shift at B=20G should be 2× shift at B=10G for the same nonzero mF sublevel."""
-        a = zeeman_atom
-        gs = a.levels['1s2.2s 2S1/2']
+        gs = zeeman_atom.levels['1s2.2s 2S1/2']
         zlevel = gs['F=1/2']['mF=1/2']
 
-        a.B = Q_(10.0, 'G')
-        shift_10 = zlevel.shift_Hz
-
-        a.B = Q_(20.0, 'G')
-        shift_20 = zlevel.shift_Hz
+        shift_10 = zlevel.shift_hz_at(10.0)
+        shift_20 = zlevel.shift_hz_at(20.0)
 
         assert shift_10 != pytest.approx(0.0, abs=1e-10)  # sanity: nonzero
         assert shift_20 == pytest.approx(2.0 * shift_10, rel=1e-5)
 
     def test_zlevel_mF_sign(self, zeeman_atom):
         """mF=+1/2 and mF=-1/2 shifts should be equal in magnitude and opposite in sign."""
-        a = zeeman_atom
-        a.B = Q_(10.0, 'G')
-        gs = a.levels['1s2.2s 2S1/2']
+        gs = zeeman_atom.levels['1s2.2s 2S1/2']
         z_pos = gs['F=1/2']['mF=1/2']
         z_neg = gs['F=1/2']['mF=-1/2']
-        assert z_pos.shift_Hz == pytest.approx(-z_neg.shift_Hz, rel=1e-5)
+        assert z_pos.shift_hz_at(10.0) == pytest.approx(-z_neg.shift_hz_at(10.0), rel=1e-5)
 
 
 # ---------------------------------------------------------------------------
@@ -428,7 +413,7 @@ class TestJSONSerialization:
         Atom with I=1/2, multi-term level, hyperfine coefficients, lande,
         two transitions (one with alias), and quadratic Zeeman overrides.
         """
-        a = Atom(name="test_json", I=0.5, B=Q_(1.0, 'G'))
+        a = Atom(name="test_json", I=0.5)
 
         gs = EnergyLevel(Term('1s2.2s', '2S', 0.5),
                          level=0.0 * Hz, hfA=1 * GHz, lande=2.002,
@@ -472,7 +457,6 @@ class TestJSONSerialization:
         d = rich_atom.to_dict()
         assert d['name'] == 'test_json'
         assert d['I'] == pytest.approx(0.5)
-        assert d['B_gauss'] == pytest.approx(1.0)
 
     def test_level_count(self, rich_atom):
         d = rich_atom.to_dict()

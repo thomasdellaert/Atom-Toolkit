@@ -500,11 +500,19 @@ class ZLevel(HFLevel):
     def _lazy_compute_sublevels(self):
         return
 
+    def shift_hz_at(self, B_gauss: float) -> float:
+        """Zeeman shift in Hz at a given field strength."""
+        return (self.gF * self.term.mF * mu_B.to(Hz / G).magnitude * B_gauss
+                + self.quadratic_zeeman * B_gauss ** 2)
+
+    def level_hz_at(self, B_gauss: float) -> float:
+        """Absolute energy in Hz at a given field strength."""
+        return self.parent.level_Hz + self.shift_hz_at(B_gauss)
+
     @property
     def shift_Hz(self) -> float:
-        """A zeeman sublevel is shifted from its parent by the magnetic field. """
-        return self.gF * self.term.mF * mu_B.to(Hz/G).magnitude * self.atom.B_gauss \
-            + self.quadratic_zeeman * self.atom.B_gauss ** 2
+        """Zeeman shift at B=0 (always zero; use shift_hz_at(B) for finite fields)."""
+        return 0.0
 
     # def nonlinear_zeeman(self, B):
     #     """
@@ -865,7 +873,7 @@ class ZTransition(BaseTransition):
 #                   Atom                   #
 ############################################
 
-_ATOM_JSON_SCHEMA = 1   # bump when the to_dict format changes
+_ATOM_JSON_SCHEMA = 2   # bump when the to_dict format changes
 
 
 def _migrate_atom_dict(d: dict, from_schema: int) -> dict:
@@ -877,15 +885,10 @@ def _migrate_atom_dict(d: dict, from_schema: int) -> dict:
     ``to_dict`` format, and increment ``_ATOM_JSON_SCHEMA``.  Each migration
     function receives the dict at the *previous* schema version and must return
     it at the *next* schema version.
-
-    Example — adding a new required field in schema 2::
-
-        _migrations = {
-            1: lambda d: {**d, 'new_field': d.get('old_field', default_value)},
-        }
     """
     _migrations: dict = {
-        # 1 → 2 would go here
+        # schema 1 stored B_gauss; schema 2 removes it (B moved to Environment)
+        1: lambda d: {k: v for k, v in d.items() if k != 'B_gauss'},
     }
     for version in range(from_schema, _ATOM_JSON_SCHEMA):
         d = _migrations[version](d)
@@ -912,7 +915,7 @@ class Atom:
     transitions, such as branching ratios and state lifetimes
     """
 
-    def __init__(self, name: str, I: float = 0.0, B: pint.Quantity = Q_(0.0, 'G'),
+    def __init__(self, name: str, I: float = 0.0,
                  levels: List[EnergyLevel] = None, transitions: List[Transition] = None):
         """
         :param name: The Atom's name
@@ -924,7 +927,6 @@ class Atom:
         """
         self.name = name
         self.I = util.frac_to_float(I)
-        self.B_gauss = B.to(ureg.gauss).magnitude
 
         self._levelsModel = nx.Graph()
         self._hfModel = nx.Graph()
@@ -997,14 +999,6 @@ class Atom:
             self.enforce_consistency(node_or_trans=transition)
 
         return transition
-
-    @property
-    def B(self) -> pint.Quantity:
-        return self.B_gauss * ureg.gauss
-
-    @B.setter
-    def B(self, value: pint.Quantity):
-        self.B_gauss = value.to(ureg.gauss).magnitude
 
     def save(self, filename: str):
         """
@@ -1113,7 +1107,6 @@ class Atom:
             "_schema":     _ATOM_JSON_SCHEMA,
             "name":        self.name,
             "I":           self.I,
-            "B_gauss":     self.B_gauss,
             "levels":      levels,
             "transitions": transitions,
         }
@@ -1147,7 +1140,7 @@ class Atom:
         schema = d.get('_schema', 1)
         d = _migrate_atom_dict(d, schema)
 
-        a = cls(d['name'], I=d['I'], B=Q_(d['B_gauss'], 'G'))
+        a = cls(d['name'], I=d['I'])
 
         # --- levels -------------------------------------------------------
         aliases_to_set = {}   # level_name → alias  (applied after add_level)
@@ -1223,19 +1216,18 @@ class Atom:
 
     @classmethod
     def from_dataframe(cls, df: pd.DataFrame, name: str,
-                       I: float = 0.0, num_levels: int = None, B: pint.Quantity = Q_(0.0, 'G'), **_) -> Atom:
+                       I: float = 0.0, num_levels: int = None, **_) -> Atom:
         """
         Generate the atom from a dataframe, formatted like the output from the IO module
         :param df: the dataframe to read
         :param name: the name of the atom
         :param I: the nuclear spin quantum number of the atom
         :param num_levels: the number of levels to load from the dataframe
-        :param B: the magnetic field
         :return: an instantiated atom
         """
         if num_levels is None:
             num_levels = len(df)
-        a = Atom(name, I=I, B=B)
+        a = Atom(name, I=I)
         rows = tqdm(range(num_levels))
         for i in rows:
             try:

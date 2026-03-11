@@ -13,7 +13,6 @@ HYPERFINE_PATH = absroot.joinpath('resources/171Yb_Hyperfine.csv')
 NAME = '171Yb II'
 I = 1/2
 NUM_LEVELS = 300
-B_FIELD = Q_(0.0, 'G')
 ALLOWED_TRANSITIONS = (True, False, False)
 
 _energy_level_df = IO.load_NIST_data('Yb II')
@@ -29,7 +28,6 @@ Yb171 = IO.generate_full_from_dataframe(_energy_level_df,
                                         name=NAME,
                                         I=I,
                                         num_levels=NUM_LEVELS,
-                                        B=B_FIELD,
                                         hf_csv=HYPERFINE_PATH,
                                         transitions_df=_transition_df,
                                         allowed=ALLOWED_TRANSITIONS)
@@ -39,12 +37,10 @@ Yb171.transitions[('4f14.5d 2D3/2', '4f13.(2F*<7/2>).5d.6s.(3D) 3[3/2]*1/2')].se
 Yb171.transitions[('4f14.6s 2S1/2', '4f14.6p 2P*1/2')].set_frequency(Q_(811.294110, 'THz'))
 
 # Add new transitions
-# t = Transition(Yb171.levels['4f14.6s 2S1/2'], Yb171.levels['4f14.5d 2D5/2'], A=Q_(22, 'Hz'))
-# t.add_to_atom(Yb171)
 t = Yb171.add_transition((Yb171.levels['4f14.6s 2S1/2'], Yb171.levels['4f14.5d 2D5/2']), A=Q_(22, 'Hz'))
 t.set_frequency(Q_(729.476090, 'THz'))
 
-t = Yb171.add_transition(Yb171.levels['4f13.(2F*).6s2 2F*7/2'], Yb171.levels['4f13.(2F*<7/2>).5d.6s.(1D) 1[3/2]*3/2'], A=Q_(50, 'kHz'))
+t = Yb171.add_transition((Yb171.levels['4f13.(2F*).6s2 2F*7/2'], Yb171.levels['4f13.(2F*<7/2>).5d.6s.(1D) 1[3/2]*3/2']), A=Q_(50, 'kHz'))
 # t.set_frequency(Q_(394.423900, 'THz'))
 
 # Set any additional properties
