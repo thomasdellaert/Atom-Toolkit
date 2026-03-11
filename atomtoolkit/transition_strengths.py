@@ -12,12 +12,43 @@ from . import ureg, c, hb, e, a0
 from .wigner import wigner3j, wigner6j, wigner9j
 
 
-def A_to_oscillator_strength():
-    raise NotImplementedError  # TODO
+def A_to_oscillator_strength(A, J_lower, J_upper, omega):
+    """
+    Convert an Einstein A coefficient to the absorption oscillator strength f_lu.
+
+    Uses the standard relation (Foot, "Atomic Physics", eq. 2.54):
+        A_ul = (e² ω²) / (2π ε₀ mₑ c³)  ·  g_l/g_u  ·  f_lu
+
+    :param A: Einstein A coefficient as a pint Quantity (units of Hz or s⁻¹)
+    :param J_lower: total angular momentum of the lower level
+    :param J_upper: total angular momentum of the upper level
+    :param omega: angular transition frequency as a pint Quantity (rad/s)
+    :return: dimensionless absorption oscillator strength f_lu (float)
+    """
+    m_e = ureg.electron_mass
+    g_u = 2 * J_upper + 1
+    g_l = 2 * J_lower + 1
+    f = (2 * np.pi * ureg.epsilon_0 * m_e * c ** 3 / (e ** 2 * omega ** 2)) * (g_u / g_l) * A
+    return float(f.to(''))
 
 
-def oscillator_strength_to_A():
-    raise NotImplementedError  # TODO
+def oscillator_strength_to_A(f, J_lower, J_upper, omega):
+    """
+    Convert an absorption oscillator strength f_lu to an Einstein A coefficient.
+
+    Inverse of A_to_oscillator_strength.
+
+    :param f: dimensionless absorption oscillator strength f_lu
+    :param J_lower: total angular momentum of the lower level
+    :param J_upper: total angular momentum of the upper level
+    :param omega: angular transition frequency as a pint Quantity (rad/s)
+    :return: Einstein A coefficient as a pint Quantity in Hz
+    """
+    m_e = ureg.electron_mass
+    g_u = 2 * J_upper + 1
+    g_l = 2 * J_lower + 1
+    A = (e ** 2 * omega ** 2 / (2 * np.pi * ureg.epsilon_0 * m_e * c ** 3)) * (g_l / g_u) * f
+    return A.to('Hz')
 
 
 def A_to_dipole_mel(A, J0, J1, omega):

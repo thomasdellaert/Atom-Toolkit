@@ -73,7 +73,8 @@ class LightField:
         return self.pol.xyz * (2 * self.intensity / (c * ureg.vacuum_permittivity)) ** 0.5
 
     def B(self, **_):
-        return 1 / c * np.cross(self.k, self.E())
+        E = self.E()
+        return np.cross(self.k, E.magnitude) * E.units / c
 
 
 # class LinewidthMixin:

@@ -1136,7 +1136,7 @@ class Atom:
             # CONSIDER: make a custom exception for this? Maybe a whole slew of exceptions to throw
             raise ValueError(f"At least one transition leading from {key} has no valid A coefficient")
 
-        ratios = {k: t.magnitude / totalAs for k, t in A_coeffs.items()}
+        ratios = {k.name: t.magnitude / totalAs for k, t in A_coeffs.items()}
         return ratios
 
     def enforce_consistency(self, node_or_trans: BaseLevel or BaseTransition = None):

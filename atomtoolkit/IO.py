@@ -233,16 +233,64 @@ def load_level_data(filename: str, columns: dict = None, **kwargs):
     return df
 
 
-def generate_transition_csv(atom, filename):
+def generate_transition_csv(atom, filename=None):
+    """
+    Export all transitions in the atom to a CSV file.
+
+    Columns: ``lower``, ``upper``, ``A (MHz)``, ``freq (THz)``
+
+    :param atom: the Atom to export transitions from
+    :param filename: output filename; defaults to ``{atom.name}_Transitions.csv``
+    """
     if filename is None:
         filename = f'{atom.name}_Transitions.csv'
-    raise NotImplementedError
-    # TODO: generate_transition_csv
+    rows = []
+    for (lower_name, upper_name), t in atom.transitions.items():
+        try:
+            A_val = t.A.to('MHz').magnitude if t.A is not None else ''
+        except Exception:
+            A_val = ''
+        try:
+            freq_val = t.freq.to('THz').magnitude if t.freq is not None else ''
+        except Exception:
+            freq_val = ''
+        rows.append([lower_name, upper_name, A_val, freq_val])
+    with open(filename, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.writer(f)
+        writer.writerow(['lower', 'upper', 'A (MHz)', 'freq (THz)'])
+        writer.writerows(rows)
 
 
 def apply_transition_csv(atom, filename):
-    raise NotImplementedError
-    # TODO: apply_transition_csv
+    """
+    Apply transition data from a CSV file to an Atom.  The CSV must be
+    formatted like the output of :func:`generate_transition_csv` with columns
+    ``lower``, ``upper``, ``A (MHz)``, and ``freq (THz)``.
+
+    Missing or empty values for A or freq are silently skipped.
+
+    :param atom: the Atom to update
+    :param filename: path to the CSV file
+    """
+    with open(filename, newline='', encoding='utf-8') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            try:
+                t = atom.transitions[(row['lower'], row['upper'])]
+            except (KeyError, TypeError):
+                continue
+            if t is None:
+                continue
+            try:
+                if row.get('A (MHz)', '').strip():
+                    t.A = Q_(float(row['A (MHz)']), 'MHz')
+            except (ValueError, AttributeError):
+                pass
+            try:
+                if row.get('freq (THz)', '').strip():
+                    t.freq = Q_(float(row['freq (THz)']), 'THz')
+            except (ValueError, AttributeError):
+                pass
 
 
 def generate_hf_csv(atom, filename=None, blank=False, def_A=Q_(0.0, 'GHz')):
