@@ -8,10 +8,14 @@ A Python package for manipulating atomic physics data in a notebook environment.
 - **Three-layer level hierarchy** — `EnergyLevel` → `HFLevel` → `ZLevel` (Zeeman), each layer generated lazily the first time it is accessed
 - **Rich key access** for levels and transitions:
   ```python
-  atom.levels['4f14.6s 2S1/2']              # gross level
-  atom.levels['4f14.6s 2S1/2']['F=0']       # hyperfine sublevel
-  atom.levels['4f14.6s 2S1/2 F=0 mF=0']    # flat shorthand
-  atom.transitions[level_a, level_b]        # order-independent
+  atom.levels['4f14.6s 2S1/2']                  # gross level
+  atom.levels['4f14.6s 2S1/2 F=0']              # hyperfine sublevel
+  atom.levels['4f14.6s 2S1/2 F=0 mF=0']         # flat shorthand
+  atom.levels['4f14.6s 2S1/2']['F=0']           # hyperfine sublevel
+  atom.levels['4f14.6s 2S1/2']['F=0']['mF=0']   # flat shorthand
+  atom.levels[1][0]                             # indexing by energy
+  atom.levels[0:4]                              # indexing by energy
+  atom.transitions[level_a, level_b]            # order-independent
   ```
 - **Automatic sublevel transitions** — setting a frequency or Einstein A coefficient on an `EnergyLevel` transition propagates down to all HF and Zeeman sub-transitions, applying the correct selection rules and angular-momentum weights
 - **Support for LS, JJ, LK, and JK couplings**, with quantum numbers extracted automatically from NIST-format configuration and term strings
