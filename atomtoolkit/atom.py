@@ -526,6 +526,14 @@ class ZLevel(HFLevel):
 #               Transition                 #
 ############################################
 
+
+class AllowedTypes(NamedTuple):
+    """Which multipole orders are allowed for a transition: (E1, M1, E2)."""
+    E1: bool = False
+    M1: bool = False
+    E2: bool = False
+
+
 def lazy_compute_subtransitions(func):
     """
     Wraps any function that references the subtransitions of the transition. If the transition hasn't
@@ -628,8 +636,8 @@ class BaseTransition(ABC):
         return self._A.to(Hz), 1.0
 
     @abstractmethod
-    def transition_allowed(self) -> Tuple[bool, bool, bool]:
-        """Should return list containing what types of transition are allowed in E1, M1, E2, ... order"""
+    def transition_allowed(self) -> AllowedTypes:
+        """Should return AllowedTypes indicating which multipole orders are allowed (E1, M1, E2)."""
         raise NotImplementedError
 
     @abstractmethod
@@ -671,7 +679,7 @@ class BaseTransition(ABC):
         """
         if True not in self.allowed_types:
             return itertools.product(self.E_1.sublevels(), self.E_2.sublevels())
-        max_delta = (2 if (self.allowed_types[2]) else 1)
+        max_delta = (2 if self.allowed_types.E2 else 1)
         return ((l1, l2) for l1, l2 in itertools.product(self.E_1.sublevels(), self.E_2.sublevels())
                 if abs(l1.term.__getattribute__(attr) - l2.term.__getattribute__(attr)) <= max_delta)
 
@@ -722,17 +730,19 @@ class Transition(BaseTransition):
     A Transition connects two EnergyLevel objects
     """
 
-    def transition_allowed(self) -> Tuple[bool, bool, bool]:
+    def transition_allowed(self) -> AllowedTypes:
         """Uses selection rules to figure out whether it's an E1, M1, or E2 transition"""
         J0, J1 = self.E_1.term.J, self.E_2.term.J
         p0, p1 = self.E_1.term.parity, self.E_2.term.parity
         if not isinstance(self.E_1, type(self.E_2)):
-            return False, False, False
+            return AllowedTypes()
         # for now, I'm assuming that E2 transitions within a manifold are impossible or at least strongly suppressed.
         # Correct me if I'm wrong!
-        return ((np.abs(J1 - J0) <= 1.0 and p0 != p1),
-                (np.abs(J1 - J0) <= 1.0 and p0 == p1),
-                (np.abs(J1 - J0) <= 2.0 and p0 == p1 and not (self.E_1 is self.E_2)))
+        return AllowedTypes(
+            E1=(np.abs(J1 - J0) <= 1.0 and p0 != p1),
+            M1=(np.abs(J1 - J0) <= 1.0 and p0 == p1),
+            E2=(np.abs(J1 - J0) <= 2.0 and p0 == p1 and not (self.E_1 is self.E_2)),
+        )
 
     def _assign_models(self):
         """A Transition lives as an edge in the atom's levelsModel graph"""
@@ -744,7 +754,7 @@ class Transition(BaseTransition):
         pairs = self._compute_sublevel_pairs('F')
         for a, b in pairs:
             t = HFTransition(a, b, parent=self)
-            if np.any(np.array(t.allowed_types)):
+            if any(t.allowed_types):
                 self[(t.E_lower.term.short_name, t.E_upper.term.short_name)] = t
             else:
                 del t
@@ -772,29 +782,27 @@ class HFTransition(BaseTransition):
         I = self.E_1.atom.I
         J1, J2 = self.E_1.term.J, self.E_2.term.J
         F1, F2 = self.E_1.term.F, self.E_2.term.F
-        if self.parent.allowed_types[0] or self.parent.allowed_types[1]:
+        if self.parent.allowed_types.E1 or self.parent.allowed_types.M1:
             factor = ((2 * F1 + 1) * (2 * F2 + 1)) * wigner6j(J2, F2, I, F1, J1, 1) ** 2
-        elif self.parent.allowed_types[2]:
+        elif self.parent.allowed_types.E2:
             factor = ((2 * F1 + 1) * (2 * F2 + 1)) * wigner6j(J2, F2, I, F1, J1, 2) ** 2
         else:
             factor = 0.0
         return self.parent.A * factor, float(factor)
 
-    def transition_allowed(self) -> Tuple[bool, bool, bool]:
+    def transition_allowed(self) -> AllowedTypes:
         """Use the spectator theorem to check whether it's allowed. """
         I = self.E_1.atom.I
         J0, J1 = self.E_1.term.J, self.E_2.term.J
         F0, F1 = self.E_1.term.F, self.E_2.term.F
-        if self.parent is not None:
-            init = self.parent.allowed_types
-        else:
-            init = [True, True, True]
-        ret = (
-            wigner6j(J0, J1, 1, F1, F0, I) != 0.0 and init[0],
-            wigner6j(J0, J1, 1, F1, F0, I) != 0.0 and init[1],
-            wigner6j(J0, J1, 2, F1, F0, I) != 0.0 and init[2]
+        init = self.parent.allowed_types if self.parent is not None else AllowedTypes(True, True, True)
+        w1 = wigner6j(J0, J1, 1, F1, F0, I) != 0.0
+        w2 = wigner6j(J0, J1, 2, F1, F0, I) != 0.0
+        return AllowedTypes(
+            E1=w1 and init.E1,
+            M1=w1 and init.M1,
+            E2=w2 and init.E2,
         )
-        return ret
 
     def _assign_models(self):
         """An HFTransition lives as an edge in the atom's hfModel graph"""
@@ -806,7 +814,7 @@ class HFTransition(BaseTransition):
         pairs = self._compute_sublevel_pairs('mF')
         for a, b in pairs:
             t = ZTransition(a, b, parent=self)
-            if np.any(np.array(t.allowed_types)):
+            if any(t.allowed_types):
                 self[(t.E_lower.term.short_name, t.E_upper.term.short_name)] = t
             else:
                 del t
@@ -828,26 +836,26 @@ class ZTransition(BaseTransition):
             return None, 1.0
         F1, F2 = self.E_1.term.F, self.E_2.term.F
         mF1, mF2 = self.E_1.term.mF, self.E_2.term.mF
-        if self.parent.allowed_types[0] or self.parent.allowed_types[1]:
+        if self.parent.allowed_types.E1 or self.parent.allowed_types.M1:
             factor = sum([wigner3j(F1, 1, F2, -mF1, q, mF2) ** 2 for q in [-1, 0, 1]])
-        elif self.parent.allowed_types[2]:
+        elif self.parent.allowed_types.E2:
             factor = sum([wigner3j(F1, 2, F2, -mF1, q, mF2) ** 2 for q in [-2, -1, 0, 1, 2]])
         else:
             factor = 0.0
         return self.parent.A * factor, float(factor)
 
-    def transition_allowed(self) -> Tuple[bool, bool, bool]:
+    def transition_allowed(self) -> AllowedTypes:
         """Check whether allowed. Currently only uses a geometric average"""
-        # TODO: Maybe add the ability to apply lasers and shit? This sounds like a lot of work
         F0, F1 = self.E_1.term.F, self.E_2.term.F
         mF0, mF1 = self.E_1.term.mF, self.E_2.term.mF
         init = self.parent.allowed_types
-        ret = (
-            sum([wigner3j(F1, 1, F0, -mF1, q, mF0) for q in [-1, 0, 1]]) != 0.0 and init[0],
-            sum([wigner3j(F1, 1, F0, -mF1, q, mF0) for q in [-1, 0, 1]]) != 0.0 and init[1],
-            sum([wigner3j(F1, 2, F0, -mF1, q, mF0) for q in [-2, -1, 0, 1, 2]]) != 0.0 and init[2]
+        w1 = sum([wigner3j(F1, 1, F0, -mF1, q, mF0) for q in [-1, 0, 1]]) != 0.0
+        w2 = sum([wigner3j(F1, 2, F0, -mF1, q, mF0) for q in [-2, -1, 0, 1, 2]]) != 0.0
+        return AllowedTypes(
+            E1=w1 and init.E1,
+            M1=w1 and init.M1,
+            E2=w2 and init.E2,
         )
-        return ret
 
     def _assign_models(self):
         """A ZTransition lives as an edge in the atom's zModel"""
@@ -1259,7 +1267,7 @@ class Atom:
             for pair in level_pairs:
                 if self.transitions[(pair[0].name, pair[1].name)] is None:
                     t = Transition(pair[0], pair[1])
-                    if np.any(np.array(t.allowed_types) & np.array(allowed)):
+                    if any(ta and wa for ta, wa in zip(t.allowed_types, allowed)):
                         level_pairs.set_description(f'processing ΔJ={delta_j:3} transition {t.name:93}')
                         self.add_transition(t)
                     else:

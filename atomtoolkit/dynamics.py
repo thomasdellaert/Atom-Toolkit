@@ -20,15 +20,15 @@ def compute_atomic_matrix_element(s0: BaseLevel, s1: BaseLevel, light: LightFiel
     a = s0.atom
     t = a.transitions[(s0.name, s1.name)]
     pol = tuple(light.pol.xyz.astype(complex))
-    if t.allowed_types[0]:
+    if t.allowed_types.E1:
         return ts.E1_mel_geom(pol, a.I,
                               s0.term.J, s0.term.F, s0.term.mF,
                               s1.term.J, s1.term.F, s1.term.mF)
-    elif t.allowed_types[1]:
+    elif t.allowed_types.M1:
         return ts.M1_mel_geom(pol, a.I,
                               s0.term.J, s0.term.F, s0.term.mF,
                               s1.term.J, s1.term.F, s1.term.mF)
-    elif t.allowed_types[2]:
+    elif t.allowed_types.E2:
         return ts.E2_mel_geom(pol, tuple(light.k.astype(complex)), a.I,
                               s0.term.J, s0.term.F, s0.term.mF,
                               s1.term.J, s1.term.F, s1.term.mF)
@@ -129,7 +129,7 @@ def generate_dynamics_matrix(atom: Atom,
             if et is None or et.A is None:
                 continue
 
-            if zt.allowed_types[0]:     # E1
+            if zt.allowed_types.E1:     # E1
                 strength = sum(
                     ts.tkq_transition_strength(I, 1, q,
                                                si.term.J, si.term.F, si.term.mF,
@@ -137,7 +137,7 @@ def generate_dynamics_matrix(atom: Atom,
                     for q in (-1, 0, 1)
                 )
                 atype = 0
-            elif zt.allowed_types[1]:   # M1 — same angular structure as E1
+            elif zt.allowed_types.M1:   # M1 — same angular structure as E1
                 strength = sum(
                     ts.tkq_transition_strength(I, 1, q,
                                                si.term.J, si.term.F, si.term.mF,
@@ -264,15 +264,15 @@ def generate_hamiltonian(atom: Atom,
                                            2 * np.pi * freq_hz * Hz)
 
                 # Signed geometric coupling amplitude (dimensionless)
-                if zt.allowed_types[0]:    # E1
+                if zt.allowed_types.E1:    # E1
                     geom = ts.E1_mel_geom(pol, I,
                                           si.term.J, si.term.F, si.term.mF,
                                           sj.term.J, sj.term.F, sj.term.mF)
-                elif zt.allowed_types[1]:  # M1
+                elif zt.allowed_types.M1:  # M1
                     geom = ts.M1_mel_geom(pol, I,
                                           si.term.J, si.term.F, si.term.mF,
                                           sj.term.J, sj.term.F, sj.term.mF)
-                elif zt.allowed_types[2]:  # E2
+                elif zt.allowed_types.E2:  # E2
                     k_hat = tuple((field.k / np.linalg.norm(field.k)).astype(complex))
                     geom = ts.E2_mel_geom(pol, k_hat, I,
                                           si.term.J, si.term.F, si.term.mF,
