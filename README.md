@@ -1,32 +1,43 @@
 # Atom-Toolkit
-A python package that seeks to provide a convenient way to manipulate atomic physics data in a notebook environment, based on Networkx graph structures. The package allows you to:
 
- - Create an Atom object that contains information about spectroscopic energy levels
-   - Hyperfine and Zeeman structure is automatically generated as needed
-   - Support for LS, JJ, LK, and J1K couplings, with quantum numbers automatically extracted from the spectroscopic notation
- - Intuitively access and iterate through energy levels and sublevels
-   - ```python 
-     # Examples with hypothetical atoms:
-     Be.levels['1s2.2s2 1S0']
-     BaII_138.levels['5d 2D5/2']['mJ=1/2']
-     CaII_43.levels['3p6.3d 2D3/2']['F=1']['mF=0']
-     NdII_145.levels['5d9.6s2(2D<5/2>).6p 2[3/2]*2']['F=3/2']
-     ```
- - Create transitions between energy levels
-     - Transitions between any sublevels are also computed, with appropriate selection rules and angular momentum considerations
-     - When setting the frequency of a transition, associated parent- and sub-transitions are also updated, as are the energies of the associated levels
- - Compute branching ratios and lifetimes
- - Make diagrams of atomic structure (in development)
- - Plot transition spectra, with different lineshapes and widths
+A Python package for manipulating atomic physics data in a notebook environment. It models atomic structure as a hierarchy of [NetworkX](https://networkx.org/) graphs — gross-structure energy levels at the top, with hyperfine and Zeeman sublevels generated automatically on demand — and provides a convenient interface for working with spectroscopic data, transitions, and selection rules.
 
-### Example usage:
+## Features
+
+- **Load data directly from NIST ASD** — fetch energy levels and transition data for any ion/neutral with a single call
+- **Three-layer level hierarchy** — `EnergyLevel` → `HFLevel` → `ZLevel` (Zeeman), each layer generated lazily the first time it is accessed
+- **Rich key access** for levels and transitions:
+  ```python
+  atom.levels['4f14.6s 2S1/2']              # gross level
+  atom.levels['4f14.6s 2S1/2']['F=0']       # hyperfine sublevel
+  atom.levels['4f14.6s 2S1/2 F=0 mF=0']    # flat shorthand
+  atom.transitions[level_a, level_b]        # order-independent
+  ```
+- **Automatic sublevel transitions** — setting a frequency or Einstein A coefficient on an `EnergyLevel` transition propagates down to all HF and Zeeman sub-transitions, applying the correct selection rules and angular-momentum weights
+- **Support for LS, JJ, LK, and JK couplings**, with quantum numbers extracted automatically from NIST-format configuration and term strings
+- **Branching ratios and lifetimes** computed from A coefficients
+- **Grotrian diagrams and spectra** — matplotlib-based plots of level structure and spectral lineshapes (in development)
+- **Serialisation** — save/load atoms to disk as JSON for fast repeated use
+
+## Installation
+
+```bash
+pip install -e .
+```
+
+Dependencies: `pint`, `pint-pandas`, `pandas`, `numpy`, `networkx`, `sympy`, `matplotlib`, `scipy`, `tqdm`
+
+## Quick start
+
 ```python
 from atomtoolkit.atom import Atom
 from atomtoolkit import IO, Q_
 
+# Fetch level data for 173Yb II directly from NIST ASD
 df = IO.load_NIST_data('Yb II')
 a = Atom.from_dataframe(df, name='173Yb II', I=2.5)
 
+# Set hyperfine coefficients on a gross level
 d32 = a.levels['4f14.5d 2D3/2']
 d32.hfA = Q_(-0.11, 'GHz')
 d32.hfB = Q_(0.95, 'GHz')
@@ -34,9 +45,35 @@ d32.hfB = Q_(0.95, 'GHz')
 b12 = a.levels['4f13.(2F*<7/2>).5d.6s.(3D) 3[3/2]*1/2']
 b12.hfA = Q_(0.61, 'GHz')
 
+# Set transition data — HF and Zeeman sub-transitions are updated automatically
 repump_935 = a.transitions[b12, d32]
 repump_935.A = Q_(120, 'kHz')
 
-print(d32['F=2']['mF=-1'].level)
-print(repump_935.subtransitions())
+# Access individual sublevels
+print(d32['F=2']['mF=-1'].level)      # Hz energy including HF shift
+print(repump_935.subtransitions())    # all HF sub-transitions with selection rules
+```
+
+## Data model
+
+```
+Atom
+├── EnergyLevel  (gross structure — from NIST, in cm^-1 or Hz)
+│   └── HFLevel  (hyperfine — generated from A, B, C coefficients)
+│       └── ZLevel   (Zeeman — generated from gF factor)
+│
+└── Transition   (gross — carries A coefficient, freq)
+    └── HFTransition
+        └── ZTransition  (carries geometric coupling factors)
+```
+
+All quantities use a shared [pint](https://pint.readthedocs.io/) unit registry with a spectroscopy context, so `.to('Hz')` and `.to('cm**-1')` conversions work everywhere. The `Q_()` constructor creates dimensioned quantities using this registry.
+
+## Species files
+
+The `species/` directory contains ready-to-use atoms (171Yb II, 173Yb II, 174Yb II, 133Ba II, 6Li I) with hyperfine coefficients and corrected transitions applied. Load them with:
+
+```python
+from species import Yb_II_171
+a = Yb_II_171.atom        # pre-built Atom object
 ```
