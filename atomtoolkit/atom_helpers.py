@@ -7,6 +7,37 @@ if TYPE_CHECKING:
     from atomtoolkit.atom import Atom, BaseLevel, BaseTransition, EnergyLevel, Transition
 
 
+def _parse_level_key(key: str) -> Tuple[str, Optional[str], Optional[str]]:
+    """
+    Parse a structured level key into its three components.
+
+    Keys follow the pattern ``{main} [F={f}] [mF={mf}]`` where ``{main}`` is
+    the NIST configuration + term string.  The HF and Zeeman suffixes are
+    delimited by a literal space followed by ``F=`` or ``mF=`` — neither of
+    which can appear in a NIST configuration string.
+
+    Returns ``(main, hf_part, z_part)`` where missing parts are ``None``.
+    ``hf_part`` is the full ``'F=...'`` token; ``z_part`` is ``'mF=...'``.
+
+    Examples::
+
+        '4f14.6s 2S1/2'            → ('4f14.6s 2S1/2', None,    None)
+        '4f14.6s 2S1/2 F=0'        → ('4f14.6s 2S1/2', 'F=0',   None)
+        '4f14.6s 2S1/2 F=0 mF=0'  → ('4f14.6s 2S1/2', 'F=0',  'mF=0')
+    """
+    z_part: Optional[str] = None
+    hf_part: Optional[str] = None
+
+    if ' mF=' in key:
+        key, mf_val = key.rsplit(' mF=', 1)
+        z_part = f'mF={mf_val}'
+    if ' F=' in key:
+        key, hf_val = key.rsplit(' F=', 1)
+        hf_part = f'F={hf_val}'
+
+    return key, hf_part, z_part
+
+
 class LevelStructure:
     """
     A LevelStructure provides a dict-like interface to the *nodes* of an Atom's internal networkx Graph.
@@ -43,21 +74,25 @@ class LevelStructure:
             return sorted(nx.get_node_attributes(self.model, 'level').values(), key=lambda x: x.level_Hz)[key]
         if key in self.aliases:
             return self.aliases[key]
-        if 'mF=' in key:  # match [conf] [term] F=[f] mF=[mF]
-            main, hf, z = key.rsplit(' ', maxsplit=2)
-            return nx.get_node_attributes(self.model, 'level')[main][hf][z]
-        elif 'mJ=' in key:  # match [conf] [term] mJ=[mJ] --- only applies when I=0
-            main, z = key.rsplit(' mJ=', maxsplit=1)
-            l = nx.get_node_attributes(self.model, 'level')[main]
-            return l[f'F={l.term.J_frac}'][f'mF={z}']
-        elif 'F=' in key:  # match [conf] [term] F=[F]
-            main, hf = key.rsplit(' ', maxsplit=1)
-            return nx.get_node_attributes(self.model, 'level')[main][hf]
-        else:  # match [conf] [term]
-            try:
-                return nx.get_node_attributes(self.model, 'level')[key]
-            except KeyError:
-                raise
+        levels = nx.get_node_attributes(self.model, 'level')
+        # mJ= shorthand is only valid for I=0 atoms (mJ aliases mF)
+        if ' mJ=' in key:
+            main, mj_val = key.rsplit(' mJ=', 1)
+            level = levels[main]
+            return level[f'F={level.term.J_frac}'][f'mF={mj_val}']
+        main, hf_part, z_part = _parse_level_key(key)
+        try:
+            level = levels[main]
+        except KeyError:
+            raise KeyError(
+                f"Level {main!r} not found. "
+                f"(Parsed from key {key!r}: main={main!r}, hf={hf_part!r}, z={z_part!r})"
+            ) from None
+        if hf_part is not None:
+            level = level[hf_part]
+        if z_part is not None:
+            level = level[z_part]
+        return level
 
     def __setitem__(self, key: str, value: EnergyLevel):
         self.atom.add_level(value, alias=key)
@@ -123,27 +158,27 @@ class TransitionStructure:
             k_lower, k_upper = key[1], key[0]
         else:
             k_lower, k_upper = key[0], key[1]
-        if 'mF=' in key[0]:  # match [conf] [term] F=[f] mF=[mF]
-            main_0, hf_0, z_0 = k_lower.rsplit(' ', maxsplit=2)
-            main_1, hf_1, z_1 = k_upper.rsplit(' ', maxsplit=2)
-            return nx.get_edge_attributes(self.model, 'transition')[(main_0, main_1)][(hf_0, hf_1)][(z_0, z_1)]
-        elif 'mJ=' in key[0]:
-            main_0, z_0 = k_lower.rsplit(' mJ=', maxsplit=1)
-            main_1, z_1 = k_upper.rsplit(' mJ=', maxsplit=1)
-            l_0 = nx.get_node_attributes(self.model, 'level')[main_0]
-            l_1 = nx.get_node_attributes(self.model, 'level')[main_1]
-            return nx.get_edge_attributes(self.model, 'transition')[(main_0, main_1)][
+        edges = nx.get_edge_attributes(self.model, 'transition')
+        # mJ= shorthand: handle both keys together
+        if ' mJ=' in key[0]:
+            main_0, mj_0 = k_lower.rsplit(' mJ=', 1)
+            main_1, mj_1 = k_upper.rsplit(' mJ=', 1)
+            levels = nx.get_node_attributes(self.model, 'level')
+            l_0, l_1 = levels[main_0], levels[main_1]
+            return edges[(main_0, main_1)][
                 (f'F={l_0.term.J_frac}', f'F={l_1.term.J_frac}')][
-                (f'mF={z_0}', f'mF={z_1}')]
-        elif 'F=' in key[0]:  # match [conf] [term] F=[f]
-            main_0, hf_0 = k_lower.rsplit(' ', maxsplit=1)
-            main_1, hf_1 = k_upper.rsplit(' ', maxsplit=1)
-            return nx.get_edge_attributes(self.model, 'transition')[(main_0, main_1)][(hf_0, hf_1)]
-        else:  # match [conf] [term]
-            try:
-                return nx.get_edge_attributes(self.model, 'transition')[(k_lower, k_upper)]
-            except KeyError:
-                return None
+                (f'mF={mj_0}', f'mF={mj_1}')]
+        main_0, hf_0, z_0 = _parse_level_key(k_lower)
+        main_1, hf_1, z_1 = _parse_level_key(k_upper)
+        try:
+            t = edges[(main_0, main_1)]
+        except KeyError:
+            return None
+        if hf_0 is not None:
+            t = t[(hf_0, hf_1)]
+        if z_0 is not None:
+            t = t[(z_0, z_1)]
+        return t
 
     def __setitem__(self, value: Transition):
         self.atom.add_transition(value)
