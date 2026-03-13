@@ -28,3 +28,4 @@ G = ureg.G
 a0 = 5.29177210544e-11 * ureg.meter
 
 mu_B = 1.39962449361e6 * Hz / G
+mu_N = mu_B / 1836.15267343  # nuclear magneton in Hz/G

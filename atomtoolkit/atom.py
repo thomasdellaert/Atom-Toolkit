@@ -13,7 +13,7 @@ import pandas as pd
 import pint
 from tqdm import tqdm
 
-from . import Q_, ureg, util, Hz, G, mu_B
+from . import Q_, ureg, util, Hz, G, mu_B, mu_N
 from .atom_helpers import LevelStructure, TransitionStructure
 from .term import Term, MultiTerm
 from .wigner import wigner3j, wigner6j
@@ -266,6 +266,9 @@ class EnergyLevel(BaseLevel):
                 self.lande = lande
         except TypeError:
             self.lande = self.compute_gJ()
+        # Nonlinear Zeeman flag and spline LUT (populated by precompute_zeeman)
+        self.use_nonlinear_zeeman: bool = False
+        self._zeeman_splines: Optional[dict] = None
 
     def get_manifold(self) -> EnergyLevel:
         """A fine structure level *is* a manifold."""
@@ -339,6 +342,58 @@ class EnergyLevel(BaseLevel):
         """Clear the cached HF shift on all already-computed HFLevel sublevels."""
         for hfl in self._sublevels.values():
             hfl._shift_cache = None
+
+    # endregion
+
+    # region Nonlinear Zeeman LUT
+
+    def precompute_zeeman(self, B_min: float, B_max: float, n_points: int = 200) -> None:
+        """Precompute a cubic-spline LUT for the nonlinear Zeeman energies.
+
+        After calling this, :meth:`ZLevel.level_hz_nonlinear` (and
+        :meth:`ZLevel.level_hz_at` when ``use_nonlinear_zeeman`` is True) will
+        evaluate the spline instead of re-diagonalising, making B-sweep loops
+        orders of magnitude faster.
+
+        Parameters
+        ----------
+        B_min, B_max : float
+            Field range in gauss.  Queries outside this range fall back to
+            direct diagonalisation with a warning.
+        n_points : int
+            Number of knot points.  200 is typically sub-Hz accurate over
+            a few hundred gauss; increase for very wide ranges or steep
+            nonlinearity.
+        """
+        try:
+            from scipy.interpolate import CubicSpline
+        except ImportError as exc:
+            raise ImportError(
+                "scipy is required for precompute_zeeman. "
+                "Install it with: pip install scipy"
+            ) from exc
+        from .zeeman import diagonalize_hfz_batch, _hf_shift_hz, _mF_blocks
+
+        B_array = np.linspace(B_min, B_max, n_points)
+        batch = diagonalize_hfz_batch(self, B_array)
+
+        J = float(self.term.J)
+        I = float(self.atom.I)
+
+        self._zeeman_splines = {}
+        for mF, eigenvalues_array in batch.items():
+            # Determine F ordering by ascending B=0 HF energy (adiabatic labels)
+            F_list = sorted(
+                [float(f) for f in np.arange(abs(J - I), J + I + 1) if f >= abs(mF) - 1e-9],
+                key=lambda f: _hf_shift_hz(J, I, f, self.hfA_Hz, self.hfB_Hz, self.hfC_Hz),
+            )
+            for idx, F in enumerate(F_list):
+                spline = CubicSpline(B_array, eigenvalues_array[:, idx])
+                self._zeeman_splines[(F, mF)] = (spline, (B_min, B_max))
+
+    def clear_zeeman_cache(self) -> None:
+        """Discard the precomputed spline LUT, reverting to live diagonalisation."""
+        self._zeeman_splines = None
 
     # endregion
 
@@ -478,15 +533,27 @@ class HFLevel(BaseLevel):
 
     def compute_gF(self) -> float:
         """
-        Computes the Lande g-value for the hyperfine level, given its parent's g-value
-        :return: gF
+        Computes the Lande g-value for the hyperfine level.
+
+        Includes both the electronic (gJ) and nuclear (gI) contributions:
+
+            gF = gJ · [F(F+1)+J(J+1)-I(I+1)] / [2F(F+1)]
+               - gI · (μN/μB) · [F(F+1)+I(I+1)-J(J+1)] / [2F(F+1)]
+
+        The nuclear term is ~1/1836 × gI and is zero when atom.gI is unset (0.0).
+
+        :return: gF (dimensionless; multiply by μB to get the moment in energy/field units)
         """
         F = self.term.F
         J = self.term.J
         I = self.atom.I
-        if F != 0:
-            return self.manifold.lande * (F * (F + 1) + J * (J + 1) - I * (I + 1)) / (2 * F * (F + 1))
-        return 0.0
+        if F == 0:
+            return 0.0
+        denom = 2 * F * (F + 1)
+        electronic = self.manifold.lande * (F * (F + 1) + J * (J + 1) - I * (I + 1)) / denom
+        gI = getattr(self.atom, 'gI', 0.0)
+        nuclear = gI * (mu_N / mu_B).magnitude * (F * (F + 1) + I * (I + 1) - J * (J + 1)) / denom
+        return electronic - nuclear
 
 
 class ZLevel(HFLevel):
@@ -516,25 +583,47 @@ class ZLevel(HFLevel):
         return
 
     def shift_hz_at(self, B_gauss: float) -> float:
-        """Zeeman shift in Hz at a given field strength."""
+        """Perturbative Zeeman shift in Hz: gF·mF·μB·B + quadratic_zeeman·B²."""
         return (self.gF * self.term.mF * mu_B.to(Hz / G).magnitude * B_gauss
                 + self.quadratic_zeeman * B_gauss ** 2)
 
     def level_hz_at(self, B_gauss: float) -> float:
-        """Absolute energy in Hz at a given field strength."""
+        """Absolute energy in Hz at a given field strength.
+
+        Dispatches to :meth:`level_hz_nonlinear` when the parent manifold has
+        ``use_nonlinear_zeeman = True``, otherwise uses the perturbative formula.
+        """
+        if self.manifold.use_nonlinear_zeeman:
+            if self.quadratic_zeeman != 0.0:
+                warnings.warn(
+                    f"{self.name}: quadratic_zeeman is set but use_nonlinear_zeeman=True "
+                    f"— the exact diagonalisation supersedes it. "
+                    f"Remove the quadratic_zeeman assignment to silence this warning.",
+                    stacklevel=2,
+                )
+            return self.level_hz_nonlinear(B_gauss)
         return self.parent.level_Hz + self.shift_hz_at(B_gauss)
+
+    def level_hz_nonlinear(self, B_gauss: float) -> float:
+        """Exact nonlinear Zeeman energy via H_HF + H_Z diagonalisation (Hz).
+
+        Uses the spline LUT if :meth:`EnergyLevel.precompute_zeeman` has been
+        called on the parent manifold; otherwise falls back to cached
+        matrix diagonalisation.
+
+        Requires ``atom.gI`` to be set for the nuclear Zeeman contribution.
+        """
+        from .zeeman import level_hz_nonlinear as _nlz
+        return _nlz(self, B_gauss)
+
+    def shift_hz_nonlinear(self, B_gauss: float) -> float:
+        """Nonlinear Zeeman shift only (absolute energy minus EnergyLevel centroid)."""
+        return self.level_hz_nonlinear(B_gauss) - self.manifold.level_Hz
 
     @property
     def shift_Hz(self) -> float:
         """Zeeman shift at B=0 (always zero; use shift_hz_at(B) for finite fields)."""
         return 0.0
-
-    # def nonlinear_zeeman(self, B):
-    #     """
-    #     Can be overridden to add any functional form to the Zeeman shift
-    #     example: level.nonlinear_zeeman = lambda B: 155.305 * B ** 2
-    #     """
-    #     return 0
 
 
 ############################################
@@ -890,7 +979,7 @@ class ZTransition(BaseTransition):
 #                   Atom                   #
 ############################################
 
-_ATOM_JSON_SCHEMA = 2   # bump when the to_dict format changes
+_ATOM_JSON_SCHEMA = 3   # bump when the to_dict format changes
 
 
 def _migrate_atom_dict(d: dict, from_schema: int) -> dict:
@@ -906,6 +995,8 @@ def _migrate_atom_dict(d: dict, from_schema: int) -> dict:
     _migrations: dict = {
         # schema 1 stored B_gauss; schema 2 removes it (B moved to Environment)
         1: lambda d: {k: v for k, v in d.items() if k != 'B_gauss'},
+        # schema 3 adds gI (nuclear g-factor) and per-level use_nonlinear_zeeman
+        2: lambda d: {**d, 'gI': d.get('gI', 0.0)},
     }
     for version in range(from_schema, _ATOM_JSON_SCHEMA):
         d = _migrations[version](d)
@@ -944,6 +1035,7 @@ class Atom:
         """
         self.name = name
         self.I = util.frac_to_float(I)
+        self.gI: float = 0.0  # nuclear g-factor (dimensionless, in nuclear magneton units)
 
         self._levelsModel = nx.Graph()
         self._hfModel = nx.Graph()
@@ -1131,14 +1223,15 @@ class Atom:
                         quad_z[f"{hf_key} {z_key}"] = zl.quadratic_zeeman
 
             levels.append({
-                "terms":            term_list,
-                "level_Hz":         lvl.level_Hz,
-                "hfA_Hz":           lvl.hfA_Hz,
-                "hfB_Hz":           lvl.hfB_Hz,
-                "hfC_Hz":           lvl.hfC_Hz,
-                "lande":            lvl.lande,
-                "alias":            lvl._alias,
-                "quadratic_zeeman": quad_z,
+                "terms":                 term_list,
+                "level_Hz":              lvl.level_Hz,
+                "hfA_Hz":                lvl.hfA_Hz,
+                "hfB_Hz":                lvl.hfB_Hz,
+                "hfC_Hz":                lvl.hfC_Hz,
+                "lande":                 lvl.lande,
+                "alias":                 lvl._alias,
+                "quadratic_zeeman":      quad_z,
+                "use_nonlinear_zeeman":  lvl.use_nonlinear_zeeman,
             })
 
         transitions = []
@@ -1156,6 +1249,7 @@ class Atom:
             "_schema":     _ATOM_JSON_SCHEMA,
             "name":        self.name,
             "I":           self.I,
+            "gI":          self.gI,
             "levels":      levels,
             "transitions": transitions,
         }
@@ -1190,6 +1284,7 @@ class Atom:
         d = _migrate_atom_dict(d, schema)
 
         a = cls(d['name'], I=d['I'])
+        a.gI = d.get('gI', 0.0)
 
         # --- levels -------------------------------------------------------
         aliases_to_set = {}   # level_name → alias  (applied after add_level)
@@ -1208,6 +1303,7 @@ class Atom:
                 hfB=lvl_data['hfB_Hz'] * Hz,
                 hfC=lvl_data['hfC_Hz'] * Hz,
             )
+            e.use_nonlinear_zeeman = lvl_data.get('use_nonlinear_zeeman', False)
             a.add_level(e)
 
             if lvl_data.get('alias'):

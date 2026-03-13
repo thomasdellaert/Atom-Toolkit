@@ -20,7 +20,7 @@ pytest tests/test_atoms.py::TestAtom::test_init        # single test
 ### Build and publish
 ```bash
 python3 -m build
-python3 -m twine upload dist/atom_toolkit-0.2.0* --username __token__ --password pypi-<token>
+python3 -m twine upload dist/atom_toolkit-0.2.0*
 ```
 
 ## Architecture
