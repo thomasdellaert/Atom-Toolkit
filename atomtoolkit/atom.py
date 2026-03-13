@@ -950,12 +950,7 @@ class Atom:
         self._zModel = nx.Graph()
 
         self.levels = LevelStructure(self, self._levelsModel, self._hfModel, self._zModel)
-        # self.hflevels = LevelStructure(self, self.hfModel)
-        # self.zlevels = LevelStructure(self, self.zModel)
-
         self.transitions = TransitionStructure(self, self._levelsModel, self._hfModel, self._zModel)
-        # self.hftransitions = SubtransitionStructure(self, self.hfModel, self.levelsModel)
-        # self.ztransitions = SubtransitionStructure(self, self.zModel, self.hfModel)
 
         if levels is not None:
             for level in levels:
@@ -969,6 +964,43 @@ class Atom:
 
     def __str__(self):
         return self.name
+
+    @property
+    def hflevels(self) -> Dict[str, 'HFLevel']:
+        """
+        Flat dict of all HFLevel objects that have been lazily computed so far.
+
+        Keys are the full level names (e.g. ``'4f14.6s 2S1/2 F=0'``).
+        HF sublevels are only present for EnergyLevels whose sublevels have
+        already been accessed; iterate ``atom.levels.values()`` and access
+        ``level.sublevels()`` to force-populate all of them first.
+        """
+        return dict(nx.get_node_attributes(self._hfModel, 'level'))
+
+    @property
+    def zlevels(self) -> Dict[str, 'ZLevel']:
+        """
+        Flat dict of all ZLevel objects that have been lazily computed so far.
+
+        Keys are the full level names (e.g. ``'4f14.6s 2S1/2 F=0 mF=0'``).
+        """
+        return dict(nx.get_node_attributes(self._zModel, 'level'))
+
+    @property
+    def hftransitions(self) -> Dict[Tuple[str, str], 'HFTransition']:
+        """
+        Flat dict of all HFTransition objects that have been lazily computed so far.
+        Keys are ``(lower_name, upper_name)`` tuples of HFLevel names.
+        """
+        return dict(nx.get_edge_attributes(self._hfModel, 'transition'))
+
+    @property
+    def ztransitions(self) -> Dict[Tuple[str, str], 'ZTransition']:
+        """
+        Flat dict of all ZTransition objects that have been lazily computed so far.
+        Keys are ``(lower_name, upper_name)`` tuples of ZLevel names.
+        """
+        return dict(nx.get_edge_attributes(self._zModel, 'transition'))
 
     def add_level(self, level: EnergyLevel, populate_sublevels: bool = False, alias=None):
         """

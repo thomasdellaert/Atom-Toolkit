@@ -92,6 +92,26 @@ class TestAtom:
         assert abs(dummy_atom.state_lifetime('1s2.2p 2P3/2').to(s).magnitude - 4e-7) < 1e-7
         assert abs(dummy_atom.state_lifetime('1s2.3d 2D5/2').to(s).magnitude - 0.06) < 0.1
 
+    def test_hflevels_and_zlevels(self, dummy_atom):
+        """hflevels and zlevels are empty until sublevels are accessed, then populated."""
+        assert len(dummy_atom.hflevels) == 0
+        assert len(dummy_atom.zlevels) == 0
+        # trigger lazy population for one EnergyLevel → HFLevels
+        hf_levels = dummy_atom.levels['1s2.2s 2S1/2'].sublevels()
+        assert len(dummy_atom.hflevels) == 1   # I=0: F=J=1/2 only
+        assert len(dummy_atom.zlevels) == 0    # ZLevels not yet computed
+        # trigger lazy population of the HFLevel → ZLevels
+        for hfl in hf_levels:
+            hfl.sublevels()
+        assert len(dummy_atom.zlevels) == 2    # mF = -1/2, +1/2
+        # hftransitions populated by accessing subtransitions on an EnergyLevel transition
+        hf_trans = dummy_atom.transitions[('1s2.2s 2S1/2', '1s2.2p 2P3/2')].subtransitions()
+        assert len(dummy_atom.hftransitions) > 0
+        # ztransitions populated by going one level deeper
+        for hft in hf_trans:
+            hft.subtransitions()
+        assert len(dummy_atom.ztransitions) > 0
+
     def test_branching_ratios(self, dummy_atom):
         assert dummy_atom.compute_branching_ratios('1s2.2s 2S1/2') == {}
         assert dummy_atom.compute_branching_ratios('1s2.2p 2P3/2') == {'1s2.2s 2S1/2': 0.6666666666666666,
