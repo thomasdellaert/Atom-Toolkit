@@ -5,7 +5,6 @@ import numpy as np
 NAME = "133Ba II"
 I = 1/2
 NUM_LEVELS = 300
-B_FIELD = Q_(0.0, 'G')
 ALLOWED_TRANSITIONS = (True, False, False)
 
 _energy_level_df = IO.load_NIST_data('Ba II')
@@ -14,7 +13,6 @@ Ba133 = IO.generate_full_from_dataframe(_energy_level_df,
                                         name=NAME,
                                         I=I,
                                         num_levels=NUM_LEVELS,
-                                        B=B_FIELD,
                                         allowed=ALLOWED_TRANSITIONS)
 
 # Define Hyperfine Coefficients # TODO: Move this to a CSV
@@ -84,4 +82,4 @@ for s, t in Ba133.linked_levels('5d 2D5/2').items():
         t.A = Q_(0, "Hz")
 
 if __name__ == '__main__':
-    Ba133.save('Ba_II_133.atom')
+    Ba133.save_json('Ba_II_133.json')

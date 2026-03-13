@@ -1,5 +1,5 @@
 """
-Atom configuration file. This file should be able to build a full atom and save it as a .atom file.
+Atom configuration file. This file builds a full atom and can save it as a JSON file.
 """
 
 from atomtoolkit import Q_, IO
@@ -14,7 +14,6 @@ HYPERFINE_PATH = None
 NAME = '174Yb II'
 I = 0
 NUM_LEVELS = 300
-B_FIELD = Q_(0.0, 'G')
 ALLOWED_TRANSITIONS = (True, False, False)
 
 _energy_level_df = IO.load_NIST_data('Yb II')
@@ -30,7 +29,6 @@ Yb174 = IO.generate_full_from_dataframe(_energy_level_df,
                                         name=NAME,
                                         I=I,
                                         num_levels=NUM_LEVELS,
-                                        B=B_FIELD,
                                         hf_csv=HYPERFINE_PATH,
                                         transitions_df=_transition_df,
                                         allowed=ALLOWED_TRANSITIONS)
@@ -52,4 +50,4 @@ t.set_frequency(Q_(394.423900, 'THz'))
 # Set any additional properties
 
 if __name__ == '__main__':
-    Yb174.save('Yb_II_174.atom')
+    Yb174.save_json('Yb_II_174.json')

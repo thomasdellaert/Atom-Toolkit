@@ -1,5 +1,5 @@
 """
-Atom configuration file. This file should be able to build a full atom and save it as a .atom file.
+Atom configuration file. This file builds a full atom and can save it as a JSON file.
 """
 
 from atomtoolkit import Q_, IO
@@ -48,4 +48,4 @@ Yb171.levels['4f14.6s 2S1/2']['F=0']['mF=0'].quadratic_zeeman = -155.305
 Yb171.levels['4f14.6s 2S1/2']['F=1']['mF=0'].quadratic_zeeman = 155.305
 
 if __name__ == '__main__':
-    Yb171.save('Yb_II_171.atom')
+    Yb171.save_json('Yb_II_171.json')
