@@ -354,7 +354,11 @@ class EnergyLevel(BaseLevel):
             elif term.coupling == 'LK':
                 terms = LK_to_LS(self.term.J, self.term.l, self.term.k, self.term.sc, self.term.so)
             else:
-                return 0.0
+                warnings.warn(
+                    f"Unknown coupling scheme {term.coupling!r} for level {self.name!r}; "
+                    f"contribution to gJ set to 0."
+                )
+                continue
 
             J = term.J
             ls, ss, percents = terms
