@@ -1,5 +1,6 @@
 import csv
 import re
+import urllib.error
 import warnings
 
 import pandas as pd
@@ -13,31 +14,13 @@ from .atom import Atom
 warnings.filterwarnings("ignore", category=pint.UnitStrippedWarning)
 
 
-def _load_NIST_data(species: str, term_ordered: bool = False, save: bool or str = False) -> pd.DataFrame:
+def _parse_NIST_df(df: pd.DataFrame, save=False, species: str = None) -> pd.DataFrame:
     """
-    See docstring of load_NIST_data
+    Clean and parse a raw NIST ASD levels dataframe (from the API or a local CSV).
+    Both sources produce the same Excel-quoted CSV format, so the pipeline is identical.
     """
-
-    df = pd.read_csv(
-        'https://physics.nist.gov/cgi-bin/ASD/energy1.pl?de=0' +
-        '&spectrum=' + species.replace(' ', '+') +
-        '&submit=Retrieve+Data' +
-        '&units=0' +
-        '&format=3' +
-        '&output=0' +
-        '&multiplet_ordered=' + ('on' if term_ordered else '0') +
-        '&conf_out=on' +
-        '&term_out=on' +
-        '&level_out=on' +
-        '&unc_out=on' +
-        '&j_out=on' +
-        '&lande_out=on' +
-        '&perc_out=on' +
-        '&temp=',
-        index_col=False)
-
     # === strip the data of extraneous symbols ===
-    df_clean = df.applymap(lambda k: k.strip(' ="?'))
+    df_clean = df.applymap(lambda k: k.strip(' ="?') if isinstance(k, str) else k)
 
     # === coerce types ===
     df_clean['Configuration'] = df_clean['Configuration'].astype('str')
@@ -146,32 +129,90 @@ def _load_NIST_data(species: str, term_ordered: bool = False, save: bool or str 
     #  TODO: uncertainty
 
 
-def load_NIST_data(species: str, term_ordered: bool = False, save: bool or str = False) -> pd.DataFrame:
-    """
-    Loads data from the NIST ASD Levels form
+def _fetch_NIST_data(species: str, term_ordered: bool = False) -> pd.DataFrame:
+    """Fetch raw NIST ASD level data from the web API and return the unparsed dataframe."""
+    url = (
+        'https://physics.nist.gov/cgi-bin/ASD/energy1.pl?de=0'
+        + '&spectrum=' + species.replace(' ', '+')
+        + '&submit=Retrieve+Data'
+        + '&units=0'
+        + '&format=3'
+        + '&output=0'
+        + '&multiplet_ordered=' + ('on' if term_ordered else '0')
+        + '&conf_out=on'
+        + '&term_out=on'
+        + '&level_out=on'
+        + '&unc_out=on'
+        + '&j_out=on'
+        + '&lande_out=on'
+        + '&perc_out=on'
+        + '&temp='
+    )
+    return pd.read_csv(url, index_col=False)
 
-    :param species: The species to grab data from.
-        Should use astronomical notation, with the element name followed by a roman numeral (Ca II, Rb I, etc.)
-    :param term_ordered: whether to order by term. If False, it will order by energy
-    :param save: whether to save the imported and cleaned data as a csv file. If a string, this is the name of the csv
-    :return: a dataframe with the following columns:
-        [
-        'Level (cm-1)': pint[1 / centimeter],
-        'Level (Hz)': pint[hertz],
-        'J': str (fraction),
-        'Lande': float64,
-        'Configuration': str,
-        'Term': str,
-        'Percentage': float64,
-        'Configuration_2: str',
-        'Term_2': str,
-        'Percentage_2': float64
-        ]
+
+_NIST_CSV_INSTRUCTIONS = """\
+The NIST ASD API returned a {status} error for '{species}'.
+To load data from a local CSV instead:
+  1. Go to https://physics.nist.gov/PhysRefData/ASD/levels_form.html
+  2. Enter the species (e.g. "Yb II"), select all output fields, and set Format = CSV
+  3. Save the downloaded file, then call:
+       IO.load_NIST_data_from_csv('path/to/file.csv')
+"""
+
+
+def load_NIST_data(species: str, term_ordered: bool = False, save=False) -> pd.DataFrame:
     """
-    # Sometimes pint throws divide by zero warnings. So we disable while the parsing is happening
+    Load energy level data for a species from the NIST ASD web API.
+
+    :param species: Species in astronomical notation, e.g. ``'Yb II'``, ``'Ca II'``
+    :param term_ordered: If True, order levels by term rather than energy
+    :param save: Save the cleaned dataframe to CSV. Pass a filename string or True
+        (which autogenerates ``<species>_level_data.csv``)
+    :return: Cleaned dataframe — see :func:`load_NIST_data_from_csv` for column details
+
+    .. note::
+        If the NIST ASD API is unavailable (e.g. returns 403), download the CSV manually
+        from https://physics.nist.gov/PhysRefData/ASD/levels_form.html and use
+        :func:`load_NIST_data_from_csv` instead.
+    """
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", category=RuntimeWarning)
-        return _load_NIST_data(species, term_ordered, save)
+        try:
+            df = _fetch_NIST_data(species, term_ordered)
+            return _parse_NIST_df(df, save=save, species=species)
+        except urllib.error.HTTPError as exc:
+            raise RuntimeError(
+                _NIST_CSV_INSTRUCTIONS.format(status=exc.code, species=species)
+            ) from exc
+        except Exception as exc:
+            # Catch other network failures (timeouts, SSL errors, etc.)
+            if any(kw in str(exc).lower() for kw in ('403', 'forbidden', 'connection', 'timeout', 'ssl')):
+                raise RuntimeError(
+                    _NIST_CSV_INSTRUCTIONS.format(status=type(exc).__name__, species=species)
+                ) from exc
+            raise
+
+
+def load_NIST_data_from_csv(path: str, save=False) -> pd.DataFrame:
+    """
+    Load NIST ASD energy level data from a locally saved CSV file.
+
+    The CSV must be in the format produced by the NIST ASD Levels form
+    (Format = CSV).  Download from:
+    https://physics.nist.gov/PhysRefData/ASD/levels_form.html
+
+    :param path: Path to the CSV file
+    :param save: Save the cleaned dataframe to a CSV. Pass a filename string or True
+    :return: Cleaned dataframe with columns:
+        ``Level (cm-1)``, ``Level (Hz)``, ``J``, ``Lande``,
+        ``Configuration``, ``Term``, ``Percentage``,
+        ``Configuration_2``, ``Term_2``, ``Percentage_2``
+    """
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=RuntimeWarning)
+        df = pd.read_csv(path, index_col=False)
+        return _parse_NIST_df(df, save=save)
 
 
 def load_transition_data(filename: str, columns: dict = None, **kwargs):

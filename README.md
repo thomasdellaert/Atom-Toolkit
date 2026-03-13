@@ -27,14 +27,36 @@ pip install -e .
 
 Dependencies: `pint`, `pint-pandas`, `pandas`, `numpy`, `networkx`, `sympy`, `matplotlib`, `scipy`, `tqdm`
 
+## Loading NIST data
+
+The primary loader fetches data from the NIST ASD web API:
+
+```python
+from atomtoolkit import IO
+df = IO.load_NIST_data('Yb II')
+```
+
+If the API is unavailable (e.g. returns a 403 error), you can download a CSV manually instead:
+
+1. Go to https://physics.nist.gov/PhysRefData/ASD/levels_form.html
+2. Enter the species name (e.g. `Yb II`), enable all output fields, and set **Format = CSV**
+3. Save the file and load it with:
+
+```python
+df = IO.load_NIST_data_from_csv('path/to/YbII.csv')
+```
+
+The bundled species in `resources/` were downloaded this way and are used automatically by the `species/` files.
+
 ## Quick start
 
 ```python
 from atomtoolkit.atom import Atom
 from atomtoolkit import IO, Q_
 
-# Fetch level data for 173Yb II directly from NIST ASD
-df = IO.load_NIST_data('Yb II')
+# Load level data — from the API or a local CSV
+df = IO.load_NIST_data('Yb II')               # live API
+# df = IO.load_NIST_data_from_csv('resources/YbII.csv')  # local fallback
 a = Atom.from_dataframe(df, name='173Yb II', I=2.5)
 
 # Set hyperfine coefficients on a gross level

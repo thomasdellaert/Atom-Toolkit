@@ -15,7 +15,7 @@ I = 1/2
 NUM_LEVELS = 300
 ALLOWED_TRANSITIONS = (True, False, False)
 
-_energy_level_df = IO.load_NIST_data('Yb II')
+_energy_level_df = IO.load_NIST_data_from_csv(absroot / 'resources/YbII.csv')
 _transition_df = IO.load_transition_data(
     TRANSITIONS_PATH,
     columns={

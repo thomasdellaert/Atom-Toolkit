@@ -13,7 +13,7 @@ I = 1.5
 NUM_LEVELS = 300
 ALLOWED_TRANSITIONS = (True, False, False)
 
-_energy_level_df = IO.load_NIST_data('Li I')
+_energy_level_df = IO.load_NIST_data_from_csv(absroot / 'resources/LiI.csv')
 
 Li7 = IO.generate_full_from_dataframe(_energy_level_df,
                                       name=NAME,
