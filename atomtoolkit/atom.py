@@ -315,6 +315,7 @@ class EnergyLevel(BaseLevel):
     @hfA.setter
     def hfA(self, value: pint.Quantity):
         self.hfA_Hz = value.to(Hz).magnitude
+        self._invalidate_hf_cache()
 
     @property
     def hfB(self) -> pint.Quantity:
@@ -323,6 +324,7 @@ class EnergyLevel(BaseLevel):
     @hfB.setter
     def hfB(self, value: pint.Quantity):
         self.hfB_Hz = value.to(Hz).magnitude
+        self._invalidate_hf_cache()
 
     @property
     def hfC(self) -> pint.Quantity:
@@ -331,6 +333,12 @@ class EnergyLevel(BaseLevel):
     @hfC.setter
     def hfC(self, value: pint.Quantity):
         self.hfC_Hz = value.to(Hz).magnitude
+        self._invalidate_hf_cache()
+
+    def _invalidate_hf_cache(self):
+        """Clear the cached HF shift on all already-computed HFLevel sublevels."""
+        for hfl in self._sublevels.values():
+            hfl._shift_cache = None
 
     # endregion
 
@@ -392,6 +400,7 @@ class HFLevel(BaseLevel):
         :param parent: the atom that the level is contained in
         """
         super().__init__(term, parent)
+        self._shift_cache: Optional[float] = None
         self.gF = self.compute_gF()
 
     def get_manifold(self) -> EnergyLevel:
@@ -444,7 +453,9 @@ class HFLevel(BaseLevel):
 
     @property
     def shift_Hz(self) -> float:
-        return self.compute_hf_shift()
+        if self._shift_cache is None:
+            self._shift_cache = self.compute_hf_shift()
+        return self._shift_cache
 
     @property
     def level_Hz(self) -> float:
