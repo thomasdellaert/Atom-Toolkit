@@ -553,7 +553,7 @@ class BaseTransition(ABC):
 
     def __init__(self, E1: BaseLevel, E2: BaseLevel,
                  freq: pint.Quantity = None, A: pint.Quantity = None,
-                 name: str = None, parent: BaseTransition = None, alias: str = None, add: bool = True):
+                 name: str = None, parent: BaseTransition = None, alias: str = None):
         """
         :param E1: EnergyLevel 1
         :param E2: EnergyLevel 2
@@ -562,9 +562,7 @@ class BaseTransition(ABC):
         :param A: The Einstein A coefficient of the transition, corresponding to the natural linewidth
         :param name: the name of the transition
         :param parent: the parent of the transition, the thing that contains it
-        :param alias: an alias for the transition
-        :param add: whether to add the transition to the atom upon creation. This should be disabled if you're
-                    instantiating the transition to check selection rules, for instance
+        :param alias: an alias for the transition; registered when the transition is added to an atom
         """
 
         self.parent = parent
@@ -580,10 +578,8 @@ class BaseTransition(ABC):
         else:
             self.E_upper = self.E_1
             self.E_lower = self.E_2
-        # Check if in an atom
+        # atom reference — set properly via add_to_atom; kept here for lookup only
         self.atom = self.E_1.atom
-        if (self.atom is not None) and add:
-            self.add_to_atom(self.atom)
         # Names
         self.model_name = (self.E_1.name, self.E_2.name)
         self.name = name
@@ -594,8 +590,6 @@ class BaseTransition(ABC):
         self.A, self.rel_strength = self.compute_linewidth()
         self.allowed_types = self.transition_allowed()
         self.set_freq = freq
-        if alias is not None:
-            self.atom.transitions.aliases[alias] = self
 
     def __str__(self):
         return self.name
@@ -1180,7 +1174,7 @@ class Atom:
                 )
                 continue
             A = Q_(tr_data['A_Hz'], 'Hz') if tr_data.get('A_Hz') is not None else None
-            t = Transition(lower, upper, A=A)
+            t = a.add_transition(Transition(lower, upper, A=A))
             if tr_data.get('alias'):
                 tr_aliases[(tr_data['lower'], tr_data['upper'])] = tr_data['alias']
 
@@ -1264,7 +1258,7 @@ class Atom:
             level_pairs = tqdm(list(itertools.chain.from_iterable([itertools.product(j1, j2) for j1, j2 in j_pairs])))
             for pair in level_pairs:
                 if self.transitions[(pair[0].name, pair[1].name)] is None:
-                    t = Transition(pair[0], pair[1], add=False)
+                    t = Transition(pair[0], pair[1])
                     if np.any(np.array(t.allowed_types) & np.array(allowed)):
                         level_pairs.set_description(f'processing ΔJ={delta_j:3} transition {t.name:93}')
                         self.add_transition(t)
@@ -1309,7 +1303,7 @@ class Atom:
         level = self.levels[key]
         if not isinstance(level, EnergyLevel):
             for k, trans in self.linked_levels(level.parent.name).items():
-                trans.populate_subtransitions()
+                trans.subtransitions()  # triggers lazy registration in the graph
         adjacent = level.model.adj[key]
         return {self.levels[k]: t['transition'] for k, t in adjacent.items() if k != key}
 

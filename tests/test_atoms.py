@@ -435,8 +435,8 @@ class TestJSONSerialization:
         a.add_level(ex)
         a.add_level(ex_mt)
 
-        t1 = Transition(gs, ex, A=10 * MHz, alias='cooling')
-        t2 = Transition(gs, ex_mt, A=5 * MHz)
+        t1 = a.add_transition(Transition(gs, ex, A=10 * MHz, alias='cooling'))
+        t2 = a.add_transition(Transition(gs, ex_mt, A=5 * MHz))
 
         # Force-compute ZLevels so quadratic_zeeman survives to_dict
         a.levels['1s2.2s 2S1/2']['F=0']['mF=0'].quadratic_zeeman = -155.305
@@ -617,7 +617,7 @@ class TestJSONSerialization:
         ex = EnergyLevel(Term('1s2.2p', '2P*', 0.5), level=50 * THz)
         a.add_level(gs)
         a.add_level(ex)
-        Transition(gs, ex)   # A=None
+        a.add_transition(Transition(gs, ex))  # A=None
 
         path = str(tmp_path / "no_a.json")
         a.save_json(path)

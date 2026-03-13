@@ -37,7 +37,7 @@ def _make_e1_atom(with_A=True):
     a.add_level(gs)
     a.add_level(ex)
     A_val = 10 * MHz if with_A else None
-    t = Transition(gs, ex, A=A_val)
+    t = a.add_transition(Transition(gs, ex, A=A_val))
     return a, gs, ex, t
 
 
