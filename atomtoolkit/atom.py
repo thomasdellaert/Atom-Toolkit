@@ -494,7 +494,7 @@ class ZLevel(HFLevel):
     A Zeeman sublevel (currently) is the lowest of the level hierarchy. It defines its position relative
     to a parent hyperfine sublevel, dependent on the atom's magnetic field. It has no sublevels.
     """
-
+    # CONSIDER: Should this inherit from BaseLevel instead?
     def __init__(self, term: MultiTerm, parent: HFLevel = None):
         super().__init__(term, parent)
         # FIXME: Originally I wanted this to accept an arbitrary lambda function etc to encompass any

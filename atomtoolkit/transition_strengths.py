@@ -62,12 +62,7 @@ def dipole_mel_to_A(mel, J0, J1, omega):
 @functools.lru_cache(maxsize=None)
 def tkq_transition_strength(I: float, k: int, q: int,
                             J0: float, F0: float, M0: float, J1: float, F1: float, M1: float) -> float:
-    prod = 1
-    prod *= (2 * F0 + 1) * (2 * F1 + 2) * wigner6j(J0, J1, k,
-                                                   F1, F0, I) ** 2
-    prod *= wigner3j(F1, k, F0,
-                     -M1, q, M0) ** 2
-    return prod
+    return tkq_mel(I, k, q, J0, F0, M0, J1, F1, M1)**2
 
 
 @functools.lru_cache(maxsize=None)
