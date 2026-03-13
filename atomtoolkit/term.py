@@ -73,11 +73,50 @@ class Term:
     def __repr__(self):
         return f'Term({self.name})'
 
-    def __eq__(self, other: Term or MultiTerm) -> bool:
-        # CONSIDER: rn this matches multiterms. Is this the behavior I want?
-        return self.quantum_nums == other.quantum_nums and \
-               self.conf == other.conf and \
-               self.term == other.term
+    def __eq__(self, other: object) -> bool:
+        """Strict equality: only matches another Term (never a MultiTerm), i/btw ncluding F and mF."""
+        if not isinstance(other, Term) or isinstance(other, MultiTerm):
+            return NotImplemented
+        if self.mF is not None and other.mF != self.mF:
+            return False
+        if self.F is not None and other.F != self.F:
+            return False
+        return (self.quantum_nums == other.quantum_nums
+                and self.conf == other.conf
+                and self.term == other.term)
+
+    def __hash__(self) -> int:
+        """Hash consistent with __eq__: based on conf, term, quantum_nums, F, and mF."""
+        return hash((self.conf, self.term, self.quantum_nums, self.F, self.mF))
+
+    def equal_to(self, other: Union['Term', 'MultiTerm'], level: str = None) -> bool:
+        """
+        Flexible equality comparison, optionally at a coarser level of the hierarchy.
+
+        Unlike ``__eq__``, this method accepts both ``Term`` and ``MultiTerm``
+        (comparing against the leading term of a MultiTerm).
+
+        :param other: the Term or MultiTerm to compare against
+        :param level: how much of the quantum-number hierarchy to compare:
+            - ``None``  — same as ``__eq__`` (strict, same-type only)
+            - ``'F'``   — compare conf, term, quantum_nums and F; ignore mF
+            - ``'J'``   — compare conf, term and quantum_nums only; ignore F and mF
+        :return: bool
+        """
+        if level is None:
+            return self == other   # strict: rejects MultiTerm
+        # For level-based comparison accept MultiTerm by comparing to its leading term
+        other_term: Term = other[0] if isinstance(other, MultiTerm) else other
+        if not isinstance(other_term, Term):
+            return NotImplemented
+        base = (self.quantum_nums == other_term.quantum_nums
+                and self.conf == other_term.conf
+                and self.term == other_term.term)
+        if level == 'J':
+            return base
+        if level == 'F':
+            return base and self.F == other_term.F
+        raise ValueError(f"Unknown level {level!r}: expected None, 'J', or 'F'")
 
     def make_term_copy(self, F: float = None, mF: float = None) -> Term:
         """
@@ -136,10 +175,26 @@ class MultiTerm(collections.abc.Sequence):
     def __len__(self) -> int:
         return self.terms.__len__()
 
-    def __eq__(self, other: Term or MultiTerm) -> bool:
-        if isinstance(other, Term):
-            return self[0] == other
-        return np.all([self[i] == other[i] for i in range(len(self))])
+    def __eq__(self, other: object) -> bool:
+        """Strict equality: only matches another MultiTerm (never a bare Term)."""
+        if not isinstance(other, MultiTerm):
+            return NotImplemented
+        if len(self) != len(other):
+            return False
+        return all(self[i] == other[i] for i in range(len(self)))
+
+    def __hash__(self) -> int:
+        return hash(tuple(self.terms))
+
+    def equal_to(self, other: Union[Term, 'MultiTerm'], level: str = None) -> bool:
+        """
+        Flexible equality comparison delegated to the leading term.
+
+        See ``Term.equal_to`` for full documentation.  Comparing a MultiTerm
+        against a bare Term (or another MultiTerm) at a given ``level`` compares
+        only the leading term of each.
+        """
+        return self[0].equal_to(other, level=level)
 
     def make_term_copy(self, F: float = None, mF: float = None) -> MultiTerm:
         """

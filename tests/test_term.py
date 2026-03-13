@@ -65,13 +65,15 @@ class TestMultiTerm:
     def test_getattribute(self):
         assert self.t1_100.quantum_nums == self.m100.quantum_nums
         assert self.t1_100.name == self.m100.name
-        assert self.m100 == self.t1_100
+        assert self.m100 != self.t1_100              # __eq__ never crosses types
+        assert self.m100.equal_to(self.t1_100, level='J')  # equal_to can
         assert self.m100.terms == [self.t1_100]
         assert self.m100.terms_dict == {100.0: self.t1_100}
 
         assert self.t1_60.quantum_nums == self.m6040.quantum_nums
         assert self.t1_60.name == self.m6040.name
-        assert self.m6040 == self.t1_60
+        assert self.m6040 != self.t1_60              # __eq__ never crosses types
+        assert self.m6040.equal_to(self.t1_60, level='J')  # equal_to can
         assert self.m6040.terms == [self.t1_60, self.t2_40]
         assert self.m6040.terms_dict == {60.0: self.t1_60, 40.0: self.t2_40}
 
@@ -81,7 +83,8 @@ class TestMultiTerm:
     def test_getitem(self):
         assert self.m6040[0] == self.t1_60
         assert self.m6040[1] == self.t2_40
-        assert self.m6040 == self.t1_60
+        assert self.m6040 != self.t1_60                     # __eq__ never crosses types
+        assert self.m6040.equal_to(self.t1_60, level='J')  # equal_to can
 
     def test_copy(self):
         m1 = self.m6040.make_term_copy()
@@ -98,3 +101,109 @@ class TestMultiTerm:
     def test_full_name(self):
         assert self.m100.full_name == '4f14.6s 2S1/2 (100.0%)'
         assert self.m6040.full_name == '4f14.6s 2S1/2 (60.0%)'
+
+
+class TestTermEqualitySemantics:
+    """Targeted tests for Term/__eq__, __hash__, and equal_to semantics."""
+
+    conf = '4f14.6s'
+    term_str = '2S'
+
+    # Base terms at J level
+    t_J = Term(conf, term_str, '1/2')
+
+    # F subterms
+    t_F0 = Term(conf, term_str, '1/2', F=0)
+    t_F1 = Term(conf, term_str, '1/2', F=1)
+
+    # mF subterms (mF=0 is the important edge case)
+    t_F1_mF0 = Term(conf, term_str, '1/2', F=1, mF=0)
+    t_F1_mFm1 = Term(conf, term_str, '1/2', F=1, mF=-1)
+
+    # Different J
+    t_other_conf = Term('4f14.6d', '2D', '5/2')
+
+    # MultiTerms wrapping the same leading term
+    m_J = MultiTerm(t_J)
+    m_F0 = MultiTerm(t_F0)
+
+    # --- Term.__eq__ strict same-type ---
+
+    def test_eq_same_term(self):
+        assert self.t_J == Term(self.conf, self.term_str, '1/2')
+
+    def test_eq_different_term(self):
+        assert self.t_J != self.t_other_conf
+
+    def test_eq_never_matches_multiterm(self):
+        """Term.__eq__ must return NotImplemented (-> !=) for MultiTerm."""
+        assert self.t_J != self.m_J
+
+    def test_eq_multiterm_never_matches_term(self):
+        """MultiTerm.__eq__ must return NotImplemented (-> !=) for Term."""
+        assert self.m_J != self.t_J
+
+    def test_eq_F_distinguishes(self):
+        """Two Terms with same J but different F are not equal."""
+        assert self.t_F0 != self.t_F1
+
+    def test_eq_mF_zero_distinguishes(self):
+        """mF=0 must not be treated as falsy — it still distinguishes terms."""
+        assert self.t_F1_mF0 != self.t_F1_mFm1
+
+    def test_eq_mF_zero_matches_self(self):
+        t_copy = Term(self.conf, self.term_str, '1/2', F=1, mF=0)
+        assert self.t_F1_mF0 == t_copy
+
+    # --- __hash__ consistent with __eq__ ---
+
+    def test_hash_equal_terms_equal_hash(self):
+        t_copy = Term(self.conf, self.term_str, '1/2')
+        assert hash(self.t_J) == hash(t_copy)
+
+    def test_hash_usable_in_set(self):
+        t_copy = Term(self.conf, self.term_str, '1/2')
+        s = {self.t_J, t_copy}
+        assert len(s) == 1
+
+    def test_hash_F_subterms_differ(self):
+        assert hash(self.t_F0) != hash(self.t_F1)
+
+    def test_multiterm_hash_usable_in_set(self):
+        m_copy = MultiTerm(Term(self.conf, self.term_str, '1/2'))
+        s = {self.m_J, m_copy}
+        assert len(s) == 1
+
+    # --- Term.equal_to cross-type and granularity ---
+
+    def test_equal_to_none_level_strict(self):
+        """equal_to(level=None) is strict __eq__: rejects MultiTerm."""
+        assert not self.t_J.equal_to(self.m_J)
+
+    def test_equal_to_J_accepts_multiterm(self):
+        assert self.t_J.equal_to(self.m_J, level='J')
+
+    def test_equal_to_J_ignores_F(self):
+        assert self.t_J.equal_to(self.t_F0, level='J')
+        assert self.t_F0.equal_to(self.t_F1, level='J')
+
+    def test_equal_to_F_respects_F(self):
+        assert not self.t_F0.equal_to(self.t_F1, level='F')
+        assert self.t_F0.equal_to(Term(self.conf, self.term_str, '1/2', F=0), level='F')
+
+    def test_equal_to_F_ignores_mF(self):
+        assert self.t_F1_mF0.equal_to(self.t_F1_mFm1, level='F')
+
+    def test_equal_to_unknown_level_raises(self):
+        import pytest
+        with pytest.raises(ValueError, match="Unknown level"):
+            self.t_J.equal_to(self.t_J, level='X')
+
+    # --- MultiTerm.equal_to delegates to leading term ---
+
+    def test_multiterm_equal_to_term_at_J(self):
+        assert self.m_J.equal_to(self.t_J, level='J')
+
+    def test_multiterm_equal_to_multiterm_at_J(self):
+        m2 = MultiTerm(Term(self.conf, self.term_str, '1/2'))
+        assert self.m_J.equal_to(m2, level='J')
