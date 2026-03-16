@@ -9,6 +9,10 @@ diagonalize_hfz(level, B_gauss)
 diagonalize_hfz_batch(level, B_array)
     Vectorized version returning {mF: eigenvalues_array (shape n_B x n_states)}.
 
+zeeman_sweep(level, B_array)
+    Returns {(F, mF): ndarray} of absolute energies in Hz over a B array.
+    This is the recommended high-level API for plotting Zeeman diagrams.
+
 breit_rabi(level, F, mF, B_gauss)
     Exact analytic Breit-Rabi energy for J=1/2 levels (Hz).
 
@@ -261,6 +265,63 @@ def breit_rabi(level: EnergyLevel, F: float, mF: float, B_gauss: float) -> float
 
 
 # ---------------------------------------------------------------------------
+# High-level sweep API
+# ---------------------------------------------------------------------------
+
+def zeeman_sweep(level: EnergyLevel, B_array) -> dict:
+    """Compute nonlinear Zeeman energies for all sublevels over a B array.
+
+    This is the recommended entry point for plotting Zeeman diagrams or
+    driving B-sweep simulations.  Internally it calls
+    :func:`diagonalize_hfz_batch` once and labels the resulting eigenvalues
+    by (F, mF) using adiabatic correspondence with the zero-field HF states.
+
+    If a spline LUT has been precomputed via
+    :meth:`~atomtoolkit.atom.EnergyLevel.precompute_zeeman`, individual
+    :meth:`~atomtoolkit.atom.ZLevel.level_hz_at` calls will be even faster;
+    but for a fresh sweep this function is the most efficient option.
+
+    Parameters
+    ----------
+    level : EnergyLevel
+        A fine-structure manifold with hyperfine structure set.
+    B_array : array-like
+        Magnetic field values in gauss.
+
+    Returns
+    -------
+    dict mapping (F, mF) -> ndarray of shape (len(B_array),)
+        Absolute energies in Hz for each sublevel at each field value.
+        F and mF are plain Python floats.
+
+    Examples
+    --------
+    >>> from atomtoolkit.zeeman import zeeman_sweep
+    >>> import numpy as np, matplotlib.pyplot as plt
+    >>> B = np.linspace(0, 500, 500)
+    >>> curves = zeeman_sweep(level, B)
+    >>> for (F, mF), energies in curves.items():
+    ...     plt.plot(B, (energies - level.level_Hz) / 1e6,
+    ...              label=f'F={F}, mF={mF}')
+    """
+    B_array = np.asarray(B_array, dtype=float)
+    batch = diagonalize_hfz_batch(level, B_array)
+
+    J = float(level.term.J)
+    I = float(level.atom.I)
+
+    result = {}
+    for mF, eigenvalues_array in batch.items():
+        F_sorted = sorted(
+            [float(f) for f in np.arange(abs(J - I), J + I + 1) if f >= abs(mF) - 1e-9],
+            key=lambda f: _hf_shift_hz(J, I, f, level.hfA_Hz, level.hfB_Hz, level.hfC_Hz),
+        )
+        for idx, F in enumerate(F_sorted):
+            result[(F, mF)] = eigenvalues_array[:, idx]
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Per-ZLevel energy with adiabatic state tracking
 # ---------------------------------------------------------------------------
 
@@ -316,3 +377,14 @@ def level_hz_nonlinear(zlevel: ZLevel, B_gauss: float) -> float:
     idx = _adiabatic_index(J, I, F, mF,
                            manifold.hfA_Hz, manifold.hfB_Hz, manifold.hfC_Hz)
     return float(eigenvalues[idx])
+
+
+# ---------------------------------------------------------------------------
+# TODO: Breit-Rabi / Zeeman diagram plot helper
+# ---------------------------------------------------------------------------
+# A plot_breit_rabi(level, B_array, ax=None, **kwargs) convenience function
+# should live in atomtoolkit/render/ (e.g. render/zeeman.py or render/spectra.py).
+# It should call zeeman_sweep(), subtract the zero-field centroid energy, and
+# colour curves by (F, mF) with a sensible legend.  Also useful:
+#   - Differential-frequency plot: (E_a(B) - E_b(B)) for a chosen qubit pair
+#   - Sensitivity plot: d(E_a - E_b)/dB via ZLevel.zeeman_sensitivity_hz_per_gauss()

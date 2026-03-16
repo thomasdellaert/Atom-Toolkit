@@ -410,3 +410,21 @@ def generate_full_from_dataframe(df, name, I=0.0, **kwargs):
         a.populate_transitions(**kwargs)
     a.populate_internal_transitions()
     return a
+
+
+# ---------------------------------------------------------------------------
+# TODO: Species registry
+# ---------------------------------------------------------------------------
+# A get_species(name) function (or atomtoolkit.load('Yb II 171')) that returns
+# a ready-to-use Atom from the bundled species library without requiring the
+# caller to know about species/ file paths.
+#
+# Suggested interface:
+#   atomtoolkit.available_species()  -> list of names, e.g. ['Yb II 171', 'Ba II 133', ...]
+#   atomtoolkit.load_species('Yb II 171') -> Atom  (loads from the prebuilt JSON snapshot)
+#
+# Missing species for common trapped-ion experiments that should be added:
+#   Ca II (40, 43), Sr II (87, 88), Mg II (25), Be II (9), Al II (27)
+# These share the same alkaline-earth-like structure as Yb II and Ba II and
+# would make the library immediately useful to a much larger fraction of the
+# trapped-ion community.

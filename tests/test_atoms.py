@@ -388,6 +388,203 @@ class TestSubtransitions:
 # TestIO
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# TestTransitionConvenienceMethods
+# ---------------------------------------------------------------------------
+
+class TestTransitionConvenienceMethods:
+    """Tests for BaseTransition.total_A, I_sat, saturation_parameter,
+    rabi_frequency, and scattering_rate on gross-level Transitions."""
+
+    def test_total_A_equals_A(self, dummy_atom):
+        """total_A on a gross Transition is the same object as .A."""
+        tc = dummy_atom.transitions[('1s2.2s 2S1/2', '1s2.2p 2P3/2')]
+        assert tc.total_A == tc.A
+
+    def test_total_A_none_when_no_A(self):
+        """total_A is None when the transition has no A coefficient."""
+        a = Atom(name="noA", I=0)
+        gs = EnergyLevel(Term('1s', '2S', 0.5), level=0.0 * Hz)
+        ex = EnergyLevel(Term('2p', '2P*', 0.5), level=50 * THz)
+        a.add_level(gs)
+        a.add_level(ex)
+        t = Transition(gs, ex)  # A=None
+        a.add_transition(t)
+        assert t.total_A is None
+
+    def test_I_sat_positive(self, dummy_atom):
+        """I_sat should be a positive quantity in W/m²."""
+        tc = dummy_atom.transitions[('1s2.2s 2S1/2', '1s2.2p 2P3/2')]
+        i_sat = tc.I_sat.to('W/m**2')
+        assert i_sat.magnitude > 0
+
+    def test_I_sat_raises_no_A(self):
+        """I_sat raises ValueError when A is None."""
+        a = Atom(name="noA", I=0)
+        gs = EnergyLevel(Term('1s', '2S', 0.5), level=0.0 * Hz)
+        ex = EnergyLevel(Term('2p', '2P*', 0.5), level=50 * THz)
+        a.add_level(gs)
+        a.add_level(ex)
+        t = Transition(gs, ex)
+        a.add_transition(t)
+        with pytest.raises(ValueError, match="no A coefficient"):
+            _ = t.I_sat
+
+    def test_saturation_parameter_at_I_sat(self, dummy_atom):
+        """s = 1 when intensity equals I_sat."""
+        tc = dummy_atom.transitions[('1s2.2s 2S1/2', '1s2.2p 2P3/2')]
+        s = tc.saturation_parameter(tc.I_sat)
+        assert s == pytest.approx(1.0, rel=1e-6)
+
+    def test_saturation_parameter_doubles_with_intensity(self, dummy_atom):
+        """Saturation parameter is linear in intensity."""
+        tc = dummy_atom.transitions[('1s2.2s 2S1/2', '1s2.2p 2P3/2')]
+        s1 = tc.saturation_parameter(tc.I_sat)
+        s2 = tc.saturation_parameter(2 * tc.I_sat)
+        assert s2 == pytest.approx(2 * s1, rel=1e-6)
+
+    def test_rabi_frequency_at_I_sat(self, dummy_atom):
+        """At I = I_sat (s=1), Ω/(2π) = A · √(1/2)."""
+        tc = dummy_atom.transitions[('1s2.2s 2S1/2', '1s2.2p 2P3/2')]
+        A_hz = tc.A.to(Hz).magnitude
+        rabi_hz = tc.rabi_frequency(tc.I_sat).to(Hz).magnitude
+        assert rabi_hz == pytest.approx(A_hz * np.sqrt(0.5), rel=1e-6)
+
+    def test_rabi_frequency_scales_sqrt_intensity(self, dummy_atom):
+        """Rabi frequency scales as √I: doubling I increases Ω by √2."""
+        tc = dummy_atom.transitions[('1s2.2s 2S1/2', '1s2.2p 2P3/2')]
+        r1 = tc.rabi_frequency(tc.I_sat).magnitude
+        r4 = tc.rabi_frequency(4 * tc.I_sat).magnitude
+        assert r4 == pytest.approx(2 * r1, rel=1e-6)
+
+    def test_scattering_rate_on_resonance(self, dummy_atom):
+        """On resonance at I = I_sat (s=1): R_sc = Γ/2 · 1/(1+1) = Γ/4."""
+        tc = dummy_atom.transitions[('1s2.2s 2S1/2', '1s2.2p 2P3/2')]
+        R = tc.scattering_rate(tc.I_sat).to(Hz).magnitude
+        Gamma = tc.A.to(Hz).magnitude
+        assert R == pytest.approx(Gamma / 4, rel=1e-6)
+
+    def test_scattering_rate_saturates_at_high_I(self, dummy_atom):
+        """R_sc saturates to Γ/2 as I → ∞."""
+        tc = dummy_atom.transitions[('1s2.2s 2S1/2', '1s2.2p 2P3/2')]
+        R = tc.scattering_rate(1e9 * tc.I_sat).to(Hz).magnitude
+        Gamma = tc.A.to(Hz).magnitude
+        assert R == pytest.approx(Gamma / 2, rel=1e-3)
+
+    def test_scattering_rate_reduced_by_detuning(self, dummy_atom):
+        """Off-resonance scattering rate is less than on-resonance."""
+        tc = dummy_atom.transitions[('1s2.2s 2S1/2', '1s2.2p 2P3/2')]
+        R_on = tc.scattering_rate(tc.I_sat)
+        R_off = tc.scattering_rate(tc.I_sat, detuning=tc.A)  # Δ = Γ
+        assert R_off.magnitude < R_on.magnitude
+
+    def test_scattering_rate_raises_no_A(self):
+        """scattering_rate raises ValueError when A is None."""
+        a = Atom(name="noA", I=0)
+        gs = EnergyLevel(Term('1s', '2S', 0.5), level=0.0 * Hz)
+        ex = EnergyLevel(Term('2p', '2P*', 0.5), level=50 * THz)
+        a.add_level(gs)
+        a.add_level(ex)
+        t = Transition(gs, ex)
+        a.add_transition(t)
+        with pytest.raises(ValueError, match="no A coefficient"):
+            t.scattering_rate(Q_(1.0, 'W/m**2'))
+
+
+# ---------------------------------------------------------------------------
+# TestSubtransitionConvenienceMethods
+# ---------------------------------------------------------------------------
+
+class TestSubtransitionConvenienceMethods:
+    """Tests that total_A, I_sat, and scattering_rate behave correctly on
+    HFTransition and ZTransition subtransitions."""
+
+    @pytest.fixture
+    def hf_atom(self):
+        """I=1/2 atom with one cooling transition for subtransition tests."""
+        a = Atom(name="hf_test", I=0.5)
+        gs = EnergyLevel(Term('1s2.2s', '2S', 0.5), level=0.0 * Hz, hfA=1 * GHz)
+        ex = EnergyLevel(Term('1s2.2p', '2P', 1.5), level=200 * THz, hfA=500 * MHz)
+        a.add_level(gs)
+        a.add_level(ex)
+        a.add_transition(Transition(gs, ex, A=10 * MHz))
+        return a
+
+    def test_hftransition_total_A_equals_gross(self, hf_atom):
+        """HFTransition.total_A equals the gross Transition.A."""
+        gross = list(hf_atom.transitions.values())[0]
+        gross_A_hz = gross.A.to(Hz).magnitude
+        for hft in gross.subtransitions():
+            assert hft.total_A.to(Hz).magnitude == pytest.approx(gross_A_hz, rel=1e-10)
+
+    def test_ztransition_total_A_equals_gross(self, hf_atom):
+        """ZTransition.total_A equals the root gross Transition.A."""
+        gross = list(hf_atom.transitions.values())[0]
+        gross_A_hz = gross.A.to(Hz).magnitude
+        for hft in gross.subtransitions():
+            for zt in hft.subtransitions():
+                assert zt.total_A.to(Hz).magnitude == pytest.approx(gross_A_hz, rel=1e-10)
+
+    def test_hftransition_scattering_rate_saturates_to_total_A_over_2(self, hf_atom):
+        """Max R_sc for any non-forbidden HFTransition equals total_A/2."""
+        gross = list(hf_atom.transitions.values())[0]
+        Gamma_hz = gross.A.to(Hz).magnitude
+        for hft in gross.subtransitions():
+            if hft.rel_strength == 0.0:
+                continue  # skip forbidden HF subtransitions (e.g. ΔF=2)
+            R = hft.scattering_rate(1e9 * hft.I_sat).to(Hz).magnitude
+            assert R == pytest.approx(Gamma_hz / 2, rel=1e-3)
+
+    def test_ztransition_scattering_rate_saturates_to_total_A_over_2(self, hf_atom):
+        """Max R_sc for any non-forbidden ZTransition equals total_A/2."""
+        gross = list(hf_atom.transitions.values())[0]
+        Gamma_hz = gross.A.to(Hz).magnitude
+        for hft in gross.subtransitions():
+            for zt in hft.subtransitions():
+                if zt.rel_strength == 0.0:
+                    continue  # pre-existing: forbidden subtransitions have rel_strength=0
+                R = zt.scattering_rate(1e9 * zt.I_sat).to(Hz).magnitude
+                assert R == pytest.approx(Gamma_hz / 2, rel=1e-3)
+
+    def test_I_sat_forbidden_raises(self, hf_atom):
+        """I_sat raises ValueError for a subtransition with rel_strength=0."""
+        gross = list(hf_atom.transitions.values())[0]
+        found_forbidden = False
+        for hft in gross.subtransitions():
+            for zt in hft.subtransitions():
+                if zt.rel_strength == 0.0:
+                    found_forbidden = True
+                    with pytest.raises(ValueError, match="forbidden"):
+                        _ = zt.I_sat
+        if not found_forbidden:
+            pytest.skip("No forbidden subtransitions found for this atom — skipping rel_strength=0 check")
+
+
+# ---------------------------------------------------------------------------
+# TestAtomStubs
+# ---------------------------------------------------------------------------
+
+class TestAtomStubs:
+    """Tests that unimplemented Atom convenience methods raise NotImplementedError."""
+
+    def test_transitions_near_raises(self, dummy_atom):
+        with pytest.raises(NotImplementedError):
+            dummy_atom.transitions_near(200 * THz, 1 * THz)
+
+    def test_find_clock_transitions_raises(self, dummy_atom):
+        with pytest.raises(NotImplementedError):
+            dummy_atom.find_clock_transitions()
+
+    def test_ac_stark_shift_raises(self, dummy_atom):
+        level = dummy_atom.levels['1s2.2s 2S1/2']
+        with pytest.raises(NotImplementedError):
+            dummy_atom.ac_stark_shift(level, 200 * THz, Q_(1.0, 'W/m**2'))
+
+    def test_doppler_cooling_limit_raises(self, dummy_atom):
+        with pytest.raises(NotImplementedError):
+            dummy_atom.doppler_cooling_limit(('1s2.2s 2S1/2', '1s2.2p 2P3/2'))
+
+
 class TestIO:
     """Tests for atomtoolkit.IO hyperfine CSV roundtrip."""
 

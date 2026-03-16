@@ -369,3 +369,79 @@ class TestSerialisation:
     def test_gI_default_zero(self):
         a = Atom(name="test", I=0.5)
         assert a.gI == 0.0
+
+
+# ---------------------------------------------------------------------------
+# ZLevel.zeeman_sensitivity_hz_per_gauss
+# ---------------------------------------------------------------------------
+
+class TestZeemanSensitivity:
+    """Tests for ZLevel.zeeman_sensitivity_hz_per_gauss (linear and nonlinear)."""
+
+    def test_linear_mF0_zero_sensitivity(self, gs_level):
+        """In the linear Zeeman regime, mF=0 states have zero first-order sensitivity."""
+        assert not gs_level.use_nonlinear_zeeman
+        z_F1_mF0 = gs_level['F=1']['mF=0']
+        sens = z_F1_mF0.zeeman_sensitivity_hz_per_gauss()
+        assert sens == pytest.approx(0.0, abs=1e-10)
+
+    def test_linear_mF1_positive_sensitivity(self, gs_level):
+        """In the linear Zeeman regime, mF=+1 has a positive sensitivity of order MHz/G."""
+        assert not gs_level.use_nonlinear_zeeman
+        z = gs_level['F=1']['mF=1']
+        sens = z.zeeman_sensitivity_hz_per_gauss()
+        assert sens > 0
+        assert abs(sens) > 1e5  # at least 0.1 MHz/G for any reasonable gF
+
+    def test_linear_mF_opposite_sign(self, gs_level):
+        """mF=+1 and mF=-1 have equal magnitude and opposite sign sensitivity."""
+        assert not gs_level.use_nonlinear_zeeman
+        z_pos = gs_level['F=1']['mF=1']
+        z_neg = gs_level['F=1']['mF=-1']
+        s_pos = z_pos.zeeman_sensitivity_hz_per_gauss()
+        s_neg = z_neg.zeeman_sensitivity_hz_per_gauss()
+        assert s_pos == pytest.approx(-s_neg, rel=1e-10)
+
+    def test_linear_equals_gF_times_mF_times_muB(self, gs_level):
+        """Linear sensitivity equals gF·mF·μB exactly."""
+        from atomtoolkit import mu_B, Hz, Q_
+        G = Q_(1.0, 'gauss')
+        assert not gs_level.use_nonlinear_zeeman
+        z = gs_level['F=1']['mF=1']
+        expected = z.gF * z.term.mF * float(mu_B.to(Hz / G).magnitude)
+        assert z.zeeman_sensitivity_hz_per_gauss() == pytest.approx(expected, rel=1e-10)
+
+    def test_nonlinear_mF1_nonzero_at_finite_B(self, gs_level):
+        """In the nonlinear regime, mF=1 has nonzero sensitivity at finite B."""
+        gs_level.use_nonlinear_zeeman = True
+        # Clear quadratic_zeeman to suppress warnings
+        for hfl in list(gs_level._sublevels.values()):
+            for zl in list(hfl._sublevels.values()):
+                zl.quadratic_zeeman = 0.0
+        z = gs_level['F=1']['mF=1']
+        sens = z.zeeman_sensitivity_hz_per_gauss(B_gauss=10.0)
+        assert np.isfinite(sens)
+        assert abs(sens) > 1e5  # order MHz/G
+
+    def test_nonlinear_clock_state_small_at_low_B(self, gs_level):
+        """Clock state (F=0, mF=0) sensitivity is near zero at low B in nonlinear mode."""
+        gs_level.use_nonlinear_zeeman = True
+        for hfl in list(gs_level._sublevels.values()):
+            for zl in list(hfl._sublevels.values()):
+                zl.quadratic_zeeman = 0.0
+        z_clock = gs_level['F=0']['mF=0']
+        # At 0.01 G (much below the Breit-Rabi kink) the clock state has tiny sensitivity
+        sens = z_clock.zeeman_sensitivity_hz_per_gauss(B_gauss=0.01)
+        # Should be much smaller than the MHz/G scale of the stretched state
+        assert abs(sens) < 1e4  # less than 10 kHz/G
+
+    def test_nonlinear_finite_difference_step_independence(self, gs_level):
+        """Result is stable across a decade of finite-difference step sizes."""
+        gs_level.use_nonlinear_zeeman = True
+        for hfl in list(gs_level._sublevels.values()):
+            for zl in list(hfl._sublevels.values()):
+                zl.quadratic_zeeman = 0.0
+        z = gs_level['F=1']['mF=1']
+        s1 = z.zeeman_sensitivity_hz_per_gauss(B_gauss=10.0, delta=1e-3)
+        s2 = z.zeeman_sensitivity_hz_per_gauss(B_gauss=10.0, delta=1e-2)
+        assert s1 == pytest.approx(s2, rel=1e-4)

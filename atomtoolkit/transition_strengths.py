@@ -227,6 +227,24 @@ def LK_to_LS(J: float, L: float, K: float, sc: float, so: float) -> np.array:
     return np.stack([outls, outss, outpercs])
 
 
+# ---------------------------------------------------------------------------
+# TODO: Dynamic polarizability and blackbody radiation (BBR) shift
+# ---------------------------------------------------------------------------
+# dynamic_polarizability(atom, level, laser_freq) -> (alpha_scalar, alpha_tensor, alpha_vector)
+#   Compute the scalar, tensor, and vector dynamic polarizabilities by summing
+#   reduced matrix elements over all connected levels weighted by detuning.
+#   Requires A coefficients on all relevant transitions.
+#
+# bbr_shift(atom, level, T_K=300.0) -> pint.Quantity (Hz)
+#   Blackbody radiation shift via ΔE_BBR = -(1/2) α_scalar(ω=0) · <E²>_BBR
+#   where <E²>_BBR = (831.9 V/m)² · (T/300 K)⁴ for room temperature.
+#   Essential for optical lattice clock evaluations.
+#
+# magic_wavelength(atom, level_a, level_b) -> list of pint.Quantity
+#   Find wavelengths where alpha_scalar(level_a) == alpha_scalar(level_b), i.e.
+#   where the differential AC Stark shift on the qubit transition vanishes.
+
+
 if __name__ == '__main__':
     print(JJ_to_LS(3.5, 3.5, 0, 3, 0.5, 1, 1))
 

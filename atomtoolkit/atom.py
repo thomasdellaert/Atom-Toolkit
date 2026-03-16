@@ -620,6 +620,35 @@ class ZLevel(HFLevel):
         """Nonlinear Zeeman shift only (absolute energy minus EnergyLevel centroid)."""
         return self.level_hz_nonlinear(B_gauss) - self.manifold.level_Hz
 
+    def zeeman_sensitivity_hz_per_gauss(self, B_gauss: float = 0.0, delta: float = 1e-3) -> float:
+        """First-order Zeeman sensitivity dE/dB in Hz/G at a given field.
+
+        For linear Zeeman levels (``use_nonlinear_zeeman=False``), returns the exact
+        first-order coefficient gF·mF·μB.
+
+        For nonlinear Zeeman levels, evaluates a central finite-difference derivative
+        of the exact H_HF + H_Z eigenenergy, making it straightforward to scan for
+        magnetically-insensitive ('clock') states where the sensitivity crosses zero.
+
+        Parameters
+        ----------
+        B_gauss : float
+            Magnetic field in gauss at which to evaluate the sensitivity.
+            Defaults to B = 0.
+        delta : float
+            Finite-difference step in gauss (default 1e-3 G).
+
+        Returns
+        -------
+        float : dE/dB in Hz/G.
+        """
+        if self.manifold.use_nonlinear_zeeman:
+            if B_gauss > delta:
+                return (self.level_hz_at(B_gauss + delta) - self.level_hz_at(B_gauss - delta)) / (2 * delta)
+            else:
+                return (self.level_hz_at(B_gauss + delta) - self.level_hz_at(B_gauss)) / delta
+        return self.gF * self.term.mF * float(mu_B.to(Hz / G).magnitude)
+
     @property
     def shift_Hz(self) -> float:
         """Zeeman shift at B=0 (always zero; use shift_hz_at(B) for finite fields)."""
@@ -729,6 +758,135 @@ class BaseTransition(ABC):
     @property
     def omega(self) -> pint.Quantity:
         return self.freq * 2 * np.pi
+
+    @property
+    def total_A(self) -> Optional[pint.Quantity]:
+        """Total spontaneous emission rate from the upper level (Hz).
+
+        For gross-level Transitions this equals ``self.A``.  For HFTransitions
+        and ZTransitions it climbs the parent chain to the root Transition,
+        returning the gross natural linewidth Γ that governs saturation and
+        scattering.
+        """
+        t = self
+        while t.parent is not None:
+            t = t.parent
+        return t.A
+
+    @property
+    def I_sat(self) -> pint.Quantity:
+        """Saturation intensity for this transition (W/m²).
+
+        For a gross-level Transition (``rel_strength = 1``) this is the standard
+        cycling-transition saturation intensity:
+
+            I_sat = π h ν³ Γ / (3 c²)
+
+        For a subtransition (HFTransition, ZTransition) with angular-momentum
+        coupling factor ``S = rel_strength < 1``, the saturation intensity is
+        higher because the sublevel pair couples to the field with a reduced
+        dipole matrix element d_sub = d_cycling · √S:
+
+            I_sat_sub = π h ν³ Γ / (3 c² S) = I_sat_cycling / S
+
+        Here Γ = ``total_A`` is the gross Einstein A coefficient (total natural
+        linewidth), not the partial linewidth ``self.A`` of the subtransition.
+
+        Raises
+        ------
+        ValueError : if the gross-level A coefficient is missing, or if
+            ``rel_strength == 0`` (forbidden transition — I_sat is undefined).
+        """
+        A_total = self.total_A
+        if A_total is None:
+            raise ValueError(
+                f"Transition {self.name!r} has no A coefficient — cannot compute I_sat."
+            )
+        if self.rel_strength == 0.0:
+            raise ValueError(
+                f"Transition {self.name!r} is forbidden (rel_strength=0) — I_sat is undefined."
+            )
+        h = ureg.planck_constant
+        c = ureg.speed_of_light
+        return (np.pi * h * self.freq ** 3 * A_total / (3 * c ** 2 * self.rel_strength)).to('W/m**2')
+
+    def saturation_parameter(self, intensity: pint.Quantity) -> float:
+        """On-resonance saturation parameter s = I / I_sat (dimensionless).
+
+        For a subtransition, ``I_sat`` is the sublevel-specific saturation
+        intensity (larger than the cycling-transition value by ``1/rel_strength``),
+        so *s* already accounts for the reduced coupling strength.
+
+        Parameters
+        ----------
+        intensity : pint Quantity
+            Laser intensity (any unit convertible to W/m²).
+
+        Returns
+        -------
+        float : s = I / I_sat.
+        """
+        return float((intensity / self.I_sat).to('').magnitude)
+
+    def rabi_frequency(self, intensity: pint.Quantity) -> pint.Quantity:
+        """On-resonance Rabi frequency Ω/(2π) for this transition (Hz).
+
+        Derived from Ω = Γ √(s/2) where Γ = ``total_A`` is the gross natural
+        linewidth and *s* = ``saturation_parameter(intensity)`` is the
+        sublevel-specific saturation parameter.  For a gross-level Transition
+        (``rel_strength=1``) this is the cycling Rabi frequency.  For a
+        subtransition it is reduced by √(rel_strength), reflecting the weaker
+        coupling.  The angular Rabi frequency for Hamiltonians is 2π × this
+        value.
+
+        Parameters
+        ----------
+        intensity : pint Quantity
+            Laser intensity (any unit convertible to W/m²).
+
+        Returns
+        -------
+        pint Quantity : Ω/(2π) in Hz.
+        """
+        A_total = self.total_A
+        if A_total is None:
+            raise ValueError(f"Transition {self.name!r} has no A coefficient.")
+        s = self.saturation_parameter(intensity)
+        return (A_total * np.sqrt(s / 2)).to(Hz)
+
+    def scattering_rate(self, intensity: pint.Quantity,
+                        detuning: pint.Quantity = None) -> pint.Quantity:
+        """Photon scattering rate for a two-level model (photons/s).
+
+        Uses the optical Bloch equation steady-state result:
+
+            R_sc = (Γ/2) · s / (1 + s + (2Δ/Γ)²)
+
+        where Γ = ``total_A`` is the gross natural linewidth, *s* =
+        ``saturation_parameter(intensity)`` is the sublevel-specific saturation
+        parameter, and Δ is the laser detuning.  At resonance the rate saturates
+        to Γ/2 as I → ∞ regardless of which sublevel pair is driven; at large
+        detuning it tends to (Γ/4) · s · (Γ/Δ)².
+
+        Parameters
+        ----------
+        intensity : pint Quantity
+            Laser intensity (any unit convertible to W/m²).
+        detuning : pint Quantity, optional
+            Laser detuning from resonance (any unit convertible to Hz).
+            Defaults to on-resonance (Δ = 0).
+
+        Returns
+        -------
+        pint Quantity : scattering rate in Hz (photons/s).
+        """
+        A_total = self.total_A
+        if A_total is None:
+            raise ValueError(f"Transition {self.name!r} has no A coefficient.")
+        s = self.saturation_parameter(intensity)
+        Gamma = A_total.to(Hz)
+        x2 = 0.0 if detuning is None else float((2 * detuning.to(Hz) / Gamma).magnitude) ** 2
+        return (Gamma / 2 * s / (1 + s + x2)).to(Hz)
 
     def compute_linewidth(self) -> Tuple[pint.Quantity or None, float]:
         """
@@ -1473,7 +1631,14 @@ class Atom:
     def compute_branching_ratios(self, key: str) -> Dict[str: float]:
         """
         Compute the branching ratios from a level to other levels.
-        Requires that all levels to be considered have assigned A coefficients
+        Requires that all levels to be considered have assigned A coefficients.
+
+        Note: this only considers direct (one-step) decays.  For cascade branching
+        (e.g. excited → metastable → ground) see the TODO below.
+
+        TODO: add compute_cascade_branching_ratios() that follows multi-step decay
+        chains and returns effective ground-state population fractions.
+
         :param key: the key of the level to compute
         :return: a dict of level names and the branching ratios to those levels
         """
@@ -1490,6 +1655,94 @@ class Atom:
 
         ratios = {k.name: t.magnitude / totalAs for k, t in A_coeffs.items()}
         return ratios
+
+    def transitions_near(self, center: pint.Quantity, tolerance: pint.Quantity) -> List[Transition]:
+        """Find all transitions within *tolerance* of *center* wavelength or frequency.
+
+        TODO: Not yet implemented.
+
+        Parameters
+        ----------
+        center : pint Quantity
+            Centre wavelength (nm, m, …) or frequency (Hz, THz, …) to search near.
+        tolerance : pint Quantity
+            Half-width of the search window in the same unit family.
+
+        Returns
+        -------
+        list of Transition sorted by proximity to *center*.
+        """
+        raise NotImplementedError("transitions_near is not yet implemented.")
+
+    def find_clock_transitions(
+            self,
+            B_range: Tuple[float, float] = (0.0, 100.0),
+            sensitivity_threshold: float = 1e3,
+    ) -> List[Tuple['ZLevel', 'ZLevel', float]]:
+        """Find Zeeman sublevel pairs with near-zero first-order field sensitivity.
+
+        A 'clock' pair (|a⟩, |b⟩) satisfies |d(E_a - E_b)/dB| < sensitivity_threshold
+        at some field B inside *B_range*.  Requires ``use_nonlinear_zeeman=True`` on
+        the relevant manifolds to capture nonlinear turning points.
+
+        TODO: Not yet implemented.
+
+        Parameters
+        ----------
+        B_range : (float, float)
+            Search range in gauss (default 0–100 G).
+        sensitivity_threshold : float
+            Maximum differential sensitivity in Hz/G to consider clock-like.
+
+        Returns
+        -------
+        list of (lower_ZLevel, upper_ZLevel, B_zero_crossing_gauss) tuples.
+        """
+        raise NotImplementedError("find_clock_transitions is not yet implemented.")
+
+    def ac_stark_shift(self, level: EnergyLevel, laser_freq: pint.Quantity,
+                       intensity: pint.Quantity) -> pint.Quantity:
+        """Scalar AC Stark shift on *level* from an off-resonant laser (Hz).
+
+        Computes ΔE = Σ_j ħΩ_j² / (2(ω - ω_j)) summed over all connected levels j,
+        using the A coefficients and transition matrix elements stored in the atom.
+        Requires A coefficients on all connected transitions.
+
+        TODO: Not yet implemented.  Also missing: tensor and vector light shifts,
+        magic-wavelength finder (where the differential shift between two levels
+        vanishes), and dynamic polarizability as a function of laser wavelength.
+
+        Parameters
+        ----------
+        level : EnergyLevel
+            The level whose energy shift is requested.
+        laser_freq : pint Quantity
+            Laser frequency (Hz, THz, nm, …).
+        intensity : pint Quantity
+            Laser intensity (W/m², mW/cm², …).
+
+        Returns
+        -------
+        pint Quantity : AC Stark shift in Hz.
+        """
+        raise NotImplementedError("ac_stark_shift is not yet implemented.")
+
+    def doppler_cooling_limit(self, transition_key: Tuple[str, str]) -> pint.Quantity:
+        """Doppler cooling limit temperature T_D = ħΓ/(2k_B) for a transition (K).
+
+        TODO: Not yet implemented.  Related quantities also missing:
+        maximum scattering force F_max = ħkΓ/2, radiation pressure acceleration,
+        and capture velocity for a given beam geometry.
+
+        Parameters
+        ----------
+        transition_key : (lower_name, upper_name)
+
+        Returns
+        -------
+        pint Quantity : Doppler limit temperature in K.
+        """
+        raise NotImplementedError("doppler_cooling_limit is not yet implemented.")
 
     def enforce_consistency(self, node_or_trans: BaseLevel or BaseTransition = None):
         """Enforces consistency of the Atom's internal levelsModel. It does this by traversing all the
