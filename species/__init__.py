@@ -32,14 +32,43 @@ Alkali metals (neutral):
     Cs_I_133     I=7/2
     Fr_I_211     I=9/2
 
+MOT-trapped neutrals, alkaline-earth-like (1S0 ground state, two-stage broad/narrow MOT):
+    Mg_I_24      I=0     Ca_I_40     I=0
+    Sr_I_88      I=0     Sr_I_87     I=9/2   -- 698 nm lattice clock
+    Yb_I_174     I=0     Yb_I_171    I=1/2   -- 578 nm lattice clock, tweezer qubit
+                         Yb_I_173    I=5/2
+    Hg_I_202     I=0     Hg_I_199    I=1/2
+    Cd_I_112     I=0
+
+MOT-trapped neutrals, strongly magnetic (dipolar quantum gases):
+    Dy_I_164     I=0     Dy_I_161    I=5/2   -- mu = 10 mu_B, the most magnetic neutral atom
+    Er_I_166     I=0     Er_I_167    I=7/2   -- mu = 7 mu_B
+    Cr_I_52      I=0     -- mu = 6 mu_B, the first dipolar BEC
+    Tm_I_169     I=1/2   -- 1.14 um inner-shell clock transition
+
+MOT-trapped metastable noble gases (NOTE: the trapped state is a metastable *excited*
+state, not the ground state -- reference it explicitly, e.g. He4.levels['1s.2s 3S1']):
+    He_I_4       I=0     -- metastable 1s.2s 3S1, cooled at 1083 nm
+    Ne_I_20      I=0     -- metastable 3s 2[3/2]*2, cooled at 640 nm
+
 Other:
-    Tm_II_169    I=1/2   -- lanthanide ion with a transition list
+    Tm_II_169    I=1/2   -- lanthanide ion with a transition list (the *ion*; see Tm_I_169
+                            for the MOT-trapped neutral)
     Ho_I_165     I=7/2   -- deliberately difficult: J=15/2 ground state, 128 ground-manifold
                             Zeeman sublevels, JK/JJ-coupled excited configurations, and a
                             hyperfine B larger than its A. Use it as a stress test.
 
 Conventions and caveats
 -----------------------
+* **Short names.** Each module exposes its Atom as element+mass (``Sr88``, ``Dy164``). Where a
+  neutral and an ion of the *same isotope* both exist, the neutral takes a trailing ``n`` to
+  keep the two apart: ``Sr_II_87.Sr87`` is the ion, ``Sr_I_87.Sr87n`` the neutral. Import the
+  module rather than the bare name and the distinction never bites you.
+* **Forbidden clock transitions.** ``1S0 -> 3P*0`` is J=0 -> J=0, forbidden for every
+  multipole, and only weakly allowed in odd isotopes via hyperfine mixing. It is therefore
+  never auto-populated and is added by hand in Sr_I_87 and Yb_I_171, where its
+  ``allowed_types`` correctly reads all-False. The same applies to the ions' E2 clock lines,
+  which are forbidden only at E1 and so also need adding explicitly.
 * ``atom.gI`` is the *signed nuclear g-factor in nuclear magneton units*. The alkalis use
   measured, diamagnetically shielded atomic g_I values (converted from the Bohr-magneton
   convention used by Steck's alkali data documents). The ions mostly use the bare

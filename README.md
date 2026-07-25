@@ -150,15 +150,64 @@ touches the network. Run a species file as `__main__` to regenerate its `.json` 
 | `K_I_39` | ³⁹K | 3/2 | `Cs_I_133` | ¹³³Cs | 7/2 |
 | `K_I_40` | ⁴⁰K | 4 | `Fr_I_211` | ²¹¹Fr | 9/2 |
 
+**MOT-trapped neutrals — alkaline-earth-like** (¹S₀ ground state, two-stage broad/narrow MOT)
+
+| Module | Species | I | Notes |
+|---|---|---|---|
+| `Mg_I_24` | ²⁴Mg | 0 | 285 nm MOT |
+| `Ca_I_40` | ⁴⁰Ca | 0 | 423 nm MOT, 657 nm clock line |
+| `Sr_I_88` | ⁸⁸Sr | 0 | 461 nm blue MOT → 689 nm red MOT |
+| `Sr_I_87` | ⁸⁷Sr | 9/2 | 698 nm optical lattice clock |
+| `Yb_I_174` | ¹⁷⁴Yb | 0 | 399 nm blue MOT → 556 nm green MOT |
+| `Yb_I_171` | ¹⁷¹Yb | 1/2 | 578 nm lattice clock; nuclear-spin tweezer qubit |
+| `Yb_I_173` | ¹⁷³Yb | 5/2 | SU(N) physics |
+| `Hg_I_202` | ²⁰²Hg | 0 | 254 nm MOT, cooled directly on the narrow line |
+| `Hg_I_199` | ¹⁹⁹Hg | 1/2 | 266 nm clock line |
+| `Cd_I_112` | ¹¹²Cd | 0 | 229 nm MOT |
+
+**MOT-trapped neutrals — strongly magnetic** (dipolar quantum gases)
+
+| Module | Species | I | Notes |
+|---|---|---|---|
+| `Dy_I_164` | ¹⁶⁴Dy | 0 | μ ≈ 10 μ_B, the most magnetic neutral atom; 421/626 nm MOT |
+| `Dy_I_161` | ¹⁶¹Dy | 5/2 | fermionic dipolar gas |
+| `Er_I_166` | ¹⁶⁶Er | 0 | μ ≈ 7 μ_B; 401/583 nm MOT |
+| `Er_I_167` | ¹⁶⁷Er | 7/2 | hyperfine *B* ≫ *A*, so nonlinear Zeeman is enabled |
+| `Cr_I_52` | ⁵²Cr | 0 | μ ≈ 6 μ_B, the first dipolar BEC; 426 nm MOT |
+| `Tm_I_169` | ¹⁶⁹Tm | 1/2 | 411 nm MOT; 1.14 μm inner-shell clock transition |
+
+**MOT-trapped metastable noble gases**
+
+⚠️ The trapped state is a metastable *excited* state, not the ground state. These modules
+build from the true ground state as usual, so reference the metastable level explicitly:
+
+```python
+from species import He_I_4
+metastable = He_I_4.He4.levels['1s.2s 3S1']   # 19.8 eV above the ground state
+```
+
+| Module | Species | I | Notes |
+|---|---|---|---|
+| `He_I_4` | ⁴He\* | 0 | metastable 1s2s ³S₁ (τ ≈ 7900 s), cooled at 1083 nm |
+| `Ne_I_20` | ²⁰Ne\* | 0 | metastable 3s ²[3/2]°₂, cooled at 640 nm; JK-coupled |
+
 **Other**
 
 | Module | Species | I | Notes |
 |---|---|---|---|
-| `Tm_II_169` | ¹⁶⁹Tm⁺ | 1/2 | lanthanide ion, ships with a transition list |
+| `Tm_II_169` | ¹⁶⁹Tm⁺ | 1/2 | lanthanide *ion*, ships with a transition list (see `Tm_I_169` for the MOT-trapped neutral) |
 | `Ho_I_165` | ¹⁶⁵Ho | 7/2 | J=15/2 ground state → **128** ground-manifold Zeeman sublevels; JK/JJ-coupled excited configurations; hyperfine *B* larger than *A*. Useful as a stress test. |
 
 Caveats worth knowing before using these for precision work:
 
+- **Short names.** Modules expose their atom as element+mass (`Sr88`, `Dy164`). Where a
+  neutral and an ion of the *same isotope* both exist, the neutral takes a trailing `n`:
+  `Sr_II_87.Sr87` is the ion, `Sr_I_87.Sr87n` the neutral. Import the module, not the bare
+  name, and the two never collide.
+- **Forbidden clock transitions.** `¹S₀ → ³P°₀` is J=0 → J=0, which is forbidden for *every*
+  multipole and only becomes weakly allowed in odd isotopes through hyperfine mixing. It is
+  never populated automatically; `Sr_I_87` and `Yb_I_171` add it explicitly with its measured
+  frequency, and its `allowed_types` correctly reads all-False.
 - **Nuclear g-factors.** `atom.gI` is signed, in nuclear magneton units. The alkalis use
   measured, diamagnetically shielded atomic *g*<sub>I</sub> values; the ions mostly use the
   bare `μ_I / I` ratio, which runs ~0.5% larger. That is enough to move a magic field by
