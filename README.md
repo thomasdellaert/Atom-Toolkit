@@ -20,7 +20,8 @@ A Python package for manipulating atomic physics data in a notebook environment.
 - **Automatic sublevel transitions** — setting a frequency or Einstein A coefficient on an `EnergyLevel` transition propagates down to all HF and Zeeman sub-transitions, applying the correct selection rules and angular-momentum weights
 - **Support for LS, JJ, LK, and JK couplings**, with quantum numbers extracted automatically from NIST-format configuration and term strings
 - **Branching ratios and lifetimes** computed from A coefficients
-- **Grotrian diagrams and spectra** — matplotlib-based plots of level structure and spectral lineshapes (in development)
+- **Grotrian diagrams** — publication-quality SVG, generated directly rather than through matplotlib: term-symbol labels, hyperfine and Zeeman substructure drawn exaggerated in place on one honest scale, and transitions coloured by their own wavelength
+- **Spectra** — matplotlib-based spectral lineshape plots (in development)
 - **Serialisation** — save/load atoms to disk as JSON for fast repeated use
 
 ## Installation
@@ -87,6 +88,54 @@ repump_935.A = Q_(120, 'kHz')
 print(d32['F=2']['mF=-1'].level)      # Hz energy including HF shift
 print(repump_935.subtransitions())    # all HF sub-transitions with selection rules
 ```
+
+## Grotrian diagrams
+
+```python
+import atomtoolkit
+from atomtoolkit.render.grotrian import Grotrian, CompressedScale
+
+yb = atomtoolkit.load_species('171Yb II')
+Grotrian.auto(yb, n_levels=14).save('yb171.svg')      # zero-config
+```
+
+or build one up, with substructure and transitions:
+
+```python
+g = Grotrian(yb, title='¹⁷¹Yb⁺ · laser scheme',
+             scale=CompressedScale(), spectrum='rainbow')
+g.add_level('4f14.6s 2S1/2', detail='hyperfine')
+g.add_level('4f14.5d 2D5/2', detail='hyperfine')
+g.add_transition(('4f14.6s 2S1/2', '4f14.6p 2P*1/2'), label='wavelength')
+g.add_transition(('4f14.6p 2P*1/2', '4f14.5d 2D3/2'), wavy=True, head='none')
+g          # renders inline in Jupyter
+g.save('scheme.svg')
+```
+
+A Grotrian diagram is a *diagram*, not a plot, so this emits SVG directly — which is what
+makes real term symbols (²P°₃/₂, with superscript multiplicity and subscript J) possible at
+all. `render()` is pure, so re-running a notebook cell is safe.
+
+Some design choices worth knowing, since they are deliberate rather than incidental:
+
+- **Substructure is drawn exaggerated in place, on one shared magnification.** Hyperfine
+  splittings are ~10⁻⁵ of the gross spacing, so they cannot share the energy axis. A single
+  scale for the whole figure keeps manifolds comparable — a 12 GHz and a 135 MHz splitting
+  look 90× different, because they are. Sizing each manifold to its own span would draw them
+  identically and mislead.
+- **The scale comes from the largest *excited-state* splitting**, not the largest overall:
+  ground-state hyperfine runs 5–8× wider than anything else, so scaling to it flattens
+  everything else. Per-manifold overrides exist (`hf_scale='fit'`), and any manifold drawn
+  off the shared scale is annotated with its true span.
+- **The energy axis hides itself once substructure is exaggerated**, because ticks invite
+  reading a value that is no longer there. A scale bar reports the substructure scale instead.
+- **Manifolds with no hyperfine data** — still the majority — are drawn schematically with a
+  *dashed* bracket, so "we don't know" never reads as "these are the splittings".
+
+Transitions colour themselves from their wavelength via a pluggable model
+(`spectrum='bruton'` for a spectral fit, `'rainbow'` for colours matched to real laser
+lines), dash themselves when non-visible, and support wavy decay lines and wide block
+arrows. `examples/grotrian_gallery.py` renders a gallery covering all of it.
 
 ## Data model
 
