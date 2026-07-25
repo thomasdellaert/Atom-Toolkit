@@ -33,6 +33,7 @@ class LevelStyle:
     show_parent: bool = False            #: also draw a faint line at the manifold centroid
     bracket: bool = True                 #: bracket grouping the hyperfine sublevels
     hf_labels: bool = True               #: label each sublevel with its F value
+    z_labels: bool = True                #: label m_F sublevels, subject to there being room
 
     # Per-manifold scale overrides. None means "inherit the diagram-wide scale", which is
     # the default and what keeps manifolds comparable. Override one when you need its
@@ -147,6 +148,10 @@ class Theme:
     z_band: float = 30.0                 #: px given to the largest Zeeman spread present
     z_fill: float = 0.74                 #: fraction of each m_F slot actually drawn
     z_linewidth: float = 1.3
+    z_label_size: float = 8.5
+    z_label_gap: float = 3.0             #: m_F label offset below its line
+    min_label_pitch: float = 15.0        #: below this per-slot width, m_F labels are
+                                         #: dropped and the row is summarised instead
 
     # canvas
     margin_top: float = 54.0

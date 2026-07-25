@@ -1046,3 +1046,179 @@ class TestBlockArrows:
         g.add_levels(toy_atom.levels.values())
         g.add_transition(('1s2.2s 2S1/2', '1s2.3d 2D5/2'))
         assert g.build().arrows[0].polygon is None
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: broken axes, level-of-detail labelling, auto() policy choice
+# ---------------------------------------------------------------------------
+
+class TestBrokenScale:
+
+    ENERGIES = [0.0, 1e12, 2e12, 6e14, 6.1e14, 6.2e14]      # a big empty stretch
+
+    def test_monotonic(self):
+        from atomtoolkit.render.grotrian import BrokenScale
+        scale = BrokenScale(breaks=[(3e12, 5.9e14)]).prepare(self.ENERGIES)
+        values = [scale.normalize(e) for e in self.ENERGIES]
+        assert values == sorted(values)
+
+    def test_break_is_collapsed(self):
+        from atomtoolkit.render.grotrian import BrokenScale, LinearScale
+        broken = BrokenScale(breaks=[(3e12, 5.9e14)], gap=0.04).prepare(self.ENERGIES)
+        linear = LinearScale().prepare(self.ENERGIES)
+        # the collapsed range itself must occupy exactly `gap`
+        assert broken.normalize(5.9e14) - broken.normalize(3e12) == pytest.approx(0.04,
+                                                                                  abs=1e-6)
+        assert linear.normalize(5.9e14) - linear.normalize(3e12) > 0.8
+
+    def test_retained_regions_stay_linear(self):
+        """The point of a break, versus a compressed scale: what is kept is exact."""
+        from atomtoolkit.render.grotrian import BrokenScale
+        scale = BrokenScale(breaks=[(3e12, 5.9e14)]).prepare(self.ENERGIES)
+        a = scale.normalize(6.1e14) - scale.normalize(6.0e14)
+        b = scale.normalize(6.2e14) - scale.normalize(6.1e14)
+        assert a == pytest.approx(b, rel=1e-6)
+
+    def test_spanning_finds_the_emptiest_stretch(self):
+        from atomtoolkit.render.grotrian import BrokenScale
+        scale = BrokenScale.spanning(self.ENERGIES, n_breaks=1)
+        assert len(scale.breaks) == 1
+        low, high = scale.breaks[0]
+        assert low == pytest.approx(2e12) and high == pytest.approx(6e14)
+
+    def test_spanning_declines_when_levels_are_even(self):
+        """No arbitrary break on a diagram that does not need one."""
+        from atomtoolkit.render.grotrian import BrokenScale
+        even = [0.0, 1e14, 2e14, 3e14, 4e14]
+        assert BrokenScale.spanning(even, n_breaks=1).breaks == []
+
+    def test_break_positions_are_reported(self):
+        from atomtoolkit.render.grotrian import BrokenScale
+        scale = BrokenScale(breaks=[(3e12, 5.9e14)], gap=0.05).prepare(self.ENERGIES)
+        positions = scale.break_positions
+        assert len(positions) == 1
+        lo, hi = positions[0]
+        assert hi - lo == pytest.approx(0.05, abs=1e-6)
+
+    def test_accepts_quantities(self):
+        from atomtoolkit import THz
+        from atomtoolkit.render.grotrian import BrokenScale
+        scale = BrokenScale(breaks=[(3 * THz, 590 * THz)], gap=0.04).prepare(self.ENERGIES)
+        assert scale.normalize(5.9e14) - scale.normalize(3e12) == pytest.approx(0.04,
+                                                                                abs=1e-6)
+
+    def test_scene_exposes_break_markers(self, toy_atom):
+        from atomtoolkit.render.grotrian import BrokenScale
+        g = Grotrian(toy_atom, scale=BrokenScale(breaks=[(5e12, 90e12)]))
+        g.add_levels(toy_atom.levels.values())
+        scene = g.build()
+        assert scene.axis_breaks
+        assert all(top < bottom for top, bottom in scene.axis_breaks)
+
+    def test_toy_spread_is_not_broken(self, toy_atom):
+        """Two comparably large gaps means no single break helps; leave it alone."""
+        from atomtoolkit.render.grotrian import BrokenScale
+        energies = [l.level_Hz for l in toy_atom.levels.values()]
+        assert BrokenScale.spanning(energies).breaks == []
+
+
+class TestZeemanLabels:
+
+    def _labels(self, atom, level, **kwargs):
+        g = Grotrian(atom, B=2.0, z_scale='auto', **kwargs)
+        g.add_level(level, detail='zeeman')
+        scene = g.build()
+        return [''.join(run[0] for run in label.runs) for label in scene.labels]
+
+    def test_zeeman_fans_are_labelled(self, hf_atom):
+        """They were previously drawn with no labels at all."""
+        texts = self._labels(hf_atom, hf_atom.levels['1s2.2s 2S1/2'])
+        assert any(t.startswith('F') for t in texts)
+
+    def test_wide_columns_label_each_sublevel(self, hf_atom):
+        texts = self._labels(hf_atom, hf_atom.levels['1s2.2s 2S1/2'],
+                             theme=Theme(column_width=400.0))
+        assert '-1' in texts and '1' in texts
+
+    def test_narrow_columns_summarise_instead(self, hf_atom):
+        """Never print illegible overlapping numbers; say the range once."""
+        texts = self._labels(hf_atom, hf_atom.levels['1s2.2s 2S1/2'],
+                             theme=Theme(column_width=40.0))
+        assert any('..' in t for t in texts)
+        assert '-1' not in texts
+
+    def test_labels_can_be_switched_off(self, hf_atom):
+        g = Grotrian(hf_atom, B=2.0)
+        g.add_level(hf_atom.levels['1s2.2s 2S1/2'], detail='zeeman', z_labels=False)
+        texts = [''.join(r[0] for r in l.runs) for l in g.build().labels]
+        # the manifold's term symbol stays; only the F / m_F labels go
+        assert not any(t.startswith('F') or t.lstrip('-').isdigit() for t in texts)
+
+    def test_labels_use_fractions_not_decimals(self):
+        """Half-integer m_F must read 1/2, matching the rest of the toolkit."""
+        from atomtoolkit import GHz
+        a = Atom(name='half', I=0.0)
+        a.add_level(EnergyLevel(Term('1s2.2s', '2S', 0.5), level=0.0 * Hz, hfA=1 * GHz))
+        g = Grotrian(a, B=2.0, theme=Theme(column_width=400.0))
+        g.add_level(a.levels['1s2.2s 2S1/2'], detail='zeeman')
+        texts = [''.join(r[0] for r in l.runs) for l in g.build().labels]
+        assert '1/2' in texts and '-1/2' in texts
+        assert '0.5' not in texts
+
+    def test_no_negative_zero(self, hf_atom):
+        texts = self._labels(hf_atom, hf_atom.levels['1s2.2s 2S1/2'],
+                             theme=Theme(column_width=400.0))
+        assert '-0' not in texts
+
+
+class TestAutoPolicyChoice:
+
+    def test_auto_picks_a_policy(self, toy_atom):
+        g = Grotrian.auto(toy_atom, n_levels=5)
+        assert g.columns.by in ('J', 'L', 'parity')
+
+    def test_explicit_columns_are_respected(self, toy_atom):
+        g = Grotrian.auto(toy_atom, n_levels=5, columns='parity')
+        assert g.columns.by == 'parity'
+
+    def test_wide_layouts_are_avoided(self, toy_atom):
+        """The chosen layout must be no worse than every alternative on aspect."""
+        chosen = Grotrian.auto(toy_atom, n_levels=5).build()
+        ratio = chosen.width / chosen.height
+        assert 0.3 < ratio < 4.0
+
+
+class TestOverlapWarning:
+    """Overlapping fans make a diagram wrong, not merely ugly, so they are reported.
+
+    Nothing is silently rescaled: the shared scale is what makes manifolds comparable, and
+    shrinking it to fit would trade a visible problem for an invisible one.
+    """
+
+    def _grotrian(self, hf_atom, plot_height, hf_band=46.0):
+        g = Grotrian(hf_atom, theme=Theme(plot_height=plot_height, hf_band=hf_band))
+        g.add_level(hf_atom.levels['1s2.2s 2S1/2'], detail='hyperfine')
+        g.add_level(hf_atom.levels['1s2.2p 2P*1/2'], detail='hyperfine')
+        return g
+
+    def test_cramped_layout_warns(self, hf_atom):
+        with pytest.warns(UserWarning, match='overlap'):
+            self._grotrian(hf_atom, plot_height=40.0, hf_band=200.0).build()
+
+    def test_roomy_layout_is_silent(self, hf_atom, recwarn):
+        self._grotrian(hf_atom, plot_height=900.0, hf_band=20.0).build()
+        assert not [w for w in recwarn if 'overlap' in str(w.message)]
+
+    def test_the_warning_names_the_manifolds(self, hf_atom):
+        with pytest.warns(UserWarning) as record:
+            self._grotrian(hf_atom, plot_height=40.0, hf_band=200.0).build()
+        message = ' '.join(str(w.message) for w in record)
+        assert '2S1/2' in message and '2P*1/2' in message
+
+    def test_nothing_is_silently_rescaled(self, hf_atom):
+        """The band must stay the size the scale asked for, warning or not."""
+        from atomtoolkit.render.grotrian.layout import hyperfine_span
+        with pytest.warns(UserWarning):
+            scene = self._grotrian(hf_atom, plot_height=40.0, hf_band=200.0).build()
+        anchor = scene.anchors[hf_atom.levels['1s2.2p 2P*1/2']]
+        assert anchor.y1 - anchor.y0 == pytest.approx(200.0, rel=1e-3)

@@ -121,6 +121,23 @@ def render_svg(scene: Scene, precision: int = 2) -> str:
                                   stroke=theme.grid_color))
         dwg.add(axis)
 
+        # break markers: a short double zigzag across the axis, plus a gap in the rule
+        for top, bottom in scene.axis_breaks:
+            mid = (top + bottom) / 2
+            for offset in (-2.5, 2.5):
+                y = mid + offset
+                axis.add(dwg.path(
+                    d=f'M {r(scene.axis_x - 6)},{r(y + 3)} '
+                      f'L {r(scene.axis_x - 1)},{r(y - 1)} '
+                      f'L {r(scene.axis_x + 5)},{r(y + 1)}',
+                    fill='none', stroke=theme.background or '#ffffff',
+                    stroke_width=3.5))
+                axis.add(dwg.path(
+                    d=f'M {r(scene.axis_x - 6)},{r(y + 3)} '
+                      f'L {r(scene.axis_x - 1)},{r(y - 1)} '
+                      f'L {r(scene.axis_x + 5)},{r(y + 1)}',
+                    fill='none', stroke=theme.axis_color, stroke_width=1))
+
         label_y = (scene.plot_top + scene.plot_bottom) / 2
         label_x = scene.axis_x - 46
         dwg.add(dwg.text(scene.axis_label,

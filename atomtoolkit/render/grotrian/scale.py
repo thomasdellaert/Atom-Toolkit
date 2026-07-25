@@ -14,7 +14,7 @@ from typing import List, Sequence, Tuple
 
 from ... import Q_
 
-__all__ = ['EnergyScale', 'LinearScale', 'CompressedScale', 'UNITS']
+__all__ = ['EnergyScale', 'LinearScale', 'CompressedScale', 'BrokenScale', 'UNITS']
 
 #: Display units, as (pint unit string, axis label). Energies are stored in Hz.
 UNITS = {
@@ -147,4 +147,111 @@ class CompressedScale(EnergyScale):
         i = min(i, len(knots) - 2)
         lo, hi = knots[i], knots[i + 1]
         t = 0.0 if hi == lo else (energy_hz - lo) / (hi - lo)
+        return fracs[i] + t * (fracs[i + 1] - fracs[i])
+
+
+@dataclass
+class BrokenScale(EnergyScale):
+    """Linear, except that named energy ranges are collapsed to a thin gap.
+
+    The discrete cousin of :class:`CompressedScale`. Where that one smoothly reallocates
+    space by level density, this one keeps every retained region *exactly* linear and
+    simply cuts out the stretches you nominate -- which is the convention in published
+    figures, and easier to read a value off, at the cost of having to choose the breaks.
+
+    ::
+
+        BrokenScale(breaks=[(Q_(5, 'THz'), Q_(600, 'THz'))])
+        BrokenScale.spanning(energies, n_breaks=1)      # pick the emptiest stretch
+
+    :param breaks: ``(low, high)`` pairs in Hz, or pint Quantities, to collapse
+    :param gap: fraction of the axis each collapsed range keeps
+    """
+
+    breaks: List[Tuple[float, float]] = field(default_factory=list)
+    gap: float = 0.035
+    _knots_hz: List[float] = field(default_factory=list)
+    _knots_frac: List[float] = field(default_factory=list)
+
+    @classmethod
+    def spanning(cls, energies_hz: Sequence[float], n_breaks: int = 1,
+                 min_fraction: float = 0.15, anomaly: float = 3.0,
+                 **kwargs) -> 'BrokenScale':
+        """Build a scale that breaks the ``n_breaks`` emptiest stretches.
+
+        A gap qualifies only if it is both a decent fraction of the whole range *and*
+        anomalous compared with the typical gap. The second condition is what stops evenly
+        spread levels being broken: with N levels spaced evenly, every gap is 1/(N-1) of
+        the range -- 25% for five levels -- so a fraction test alone would always fire.
+
+        :param n_breaks: at most this many breaks
+        :param min_fraction: a gap must exceed this fraction of the full range
+        :param anomaly: ...and this multiple of the median gap
+        """
+        ordered = sorted(set(energies_hz))
+        if len(ordered) < 3:
+            return cls(breaks=[], **kwargs)
+        total = ordered[-1] - ordered[0]
+        widths = [b - a for a, b in zip(ordered, ordered[1:])]
+        median = sorted(widths)[len(widths) // 2]
+        threshold = max(min_fraction * total, anomaly * median)
+        gaps = sorted(((b - a, a, b) for a, b in zip(ordered, ordered[1:])), reverse=True)
+        chosen = [(a, b) for width, a, b in gaps[:n_breaks] if width > threshold]
+        return cls(breaks=sorted(chosen), **kwargs)
+
+    def _as_hz(self, value) -> float:
+        return float(value.to('Hz', 'spectroscopy').magnitude) if hasattr(value, 'to') \
+            else float(value)
+
+    def prepare(self, energies_hz: Sequence[float]) -> 'BrokenScale':
+        super().prepare(energies_hz)
+        spans = []
+        for low, high in self.breaks:
+            low, high = self._as_hz(low), self._as_hz(high)
+            low, high = max(min(low, high), self.lo_hz), min(max(low, high), self.hi_hz)
+            if high > low:
+                spans.append((low, high))
+        spans.sort()
+
+        # walk the axis, giving retained regions space proportional to energy and each
+        # collapsed region a fixed sliver
+        edges, kept = [self.lo_hz], 0.0
+        for low, high in spans:
+            edges += [low, high]
+            kept += low - edges[-3] if len(edges) > 3 else low - self.lo_hz
+        edges.append(self.hi_hz)
+        retained = sum(edges[i + 1] - edges[i] for i in range(0, len(edges) - 1, 2))
+        budget = 1.0 - self.gap * len(spans)
+        if retained <= 0 or budget <= 0:
+            self._knots_hz, self._knots_frac = [self.lo_hz, self.hi_hz], [0.0, 1.0]
+            return self
+
+        knots_hz, knots_frac, frac = [edges[0]], [0.0], 0.0
+        for i in range(len(edges) - 1):
+            width = edges[i + 1] - edges[i]
+            frac += (width / retained) * budget if i % 2 == 0 else self.gap
+            knots_hz.append(edges[i + 1])
+            knots_frac.append(frac)
+        self._knots_hz, self._knots_frac = knots_hz, knots_frac
+        return self
+
+    @property
+    def break_positions(self) -> List[Tuple[float, float]]:
+        """Normalized ``(start, end)`` of each collapsed region, for drawing markers."""
+        out = []
+        for i in range(1, len(self._knots_hz) - 1, 2):
+            out.append((self._knots_frac[i], self._knots_frac[i + 1]))
+        return out
+
+    def normalize(self, energy_hz: float) -> float:
+        if not self._knots_hz:
+            return 0.5
+        knots, fracs = self._knots_hz, self._knots_frac
+        if energy_hz <= knots[0]:
+            return fracs[0]
+        if energy_hz >= knots[-1]:
+            return fracs[-1]
+        i = min(bisect.bisect_right(knots, energy_hz) - 1, len(knots) - 2)
+        span = knots[i + 1] - knots[i]
+        t = 0.0 if span == 0 else (energy_hz - knots[i]) / span
         return fracs[i] + t * (fracs[i + 1] - fracs[i])

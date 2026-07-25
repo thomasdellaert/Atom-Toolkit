@@ -15,6 +15,7 @@ import warnings
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Sequence, Tuple, Union
 
+from ... import util
 from .scale import EnergyScale, LinearScale
 from .spec import ColumnPolicy, LevelSpec, Theme
 
@@ -137,6 +138,7 @@ class Scene:
     headers: List[ColumnHeader] = field(default_factory=list)
     brackets: List[Bracket] = field(default_factory=list)
     arrows: List[Arrow] = field(default_factory=list)
+    axis_breaks: List[Tuple[float, float]] = field(default_factory=list)
     scalebar: Optional[ScaleBar] = None
     anchors: Dict[object, Anchor] = field(default_factory=dict)
     axis_label: str = ''
@@ -503,6 +505,10 @@ def layout(specs: Sequence[LevelSpec],
         for frac, text in scale.ticks():
             scene.ticks.append(AxisTick(y=band_bottom_limit - frac * usable_height,
                                         label=text))
+        # a broken axis must say so, or the reader takes the gap at face value
+        for lo, hi in getattr(scale, 'break_positions', []):
+            scene.axis_breaks.append((band_bottom_limit - hi * usable_height,
+                                      band_bottom_limit - lo * usable_height))
 
     if theme.show_headers:
         for label, index in column_index.items():
@@ -614,6 +620,7 @@ def layout(specs: Sequence[LevelSpec],
             max_label_right = max(max_label_right,
                                   text_x + estimate_text_width(runs, theme.label_size))
 
+    _warn_on_overlapping_bands(scene, keyed, column_index, theme)
     _place_transitions(scene, transitions, theme)
 
     if bar_strip:
@@ -628,6 +635,47 @@ def layout(specs: Sequence[LevelSpec],
 
     scene.width = max(scene.width, max_label_right + theme.margin_right)
     return scene
+
+
+def _warn_on_overlapping_bands(scene: Scene, keyed, column_index,
+                               theme: Theme) -> None:
+    """Warn when two manifolds' drawn fans run into each other.
+
+    The plot area is padded by the worst fan overhang, but that only keeps fans on the
+    canvas -- it cannot stop two of them meeting in the middle, which happens once the
+    substructure scale is pushed hard (a large hf_band, an exaggerated Zeeman scale, or a
+    manifold several times wider than the reference).
+
+    Silently overlapping bands make a diagram that is wrong rather than merely ugly, so
+    this says so and names the culprits. It deliberately does not rescale anything: the
+    shared scale is what makes manifolds comparable, and quietly shrinking it to fit would
+    trade a visible problem for an invisible one.
+    """
+    by_column: Dict[int, List] = {}
+    for _, label, spec in keyed:
+        anchor = scene.anchors.get(spec.level)
+        if anchor is None or anchor.y1 <= anchor.y0:
+            continue                       # not drawn as a fan
+        # m_F labels hang below their line, so they are part of the fan's visual extent
+        # even though the anchor -- which transitions attach to -- covers only the lines
+        pad = (theme.z_label_size + theme.z_label_gap
+               if spec.style.detail == 'zeeman' and spec.style.z_labels else 0.0)
+        by_column.setdefault(column_index[label], []).append(
+            (anchor.y0, anchor.y1 + pad, spec.level))
+
+    clashes = []
+    for entries in by_column.values():
+        entries.sort()
+        for (top_a, bottom_a, level_a), (top_b, bottom_b, level_b) in zip(entries,
+                                                                         entries[1:]):
+            if top_b < bottom_a:
+                clashes.append(f'{_level_name(level_a)} / {_level_name(level_b)}')
+    if clashes:
+        warnings.warn(
+            'Substructure fans overlap in this diagram: ' + '; '.join(clashes) +
+            '. Reduce theme.hf_band or theme.z_band, lower the Zeeman exaggeration, or '
+            'give a manifold its own scale with add_level(..., hf_scale=...).',
+            stacklevel=3)
 
 
 def _place_transitions(scene: Scene, transitions: Sequence['TransitionSpec'],
@@ -808,7 +856,13 @@ def _draw_zeeman(scene: Scene, spec: LevelSpec, cx: float, y_parent: float,
     pitch = theme.column_width / slots
     half = pitch * theme.z_fill / 2
 
+    # Level of detail: individual m_F labels only when the slots are wide enough to hold
+    # them. Otherwise the row is summarised once, which is far better than printing
+    # illegible overlapping text -- the default must never be unreadable.
+    label_each = style.z_labels and pitch >= theme.min_label_pitch
+
     ys = []
+    rows: Dict[object, List[float]] = {}
     for hf, z in zlevels:
         # split the offset so hyperfine and Zeeman can carry different magnifications
         hf_shift = hf.shift_Hz
@@ -821,7 +875,44 @@ def _draw_zeeman(scene: Scene, spec: LevelSpec, cx: float, y_parent: float,
             opacity=style.opacity, title=_tooltip(z)))
         scene.anchors[z] = Anchor(x0=x_mid - half, y0=y, x1=x_mid + half, y1=y)
         ys.append(y)
+        rows.setdefault(hf, []).append(y)
+
+        if label_each and z.term.mF is not None:
+            scene.labels.append(Label(
+                x=x_mid, y=y + theme.z_label_size + theme.z_label_gap,
+                runs=((util.float_to_frac(z.term.mF + 0.0), 'normal'),),
+                color=color, size=theme.z_label_size, anchor='middle'))
+
+    if style.z_labels:
+        _label_zeeman_rows(scene, rows, cx + theme.column_width / 2, theme, color,
+                           summarise=not label_each)
     return min(ys), max(ys)
+
+
+def _label_zeeman_rows(scene: Scene, rows: Dict[object, List[float]], x_right: float,
+                       theme: Theme, color: str, summarise: bool) -> None:
+    """Label each F row of a Zeeman fan, and summarise m_F when there was no room for it.
+
+    ``F=2, m_F=-2..2`` in one label beats five overlapping numbers.
+    """
+    entries = sorted(((sum(ys) / len(ys), hf) for hf, ys in rows.items()),
+                     key=lambda item: item[0])
+    x = x_right + theme.bracket_gap + theme.bracket_width + 4.0
+    adjusted = resolve_overlaps([y for y, _ in entries], theme.hf_min_label_spacing)
+    for (y, hf), new_y in zip(entries, adjusted):
+        runs = [('F', 'normal'),
+                (util.float_to_frac(hf.term.F) if hf.term.F is not None else '?', 'sub')]
+        if summarise:
+            mFs = [z.term.mF for z in hf.sublevels() if z.term.mF is not None]
+            if len(mFs) > 1:
+                runs += [(f'  m={util.float_to_frac(min(mFs))}'
+                          f'..{util.float_to_frac(max(mFs))}', 'normal')]
+        scene.labels.append(Label(
+            x=x, y=new_y + theme.hf_label_size * 0.35, runs=tuple(runs),
+            color=color, size=theme.hf_label_size))
+        if abs(new_y - y) > theme.leader_threshold:
+            scene.leaders.append(Leader(x0=x_right + 1.0, y0=y, x1=x - 2.0, y1=new_y,
+                                        color=theme.leader_color))
 
 
 def _place_hf_labels(scene: Scene, placed: Sequence[Tuple[object, float]], x1: float,
@@ -838,7 +929,7 @@ def _place_hf_labels(scene: Scene, placed: Sequence[Tuple[object, float]], x1: f
     adjusted = resolve_overlaps([y for _, y in ordered], theme.hf_min_label_spacing)
     for (sublevel, y), new_y in zip(ordered, adjusted):
         F = sublevel.term.F
-        text = f'{F:g}' if F is not None else '?'
+        text = util.float_to_frac(F) if F is not None else '?'
         scene.labels.append(Label(
             x=x, y=new_y + theme.hf_label_size * 0.35,
             runs=(('F', 'normal'), (text, 'sub')),

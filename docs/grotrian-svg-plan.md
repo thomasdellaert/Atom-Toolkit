@@ -1,9 +1,30 @@
 # Rewriting the Grotrian renderer on direct SVG
 
-**Status: phases 1-3 implemented** (skeleton, columns, linear + compressed energy scales,
+**Status: phases 1-4 implemented** (skeleton, columns, linear + compressed energy scales,
 level lines, term-symbol labels, PAVA label de-overlap, themes, `_repr_svg_`, `save()`).
 The old matplotlib `Grotrian` and the broken `arrows.py` are deleted. Phases 2–5 below are
 still plans.
+
+Phase 4 adds the polish items that were still outstanding -- several of phase 4 as
+originally scoped (label relaxation, compressed axis, theming, `auto()`) had already been
+pulled forward into phase 1. Notes:
+
+- **Level-of-detail labelling.** Zeeman fans previously carried no labels at all. They now
+  get `F` labels per row and `m_F` labels per sublevel, but only when the slot pitch can
+  hold them; below that the row is summarised once as `F=2, m=-2..2`. The default must
+  never be illegible.
+- **`BrokenScale`**, promised in §4.1 and not previously built. Retained regions stay
+  exactly linear and the nominated stretches collapse to a thin marked gap. Its
+  `spanning()` helper requires a gap to be *anomalous* against the median spacing, not
+  merely a large fraction of the range -- with N evenly spaced levels every gap is
+  1/(N-1) of the range, so a fraction test alone fires on perfectly even data.
+- **`auto()` chooses its column policy** instead of assuming J, which degenerates on
+  high-J atoms: 171Yb+ over 16 levels was 7 columns and 1630 px, several holding one
+  level, against 1186 px grouped by L.
+- **Overlapping fans are reported.** The plot area is padded by the worst overhang, but
+  that only keeps fans on the canvas; it cannot stop two meeting in the middle. Nothing is
+  silently rescaled -- the shared scale is what makes manifolds comparable, and shrinking
+  it to fit would trade a visible problem for an invisible one.
 
 Phase 3 adds transitions. Notes from that build:
 

@@ -32,12 +32,13 @@ axis. Hyperfine/Zeeman insets and transitions are phases 2 and 3.
 
 from __future__ import annotations
 
+import math
 import pathlib
 from dataclasses import replace
 from typing import Callable, Iterable, List, Optional, Sequence, Union
 
 from .layout import Anchor, Scene, layout, resolve_overlaps
-from .scale import CompressedScale, EnergyScale, LinearScale
+from .scale import BrokenScale, CompressedScale, EnergyScale, LinearScale
 from .color import (SPECTRA, BrutonSpectrum, InterpolatedSpectrum, SpectralMap,
                     get_spectrum, is_visible, wavelength_to_hex)
 from .spec import (DARK, LIGHT, ColumnPolicy, LevelSpec, LevelStyle, Theme,
@@ -47,7 +48,7 @@ from .svg import render_svg
 __all__ = ['Grotrian', 'Theme', 'LevelStyle', 'TransitionStyle', 'ColumnPolicy',
            'wavelength_to_hex', 'is_visible', 'get_spectrum', 'SPECTRA',
            'SpectralMap', 'BrutonSpectrum', 'InterpolatedSpectrum',
-           'LinearScale', 'CompressedScale', 'EnergyScale',
+           'LinearScale', 'CompressedScale', 'BrokenScale', 'EnergyScale',
            'Scene', 'Anchor', 'layout', 'render_svg', 'resolve_overlaps',
            'LIGHT', 'DARK']
 
@@ -224,7 +225,7 @@ class Grotrian:
     # -- convenience -------------------------------------------------------
 
     @classmethod
-    def auto(cls, atom, n_levels: int = 12, **kwargs) -> 'Grotrian':
+    def auto(cls, atom, n_levels: int = 12, aspect: float = 1.6, **kwargs) -> 'Grotrian':
         """Build a reasonable diagram with no tuning.
 
         This is the honest test of the defaults: if ``auto`` needs adjusting to look
@@ -233,12 +234,36 @@ class Grotrian:
         Levels are taken in energy order, coloured by parity so the E1-connected ladder
         reads at a glance, and titled with the atom's name.
 
+        Unless ``columns`` is given, the column policy is **chosen** rather than assumed.
+        Grouping by J is the conventional default but degenerates on atoms with high-J
+        levels -- 171Yb+ over 16 levels spreads across 7 columns and 1630 px, several
+        holding a single level, where grouping by parity needs 520 px. Each candidate
+        policy is laid out and the one landing closest to ``aspect`` wins, with a
+        tie-break toward J so the familiar layout is preferred when it is not much worse.
+
         :param atom: the atom to draw
         :param n_levels: how many of the lowest levels to include
+        :param aspect: preferred width-to-height ratio
         """
         kwargs.setdefault('title', atom.name)
-        grotrian = cls(atom, **kwargs)
         levels = sorted(atom.levels.values(), key=lambda l: l.level_Hz)[:n_levels]
-        grotrian.add_levels(levels)
-        grotrian.style_levels(lambda l: l.term.parity == -1, color='#b3541e')
-        return grotrian
+
+        def build(policy):
+            grotrian = cls(atom, columns=policy, **kwargs)
+            grotrian.add_levels(levels)
+            grotrian.style_levels(lambda l: l.term.parity == -1, color='#b3541e')
+            return grotrian
+
+        if 'columns' in kwargs:
+            return build(kwargs.pop('columns'))
+
+        best, best_cost = None, None
+        for rank, policy in enumerate(('J', 'L', 'parity')):
+            candidate = build(policy)
+            scene = candidate.build()
+            ratio = scene.width / max(scene.height, 1.0)
+            # log-distance from the target aspect, nudged by preference order
+            cost = abs(math.log(max(ratio, 1e-6) / aspect)) + 0.12 * rank
+            if best_cost is None or cost < best_cost:
+                best, best_cost = candidate, cost
+        return best
