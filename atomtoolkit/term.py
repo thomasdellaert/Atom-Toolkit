@@ -1,5 +1,6 @@
 from __future__ import annotations
 import collections.abc
+import re
 from typing import *
 
 import numpy as np
@@ -118,6 +119,124 @@ class Term:
             return base and self.F == other_term.F
         raise ValueError(f"Unknown level {level!r}: expected None, 'J', or 'F'")
 
+    # region: rich formatting
+
+    def markup_runs(self, include_conf: bool = False,
+                    level: str = 'auto') -> List[Tuple[str, str]]:
+        """Break the term symbol into typeset runs of ``(text, role)``.
+
+        ``role`` is one of ``'normal'``, ``'super'`` or ``'sub'``. This is deliberately
+        renderer-agnostic -- :meth:`to_markup` turns runs into SVG, LaTeX or Unicode, and a
+        Grotrian renderer can emit them as ``<tspan>`` elements directly.
+
+        Handles the four couplings the parser produces::
+
+            LS  '2P*'      J=3/2   ->  ²P°₃� ₂
+            JK  '2[3/2]*'  J=2     ->  ²[3/2]°₂
+            JJ  '(8,3/2)'  J=13/2  ->  (8,3/2)₁₃/₂
+            LK  'D[5/2]'   J=2     ->  D[5/2]₂
+
+        :param include_conf: prefix the electron configuration (``4f14.6s`` -> ``4f¹⁴6s``)
+        :param level: which quantum number to subscript -- ``'J'``, ``'F'``, ``'mF'``, or
+            ``'auto'`` to use the most specific one this term carries
+        :return: list of ``(text, role)`` pairs
+        """
+        runs: List[Tuple[str, str]] = []
+
+        if include_conf:
+            runs.extend(self._conf_runs())
+            if runs:
+                runs.append((' ', 'normal'))
+
+        term = self.term or ''
+        odd = '*' in term
+        body = term.replace('*', '')
+
+        ls = re.fullmatch(r'(\d+)([A-Z])', body)
+        jk = re.fullmatch(r'(\d+)(\[[^\]]*\])', body)
+        if ls:
+            runs.append((ls.group(1), 'super'))
+            runs.append((ls.group(2), 'normal'))
+        elif jk:
+            runs.append((jk.group(1), 'super'))
+            runs.append((jk.group(2), 'normal'))
+        elif body:
+            # JJ '(8,3/2)', LK 'D[5/2]', or anything unrecognised: pass through intact
+            runs.append((body, 'normal'))
+
+        if odd:
+            runs.append(('°', 'super'))   # ° marks odd parity
+
+        if level == 'auto':
+            level = 'mF' if self.mF is not None else ('F' if self.F is not None else 'J')
+        sub = {'J': self.J_frac, 'F': self.F_frac, 'mF': self.mF_frac}.get(level)
+        if sub is not None:
+            runs.append((str(sub), 'sub'))
+
+        return runs
+
+    def _conf_runs(self) -> List[Tuple[str, str]]:
+        """Typeset the configuration: 4f14.6s -> 4f¹⁴6s, with occupancies superscripted."""
+        runs: List[Tuple[str, str]] = []
+        for segment in (self.conf or '').split('.'):
+            match = re.fullmatch(r'(\d+[a-z])(\d*)', segment)
+            if match:
+                runs.append((match.group(1), 'normal'))
+                if match.group(2):
+                    runs.append((match.group(2), 'super'))
+            elif segment:
+                # parent terms like (2F*<7/2>) are left verbatim rather than mangled
+                runs.append((segment, 'normal'))
+        return runs
+
+    # '/' is deliberately left alone: the Unicode fraction slash renders worse than a
+    # plain one at small sizes, and '₁/₂' reads better than '₁ᐟ₂'.
+    _SUPER = str.maketrans('0123456789+-()', '⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁽⁾')
+    _SUB = str.maketrans('0123456789+-()', '₀₁₂₃₄₅₆₇₈₉₊₋₍₎')
+
+    def to_markup(self, fmt: str = 'unicode', include_conf: bool = False,
+                  level: str = 'auto') -> str:
+        """Render the term symbol as a string in the requested format.
+
+        :param fmt: ``'unicode'`` (default, good for terminals and plain labels),
+            ``'latex'`` (for papers and matplotlib), ``'html'`` (``<sup>``/``<sub>``),
+            or ``'plain'`` (ASCII, no styling)
+        :param include_conf: prefix the electron configuration
+        :param level: see :meth:`markup_runs`
+        """
+        runs = self.markup_runs(include_conf=include_conf, level=level)
+        if fmt == 'plain':
+            return ''.join(text for text, _ in runs)
+        if fmt == 'unicode':
+            out = []
+            for text, role in runs:
+                if role == 'super':
+                    out.append(text.translate(self._SUPER))
+                elif role == 'sub':
+                    out.append(text.translate(self._SUB))
+                else:
+                    out.append(text)
+            return ''.join(out)
+        if fmt == 'latex':
+            out = []
+            for text, role in runs:
+                if role == 'super':
+                    out.append(f'^{{{text}}}')
+                elif role == 'sub':
+                    out.append(f'_{{{text}}}')
+                else:
+                    out.append(text)
+            return '$' + ''.join(out).replace('°', r'\circ ') + '$'
+        if fmt == 'html':
+            out = []
+            for text, role in runs:
+                tag = {'super': 'sup', 'sub': 'sub'}.get(role)
+                out.append(f'<{tag}>{text}</{tag}>' if tag else text)
+            return ''.join(out)
+        raise ValueError(f"Unknown format {fmt!r}: expected 'unicode', 'latex', 'html' or 'plain'")
+
+    # endregion
+
     def make_term_copy(self, F: float = None, mF: float = None) -> Term:
         """
         make a copy of the original term, potentially adding F and/or mF for producing subterms
@@ -168,6 +287,16 @@ class MultiTerm(collections.abc.Sequence):
     @property
     def full_name(self) -> str:
         return f'{self.name} ({self.percentage}%)'
+
+    # __getattribute__ only forwards names in Term.__slots__, which covers attributes but
+    # not methods, so the formatting API is delegated explicitly to the leading term.
+    def markup_runs(self, **kwargs):
+        """Typeset runs for the leading term. See :meth:`Term.markup_runs`."""
+        return self.terms[0].markup_runs(**kwargs)
+
+    def to_markup(self, *args, **kwargs) -> str:
+        """Formatted term symbol for the leading term. See :meth:`Term.to_markup`."""
+        return self.terms[0].to_markup(*args, **kwargs)
 
     def __getitem__(self, item: int) -> Term:
         return self.terms[item]
