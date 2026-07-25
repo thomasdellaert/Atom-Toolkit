@@ -50,7 +50,15 @@ If the API is unavailable (e.g. returns a 403 error), you can download a CSV man
 df = IO.load_NIST_data_from_csv('path/to/YbII.csv')
 ```
 
-The bundled species in `resources/` were downloaded this way and are used automatically by the `species/` files.
+The CSVs in `resources/` were obtained this way and are used automatically by the `species/`
+files, so nothing under `species/` needs network access.
+
+A note on the web API: `load_NIST_data()` talks to `energy1.pl`, which is the ASD search
+form's own backend rather than a documented, versioned API — NIST can change it without
+notice. Treat it as a convenience for adding a *new* species (fetch once, save the CSV to
+`resources/`, commit it) rather than something to call at runtime. It also sends an
+identifying `User-Agent`, because NIST rejects the default `Python-urllib` one; please leave
+that honest rather than swapping in a browser string.
 
 ## Quick start
 
@@ -97,9 +105,86 @@ All quantities use a shared [pint](https://pint.readthedocs.io/) unit registry w
 
 ## Species files
 
-The `species/` directory contains ready-to-use atoms (171Yb II, 173Yb II, 174Yb II, 133Ba II, 6Li I) with hyperfine coefficients and corrected transitions applied. Load them with:
+The `species/` directory contains ready-to-use atoms with hyperfine coefficients, nuclear
+g-factors, and corrected transitions already applied. Each module exposes its `Atom` under a
+short name:
 
 ```python
-from species import Yb_II_171
-a = Yb_II_171.atom        # pre-built Atom object
+from species import Yb_II_171, Ca_II_43
+a = Yb_II_171.Yb171       # pre-built Atom object
+b = Ca_II_43.Ca43
 ```
+
+Energy levels come from NIST ASD CSVs cached in `resources/`, so building a species never
+touches the network. Run a species file as `__main__` to regenerate its `.json` snapshot.
+
+### Bundled species
+
+**Trapped ions — alkaline-earth-like** (valence s electron over a closed shell)
+
+| Module | Species | I | Module | Species | I |
+|---|---|---|---|---|---|
+| `Be_II_9` | ⁹Be⁺ | 3/2 | `Ba_II_133` | ¹³³Ba⁺ | 1/2 |
+| `Mg_II_24` | ²⁴Mg⁺ | 0 | `Ba_II_137` | ¹³⁷Ba⁺ | 3/2 |
+| `Mg_II_25` | ²⁵Mg⁺ | 5/2 | `Ba_II_138` | ¹³⁸Ba⁺ | 0 |
+| `Ca_II_40` | ⁴⁰Ca⁺ | 0 | `Ra_II_225` | ²²⁵Ra⁺ | 1/2 |
+| `Ca_II_43` | ⁴³Ca⁺ | 7/2 | `Yb_II_171` | ¹⁷¹Yb⁺ | 1/2 |
+| `Sr_II_87` | ⁸⁷Sr⁺ | 9/2 | `Yb_II_173` | ¹⁷³Yb⁺ | 5/2 |
+| `Sr_II_88` | ⁸⁸Sr⁺ | 0 | `Yb_II_174` | ¹⁷⁴Yb⁺ | 0 |
+
+**Trapped ions — group 12** (d-hole states sit *above* the ground state, not below the P levels)
+
+| Module | Species | I | Module | Species | I |
+|---|---|---|---|---|---|
+| `Zn_II_64` | ⁶⁴Zn⁺ | 0 | `Hg_II_199` | ¹⁹⁹Hg⁺ | 1/2 |
+| `Zn_II_67` | ⁶⁷Zn⁺ | 5/2 | `Hg_II_202` | ²⁰²Hg⁺ | 0 |
+| `Cd_II_111` | ¹¹¹Cd⁺ | 1/2 | | | |
+
+**Alkali metals (neutral)**
+
+| Module | Species | I | Module | Species | I |
+|---|---|---|---|---|---|
+| `Li_I` | ⁷Li | 3/2 | `K_I_41` | ⁴¹K | 3/2 |
+| `Li_I_6` | ⁶Li | 1 | `Rb_I_85` | ⁸⁵Rb | 5/2 |
+| `Na_I_23` | ²³Na | 3/2 | `Rb_I_87` | ⁸⁷Rb | 3/2 |
+| `K_I_39` | ³⁹K | 3/2 | `Cs_I_133` | ¹³³Cs | 7/2 |
+| `K_I_40` | ⁴⁰K | 4 | `Fr_I_211` | ²¹¹Fr | 9/2 |
+
+**Other**
+
+| Module | Species | I | Notes |
+|---|---|---|---|
+| `Tm_II_169` | ¹⁶⁹Tm⁺ | 1/2 | lanthanide ion, ships with a transition list |
+| `Ho_I_165` | ¹⁶⁵Ho | 7/2 | J=15/2 ground state → **128** ground-manifold Zeeman sublevels; JK/JJ-coupled excited configurations; hyperfine *B* larger than *A*. Useful as a stress test. |
+
+Caveats worth knowing before using these for precision work:
+
+- **Nuclear g-factors.** `atom.gI` is signed, in nuclear magneton units. The alkalis use
+  measured, diamagnetically shielded atomic *g*<sub>I</sub> values; the ions mostly use the
+  bare `μ_I / I` ratio, which runs ~0.5% larger. That is enough to move a magic field by
+  several mG — replace it with a shielded value before relying on it.
+- **Incomplete hyperfine data.** Ground-state coefficients are in place throughout, but
+  several species are missing excited-state *A* and *B*. Each such file carries a
+  `Data still needed` block listing exactly what is absent, and values I could not verify
+  against a primary source are marked `VERIFY`.
+- **Skipped levels.** A few high-lying levels in Hg II and Ho I use nested JJ/JK term symbols
+  the parser does not handle; they are skipped with a warning at build time rather than
+  aborting the build.
+
+See `species/__init__.py` for the authoritative inventory.
+
+## Citing the data
+
+Energy levels bundled in `resources/` and fetched by `IO.load_NIST_data()` come from the
+**NIST Atomic Spectra Database**. NIST asks that work using this data cite it:
+
+> Kramida, A., Ralchenko, Yu., Reader, J., and NIST ASD Team. *NIST Atomic Spectra Database*
+> (version 5.12). National Institute of Standards and Technology, Gaithersburg, MD.
+> https://physics.nist.gov/asd — DOI: [10.18434/T4W30F](https://doi.org/10.18434/T4W30F)
+
+The bundled CSVs were retrieved in July 2026; check the ASD for more recent evaluations
+before publishing. NIST data is a work of the US government and is not subject to copyright.
+
+Hyperfine coefficients, nuclear g-factors, and transition rates are **not** from ASD — they
+come from the literature and are cited inline in each species file. Cite those sources
+directly rather than this package.
