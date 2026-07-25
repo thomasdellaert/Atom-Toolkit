@@ -1,11 +1,35 @@
-# Packaging the species library: options
+# Packaging the species library
+
+**Status: resolved. Option A was implemented.** The rest of this document is kept as the
+record of why, and of what was rejected.
 
 Written up in response to the long-standing TODO in `species/__init__.py`:
 
 > Look more deeply into namespace packaging and see if it's possible to include this
 > package in the namespace of atomtoolkit in a nice way
 
-This is a proposal, not a change. Nothing here has been implemented.
+## What was done
+
+- `species/` → `atomtoolkit/species/`, `resources/` → `atomtoolkit/resources/`.
+- Data is located with `atomtoolkit.resource_path()`, built on `importlib.resources`,
+  replacing `pathlib.Path(__file__).parents[1] / 'resources'` in all 49 species modules.
+- `setup.py` gained `atomtoolkit.species` in `packages` and
+  `package_data={'atomtoolkit': ['resources/*.csv']}`; a `MANIFEST.in` includes the CSVs
+  and excludes the derived `.json` snapshots.
+- `atomtoolkit.load_species` / `available_species` / `species_info` / `build_snapshots`
+  are re-exported through a PEP 562 module-level `__getattr__`. This has to be lazy:
+  species modules import `atomtoolkit`, so an eager import would be circular.
+
+Verified by building a wheel and installing it into a clean virtualenv:
+109 files, 50 species modules, 38 CSVs, no snapshots, 0.6 MB, and
+`atomtoolkit.load_species('43Ca II')` works from `site-packages`.
+
+That check immediately paid for itself by catching an unrelated latent bug: the clean
+environment resolved `pandas` to 3.0.5, where `DataFrame.applymap` has been removed, so
+*every* species failed to load. `IO._parse_NIST_df` now uses `DataFrame.map` when
+available. This had nothing to do with the move — it would have broken any user who
+installed against current pandas — and it is exactly the class of problem a from-scratch
+install test exists to find.
 
 ## The actual problem is bigger than the import path
 
@@ -129,21 +153,24 @@ anyone running from a checkout. The lazy import avoids a cycle, since `species` 
 the packaging gap rather than closing it. Also leaves `species` squatting a very generic
 top-level import name — plausible collision material on PyPI.
 
-## Recommendation
+## Outcome
 
-**Option A**, done in one pass: move the directories, switch data access to
-`importlib.resources`, extend `packages`/`package_data`, and re-export
-`available_species` / `load_species` from `atomtoolkit/__init__.py`. That turns the
-registry added alongside this document into a genuinely public API rather than something
-that only works from a checkout.
+**Option A was chosen and implemented**, on the reasoning that 3.4 MB uncompressed
+(0.6 MB in the wheel) is a fair price for the data being the point of the package. If the
+data grows by an order of magnitude, Option B is the fallback and this document is the
+starting point for it.
 
-If the move feels too disruptive right now, **Option C is a reasonable stopgap** — it
-costs about ten lines and improves the ergonomics immediately — but it should be labelled
-as such, because the packaging gap is the part that actually bites users.
+`tests/test_species_registry.py::TestPackaging` guards the parts that are cheap to check
+without building a wheel: that every `resource_path(...)` a species file references
+actually exists, that no species file has reintroduced `__file__` arithmetic, that
+`setup.py` still declares both the subpackage and the data glob, and that the lazy
+re-export works.
 
-Whichever way it goes, two things are worth doing regardless:
+Still worth doing, not yet done:
 
-1. Add a smoke test that installs the built wheel into a clean virtualenv and runs
-   `load_species('Yb II 171')`. That is the check that would have caught this years ago.
-2. Bump `packages` in `setup.py` even before any move, so `python -m build` stops silently
-   producing a wheel that is missing half the project.
+1. A CI job that builds the wheel, installs it into a clean virtualenv, and runs
+   `load_species('Yb II 171')`. The in-repo tests cannot catch a `package_data` typo,
+   because in a checkout the files are present either way. Doing this manually is what
+   surfaced the pandas 3 breakage above.
+2. Pinning a lower bound on `pandas` in `install_requires` (it is currently unpinned), and
+   deciding a supported range now that pandas 3 is out.

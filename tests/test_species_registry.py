@@ -6,11 +6,62 @@ file and imports nothing. Tests that actually build an atom are marked `slow`.
 """
 
 import pathlib
+import re
 
 import pytest
 
-import species
+import atomtoolkit
+from atomtoolkit import species
 from atomtoolkit.atom import Atom
+
+
+# ---------------------------------------------------------------------------
+# Packaging
+# ---------------------------------------------------------------------------
+
+class TestPackaging:
+    """Guards against the failure mode that shipped for years: a wheel containing the
+    species modules but not the CSVs they load, or vice versa.
+
+    These are cheap proxies for the real check, which is building a wheel and installing
+    it into a clean virtualenv.
+    """
+
+    def test_resource_path_resolves(self):
+        assert atomtoolkit.resource_path('YbII.csv').exists()
+
+    def test_every_referenced_csv_is_present(self):
+        """Each resource_path('...') call in a species file must point at a real file."""
+        missing = []
+        for path in sorted(pathlib.Path(species.__file__).parent.glob('*.py')):
+            for name in re.findall(r"resource_path\('([^']+)'\)", path.read_text(encoding='utf-8')):
+                if not atomtoolkit.resource_path(name).exists():
+                    missing.append(f'{path.name} -> {name}')
+        assert not missing, f'species files reference missing resources: {missing}'
+
+    def test_species_files_do_not_use_file_arithmetic(self):
+        """Data must be reached via resource_path, which works inside an installed wheel.
+
+        `Path(__file__).parents[1] / 'resources'` resolves only in a source checkout.
+        """
+        offenders = [p.name for p in pathlib.Path(species.__file__).parent.glob('*.py')
+                     if p.stem != '__init__' and 'absroot' in p.read_text(encoding='utf-8')]
+        assert not offenders, f'species files using __file__ arithmetic: {offenders}'
+
+    def test_setup_declares_species_and_resources(self):
+        setup = (pathlib.Path(atomtoolkit.__file__).parents[1] / 'setup.py')
+        if not setup.exists():          # running against an installed copy, not the repo
+            pytest.skip('setup.py not present (installed package)')
+        text = setup.read_text(encoding='utf-8')
+        assert 'atomtoolkit.species' in text
+        assert 'resources/*.csv' in text
+
+    def test_atomtoolkit_reexports_registry(self):
+        """The lazy PEP 562 re-export must work without an import cycle."""
+        assert callable(atomtoolkit.load_species)
+        assert atomtoolkit.available_species() == species.available_species()
+        with pytest.raises(AttributeError):
+            atomtoolkit.definitely_not_an_attribute
 
 
 # ---------------------------------------------------------------------------
@@ -39,10 +90,10 @@ class TestDiscovery:
         """Listing must not import species modules -- that would build every atom."""
         import sys
         for name in list(sys.modules):
-            if name.startswith('species.'):
+            if name.startswith('atomtoolkit.species.'):
                 del sys.modules[name]
         species.available_species()
-        assert not [n for n in sys.modules if n.startswith('species.')]
+        assert not [n for n in sys.modules if n.startswith('atomtoolkit.species.')]
 
 
 # ---------------------------------------------------------------------------

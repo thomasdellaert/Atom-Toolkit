@@ -23,7 +23,7 @@ python3 -m build
 python3 -m twine upload dist/atom_toolkit-0.2.0*
 ```
 
-Current state: 673 fast tests pass, 4 skipped (qutip-dependent), 43 slow tests deselected.
+Current state: 744 tests pass, 4 skipped (qutip-dependent). Of these, 47 are marked `slow`.
 
 ## Architecture
 
@@ -70,8 +70,9 @@ By default `ZLevel.level_hz_at(B)` uses the linear form `gF·mF·μB·B`. For fi
 - **`atomtoolkit/IO.py`** — data loading/saving.
   - `IO.load_NIST_data('Yb II')` — fetches from the NIST ASD web API. Requests `format=2`, the same Excel-quoted CSV the ASD web form produces, so the API and local-CSV paths feed the parser identical input. Raises a `RuntimeError` with manual-download instructions on 403.
     - It sets `_NIST_USER_AGENT`, an honest tool identifier, because NIST 403s the default `Python-urllib/3.x` string. Any non-default UA works — **don't "fix" a future block by spoofing a browser string**; that makes the traffic unattributable and is not why the filter exists.
-    - `energy1.pl` is the web form's backend, not a versioned API. It can break without notice, so it's a convenience for adding a *new* species (fetch once, save the CSV to `resources/`, commit it) rather than something to depend on at runtime. Everything in `species/` loads from cached CSVs and never touches the network.
-  - `IO.load_NIST_data_from_csv('resources/YbII.csv')` — loads from a locally saved NIST ASD CSV (same format; use when the API is unavailable).
+    - `energy1.pl` is the web form's backend, not a versioned API. It can break without notice, so it's a convenience for adding a *new* species (fetch once, save the CSV to `atomtoolkit/resources/`, commit it) rather than something to depend on at runtime. Everything in `atomtoolkit/species/` loads from cached CSVs and never touches the network.
+  - `IO.load_NIST_data_from_csv(resource_path('YbII.csv'))` — loads from a locally saved NIST ASD CSV (same format; use when the API is unavailable).
+  - `atomtoolkit.resource_path('YbII.csv')` — locates a bundled CSV via `importlib.resources`. **Always use this rather than `__file__` arithmetic**; it is what makes the data resolve inside an installed wheel.
   - `IO.generate_full_from_dataframe(df, name, I)` — builds a complete atom from a dataframe.
   - Supports CSV round-trips for HF coefficients (`generate_hf_csv` / `apply_hf_csv`) and transitions (`generate_transition_csv` / `apply_transition_csv`).
 - **`atomtoolkit/environment.py`** — `Environment(B=Q_(5.36, 'G'), fields=[...])` bundles magnetic field and `LightField` objects for dynamics. `B` is a pint Quantity (defaults to 0 G); the plain float is exposed as `env.B_gauss`. `Polarization`, `LightField`, `GaussianBeam` handle field geometry.
@@ -85,7 +86,7 @@ By default `ZLevel.level_hz_at(B)` uses the linear form `gF·mF·μB·B`. For fi
 ### Species files (`species/`)
 Each file builds a concrete `Atom` instance from a cached NIST CSV, then layers hyperfine coefficients, a nuclear g-factor, and measured transition data on top, with sources cited inline. Run a species file as `__main__` to regenerate its `.json` snapshot alongside it. **`species/__init__.py` holds the authoritative inventory** — 49 isotopes covering the common trapped ions (Be⁺, Mg⁺, Ca⁺, Sr⁺, Ba⁺, Ra⁺, Zn⁺, Cd⁺, Hg⁺, Yb⁺), the alkali metals (Li, Na, K, Rb, Cs, Fr), the MOT-trapped neutrals (Mg, Ca, Sr, Yb, Hg, Cd, plus the magnetic Dy, Er, Cr, Tm and metastable He\*/Ne\*), Tm⁺, and Ho I.
 
-Bundled NIST ASD level CSVs live in `resources/` (`YbII.csv`, `CaII.csv`, `RbI.csv`, …) and are loaded via `IO.load_NIST_data_from_csv()`, so builds are reproducible offline. To add a species, fetch its CSV with `IO.load_NIST_data('Xx II')` and save it there.
+Bundled NIST ASD level CSVs live in `atomtoolkit/resources/` (`YbII.csv`, `CaII.csv`, `RbI.csv`, …), reached via `atomtoolkit.resource_path(name)` and loaded with `IO.load_NIST_data_from_csv()`, so builds are reproducible offline. To add a species, fetch its CSV with `IO.load_NIST_data('Xx II')` and save it there.
 
 Conventions that bite when editing these files:
 - **`gI` sign and units** — signed, in *nuclear magneton* units. The alkalis use measured diamagnetically-shielded atomic `g_I` values; the bare `μ_I / I` ratio from nuclear moment tables is ~0.5% larger and shifts the ⁸⁷Rb magic field by ~12 mG. Steck-convention values (Bohr magnetons, opposite sign) convert as `gI_ours = -gI_Steck * mu_B/mu_N`.
@@ -100,7 +101,7 @@ Conventions that bite when editing these files:
 
 **Registry** (`species/__init__.py`): `species.available_species()` lists all 49 display names by reading one `NAME =` line per file — it deliberately imports nothing, since importing a species module builds its atom. `species.load_species('Yb II 171')` resolves forgiving name forms (`'171Yb II'`, `'Yb_II_171'`, `'yb ii 171'`), prefers a `.json` snapshot when it is newer than its `.py`, falls back to building from CSV, and caches the result. Atoms are shared, so `copy=True` is needed before mutating. `species.build_snapshots()` regenerates snapshots.
 
-**Packaging gap:** `setup.py` packages only `['atomtoolkit', 'atomtoolkit.render']`, so neither `species/` nor `resources/` is installed — the PyPI wheel has no species library, and species modules resolve data via `Path(__file__).parents[1] / 'resources'`, which only exists in a checkout. Options are written up in `docs/packaging-proposal.md`. Note that PEP 420 namespace packages *cannot* solve this: `atomtoolkit` is a regular package with an essential `__init__.py`, and a regular package cannot be extended by a separate distribution (verified empirically).
+**Packaging:** `species/` and `resources/` live *inside* the package (`atomtoolkit/species/`, `atomtoolkit/resources/`) and are declared in `setup.py` via `packages` + `package_data`, so both ship in the wheel. Data is reached through `atomtoolkit.resource_path()`; never reintroduce `Path(__file__).parents[1]` there, since it resolves only in a checkout. `atomtoolkit.load_species` / `available_species` / `species_info` / `build_snapshots` are re-exported lazily through a PEP 562 module `__getattr__`, which is required — species modules import `atomtoolkit`, so an eager import would cycle. Background and the rejected alternatives are in `docs/packaging-proposal.md`.
 
 Species integration tests are in `tests/test_species.py`, marked `@pytest.mark.slow`; registry tests are in `tests/test_species_registry.py` (fast, apart from a slow-marked loading class).
 

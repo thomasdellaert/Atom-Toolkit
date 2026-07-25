@@ -37,7 +37,7 @@ def _check_transition(atom, lower, upper):
 
 @pytest.fixture(scope="module")
 def yb171():
-    from species.Yb_II_171 import Yb171
+    from atomtoolkit.species.Yb_II_171 import Yb171
     return Yb171
 
 
@@ -114,7 +114,7 @@ class TestYb171:
 
 @pytest.fixture(scope="module")
 def yb173():
-    from species.Yb_II_173 import Yb173
+    from atomtoolkit.species.Yb_II_173 import Yb173
     return Yb173
 
 
@@ -168,7 +168,7 @@ class TestYb173:
 
 @pytest.fixture(scope="module")
 def yb174():
-    from species.Yb_II_174 import Yb174
+    from atomtoolkit.species.Yb_II_174 import Yb174
     return Yb174
 
 
@@ -217,7 +217,7 @@ class TestYb174:
 
 @pytest.fixture(scope="module")
 def ba133():
-    from species.Ba_II_133 import Ba133
+    from atomtoolkit.species.Ba_II_133 import Ba133
     return Ba133
 
 
@@ -272,7 +272,7 @@ class TestBa133:
 
 @pytest.fixture(scope="module")
 def li7():
-    from species.Li_I import Li7
+    from atomtoolkit.species.Li_I import Li7
     return Li7
 
 

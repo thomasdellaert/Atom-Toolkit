@@ -22,7 +22,10 @@ def _parse_NIST_df(df: pd.DataFrame, save=False, species: str = None) -> pd.Data
     Both sources produce the same Excel-quoted CSV format, so the pipeline is identical.
     """
     # === strip the data of extraneous symbols ===
-    df_clean = df.applymap(lambda k: k.strip(' ="?') if isinstance(k, str) else k)
+    # DataFrame.applymap was deprecated in pandas 2.1 and removed in 3.0; DataFrame.map is
+    # its replacement and does not exist before 2.1. Support both.
+    elementwise = df.map if hasattr(df, 'map') else df.applymap
+    df_clean = elementwise(lambda k: k.strip(' ="?') if isinstance(k, str) else k)
 
     # === coerce types ===
     df_clean['Configuration'] = df_clean['Configuration'].astype('str')

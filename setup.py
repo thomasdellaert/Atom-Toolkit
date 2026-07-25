@@ -4,7 +4,11 @@ from setuptools import setup
 setup(
     name='Atom-Toolkit',
     version='0.2.0',
-    packages=['atomtoolkit', 'atomtoolkit.render'],
+    packages=['atomtoolkit', 'atomtoolkit.render', 'atomtoolkit.species'],
+    # The bundled NIST ASD CSVs are data, not modules, so they need declaring explicitly
+    # or the wheel ships a species library with nothing to build from.
+    package_data={'atomtoolkit': ['resources/*.csv']},
+    include_package_data=True,
     url='https://github.com/thomasdellaert/Atom-Toolkit',
     license='GNU GPLv3',
     author='Thomas Dellaert',

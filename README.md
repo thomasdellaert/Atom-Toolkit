@@ -50,13 +50,13 @@ If the API is unavailable (e.g. returns a 403 error), you can download a CSV man
 df = IO.load_NIST_data_from_csv('path/to/YbII.csv')
 ```
 
-The CSVs in `resources/` were obtained this way and are used automatically by the `species/`
-files, so nothing under `species/` needs network access.
+The CSVs in `atomtoolkit/resources/` were obtained this way and are used automatically by
+the species modules, so nothing under `atomtoolkit/species/` needs network access.
 
 A note on the web API: `load_NIST_data()` talks to `energy1.pl`, which is the ASD search
 form's own backend rather than a documented, versioned API — NIST can change it without
 notice. Treat it as a convenience for adding a *new* species (fetch once, save the CSV to
-`resources/`, commit it) rather than something to call at runtime. It also sends an
+`atomtoolkit/resources/`, commit it) rather than something to call at runtime. It also sends an
 identifying `User-Agent`, because NIST rejects the default `Python-urllib` one; please leave
 that honest rather than swapping in a browser string.
 
@@ -64,11 +64,11 @@ that honest rather than swapping in a browser string.
 
 ```python
 from atomtoolkit.atom import Atom
-from atomtoolkit import IO, Q_
+from atomtoolkit import IO, Q_, resource_path
 
 # Load level data — from the API or a local CSV
 df = IO.load_NIST_data('Yb II')               # live API
-# df = IO.load_NIST_data_from_csv('resources/YbII.csv')  # local fallback
+# df = IO.load_NIST_data_from_csv(resource_path('YbII.csv'))  # local fallback
 a = Atom.from_dataframe(df, name='173Yb II', I=2.5)
 
 # Set hyperfine coefficients on a gross level
@@ -105,16 +105,16 @@ All quantities use a shared [pint](https://pint.readthedocs.io/) unit registry w
 
 ## Species files
 
-The `species/` directory contains ready-to-use atoms with hyperfine coefficients, nuclear
+The `atomtoolkit/species/` package contains ready-to-use atoms with hyperfine coefficients, nuclear
 g-factors, and corrected transitions already applied. The registry is the easiest way in —
 no module names or file paths required:
 
 ```python
-import species
+import atomtoolkit
 
-species.available_species()             # -> ['133Ba II', '112Cd I', '133Cs I', ...]
-yb = species.load_species('Yb II 171')  # -> Atom
-sr = species.load_species('87Sr I')
+atomtoolkit.available_species()             # -> ['133Ba II', '112Cd I', '133Cs I', ...]
+yb = atomtoolkit.load_species('Yb II 171')  # -> Atom
+sr = atomtoolkit.load_species('87Sr I')
 ```
 
 Name matching is forgiving: `'Yb II 171'`, `'171Yb II'`, `'Yb_II_171'` and `'yb ii 171'` all
@@ -125,23 +125,25 @@ You can still import a module directly if you prefer; each exposes its `Atom` un
 name:
 
 ```python
-from species import Yb_II_171, Ca_II_43
+from atomtoolkit.species import Yb_II_171, Ca_II_43
 a = Yb_II_171.Yb171
 b = Ca_II_43.Ca43
 ```
 
-Energy levels come from NIST ASD CSVs cached in `resources/`, so building a species never
+Energy levels come from NIST ASD CSVs cached in `atomtoolkit/resources/`, so building a species never
 touches the network.
 
 `load_species()` prefers a prebuilt `.json` snapshot when one exists and is newer than its
 `.py` — that turns a ~40 s Rb build into a ~1 s load — and otherwise builds from the CSV.
 Snapshots are gitignored, so a fresh clone just builds; regenerate them with
-`species.build_snapshots()` or by running a species file as `__main__`. Loaded atoms are
+`atomtoolkit.build_snapshots()` or by running a species file as `__main__`
+(`python -m atomtoolkit.species.Ca_II_43`). Loaded atoms are
 cached and shared, so pass `copy=True` if you intend to mutate one.
 
-> **Note:** the species library ships with the source repository but **not** with the PyPI
-> wheel — `setup.py` packages only `atomtoolkit` and `atomtoolkit.render`. See
-> [docs/packaging-proposal.md](docs/packaging-proposal.md) for the options to fix that.
+The species library and its data ship inside the package (`atomtoolkit/species/` and
+`atomtoolkit/resources/`), so everything above works from an installed wheel as well as from
+a checkout. Data files are located with `atomtoolkit.resource_path()` rather than by walking
+`__file__`.
 
 ### Bundled species
 
@@ -207,8 +209,8 @@ cached and shared, so pass `copy=True` if you intend to mutate one.
 build from the true ground state as usual, so reference the metastable level explicitly:
 
 ```python
-from species import He_I_4
-metastable = He_I_4.He4.levels['1s.2s 3S1']   # 19.8 eV above the ground state
+from atomtoolkit import load_species
+metastable = load_species('4He I').levels['1s.2s 3S1']   # 19.8 eV above the ground state
 ```
 
 | Module | Species | I | Notes |
@@ -249,7 +251,7 @@ See `species/__init__.py` for the authoritative inventory.
 
 ## Citing the data
 
-Energy levels bundled in `resources/` and fetched by `IO.load_NIST_data()` come from the
+Energy levels bundled in `atomtoolkit/resources/` and fetched by `IO.load_NIST_data()` come from the
 **NIST Atomic Spectra Database**. NIST asks that work using this data cite it:
 
 > Kramida, A., Ralchenko, Yu., Reader, J., and NIST ASD Team. *NIST Atomic Spectra Database*
