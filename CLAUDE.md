@@ -65,6 +65,7 @@ By default `ZLevel.level_hz_at(B)` uses the linear form `gF·mF·μB·B`. For fi
 
 ### Supporting modules
 - **`atomtoolkit/term.py`** — `Term` / `MultiTerm`: parse and represent spectroscopic term symbols across LS, JJ, LK, JK couplings.
+  - `Term.markup_runs()` returns `(text, role)` runs with roles `normal`/`super`/`sub`; `Term.to_markup(fmt)` renders them as `unicode`, `latex`, `html` or `plain`. Renderer-agnostic on purpose — the Grotrian SVG backend emits the runs as `<tspan>`s, and LaTeX output is independently useful. `MultiTerm` delegates both to its leading term (its `__getattribute__` forwards only `__slots__`, so methods need explicit delegation).
   - `Term.__eq__` is strict same-type: never matches `MultiTerm`. Use `term.equal_to(other, level='J'|'F'|None)` for cross-type or coarser comparisons.
   - `Term.__hash__` is consistent with `__eq__` (includes `conf`, `term`, `quantum_nums`, `F`, `mF`).
 - **`atomtoolkit/IO.py`** — data loading/saving.
@@ -81,7 +82,23 @@ By default `ZLevel.level_hz_at(B)` uses the linear form `gF·mF·μB·B`. For fi
 - **`atomtoolkit/util.py`** — spectroscopic string helpers (`frac_to_float`, `float_to_frac`, `get_term_coupling`, `get_quantum_nums`).
 - **`atomtoolkit/transition_strengths.py`** — Wigner symbols, reduced matrix elements, E1/M1/E2 geometric coupling factors.
 - **`atomtoolkit/wigner.py`** — Wigner 3j and 6j symbol computation.
-- **`atomtoolkit/render/`** — plotting: `grotrian.py` (Grotrian diagrams), `spectra.py` (spectral lineshapes), `lineshapes.py`, `arrows.py`.
+- **`atomtoolkit/render/`** — `spectra.py` / `lineshapes.py` are matplotlib-based. **`grotrian/` is not** — it emits SVG directly, as a `spec → layout → render` pipeline:
+  - `spec.py` — `LevelSpec`, `LevelStyle`, `Theme` (`LIGHT`/`DARK`), `ColumnPolicy`. Pure declaration, no geometry.
+  - `scale.py` — `LinearScale` (default, literal) and `CompressedScale` (allocates space by level density; keeps crowded regions legible but distances are no longer proportional).
+  - `layout.py` — pure functions producing a `Scene` of positioned primitives. `resolve_overlaps()` de-overlaps labels via PAVA isotonic regression (optimal minimum-displacement, unlike a greedy sweep). `Scene.anchors` maps each level to its *drawn* box — transitions must resolve against those, never raw energies.
+  - `svg.py` — `Scene → str` via `svgwrite`. Deliberately dumb so golden-file tests mean something.
+  - `Grotrian.render()` is **pure and idempotent** (the matplotlib version doubled its state on every call). `Grotrian.auto(atom)` is the zero-config entry point and the honest test of the defaults.
+  - Labels never need real font metrics because `Theme.label_gutter` reserves fixed space per column — see `docs/grotrian-svg-plan.md` §7.
+  - **Substructure** (`detail='hyperfine'` / `'zeeman'`) is drawn in place on **one global magnification** shared by the whole diagram. Never size it from the smallest gap: ¹³⁷Ba⁺ 5d ²D₅/₂ has F=4/F=3 just 0.496 MHz apart inside a 135 MHz span, so that rule demands a band thousands of px tall. A shared scale also keeps splittings comparable between manifolds, which is what a reader reads off the figure.
+  - `hf_scale='auto'` (default) sizes to the largest **excited-state** splitting, skipping the lowest manifold — ground-state hyperfine runs 5–8× larger than anything else (5.5× in ⁴³Ca⁺, 8.4× in ⁸⁷Rb), so sizing to it squashes everything else to a sliver. `'widest'` restores ground-state sizing. Also accepts px/Hz or a `Quantity` ("this splitting fills the band"). The ground state then overflows proportionally, so the plot area is inset by the worst fan overhang to keep it on-canvas.
+  - **Per-manifold overrides**: `add_level(..., hf_scale='fit' | px_per_Hz | Quantity, hf_exaggerate=N)` and the `z_` equivalents. `None` inherits the diagram scale, which is the default and what keeps manifolds comparable. Any manifold drawn off the shared scale is **automatically annotated with its true span** so the figure cannot mislead. The canvas grows around exaggerated fans rather than compressing the energy span — squeezing the span would silently distort the gross axis.
+  - `z_scale='match'` (default) keeps Zeeman faithful to the hyperfine scale — and therefore sub-pixel at ordinary fields. `z_scale='auto'` exaggerates it to fill `theme.z_band`, and the scale bar then reports the factor. The vertical offset is decomposed into hyperfine and Zeeman parts so exaggerating one never rescales the other.
+  - Sublevels are ordered **by energy, not by F** — a negative hyperfine A inverts the ladder. The fan is not symmetric about the parent line either: the hyperfine centre of gravity is degeneracy-weighted.
+  - **Lines are physical, labels relax.** Near-degenerate sublevels overlap honestly while their `F` labels de-overlap onto leaders.
+  - Zeeman uses the *same* vertical scale as hyperfine (its sublevels carry the hyperfine shift plus a much smaller Zeeman one) and fans horizontally by m_F. `B=` routes through `ZLevel.level_hz_at`, so `use_nonlinear_zeeman` manifolds get exact diagonalisation for free.
+  - Manifolds with no hyperfine data — still the majority — get an evenly spaced schematic fan with a **dashed** bracket, so missing data never reads as real structure.
+  - Transitions are phase 3; `Scene.anchors` already records every drawn sublevel box for them.
+  - `examples/grotrian_gallery.py` renders a visual regression gallery; run it after touching the renderer.
 
 ### Species files (`species/`)
 Each file builds a concrete `Atom` instance from a cached NIST CSV, then layers hyperfine coefficients, a nuclear g-factor, and measured transition data on top, with sources cited inline. Run a species file as `__main__` to regenerate its `.json` snapshot alongside it. **`species/__init__.py` holds the authoritative inventory** — 49 isotopes covering the common trapped ions (Be⁺, Mg⁺, Ca⁺, Sr⁺, Ba⁺, Ra⁺, Zn⁺, Cd⁺, Hg⁺, Yb⁺), the alkali metals (Li, Na, K, Rb, Cs, Fr), the MOT-trapped neutrals (Mg, Ca, Sr, Yb, Hg, Cd, plus the magnetic Dy, Er, Cr, Tm and metastable He\*/Ne\*), Tm⁺, and Ho I.

@@ -30,6 +30,9 @@ htmlcov/
 # Prebuilt species snapshots — regenerate with e.g. `python -m atomtoolkit.species.Ca_II_43`
 atomtoolkit/species/*.json
 
+# Generated gallery output — regenerate with `python examples/grotrian_gallery.py`
+examples/output/
+
 # Claude Code local settings (project-level .claude/settings.json stays tracked)
 .claude/settings.local.json
 

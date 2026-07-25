@@ -1,0 +1,700 @@
+"""
+Tests for the SVG Grotrian renderer.
+
+The spec/layout/render split means almost everything here is a fast, pure test on
+coordinates. Only the handful of end-to-end checks touch a real species.
+"""
+
+import xml.etree.ElementTree as ET
+
+import pytest
+
+from atomtoolkit import Hz, THz
+from atomtoolkit.atom import Atom, EnergyLevel
+from atomtoolkit.term import Term
+from atomtoolkit.render.grotrian import (DARK, ColumnPolicy, CompressedScale, Grotrian,
+                                         LinearScale, Theme)
+from atomtoolkit.render.grotrian.layout import (estimate_text_width, layout,
+                                                resolve_overlaps)
+from atomtoolkit.render.grotrian.spec import LevelSpec, LevelStyle
+
+SVG_NS = '{http://www.w3.org/2000/svg}'
+
+
+@pytest.fixture
+def toy_atom():
+    """A small synthetic atom: cheap, and independent of the bundled species data."""
+    a = Atom(name='toy')
+    a.add_level(EnergyLevel(Term('1s2.2s', '2S', 0.5), level=0.0 * Hz))
+    a.add_level(EnergyLevel(Term('1s2.2p', '2P*', 0.5), level=100 * THz))
+    a.add_level(EnergyLevel(Term('1s2.2p', '2P*', 1.5), level=101 * THz))
+    a.add_level(EnergyLevel(Term('1s2.3d', '2D', 1.5), level=180 * THz))
+    a.add_level(EnergyLevel(Term('1s2.3d', '2D', 2.5), level=181 * THz))
+    return a
+
+
+# ---------------------------------------------------------------------------
+# Label de-overlap
+# ---------------------------------------------------------------------------
+
+class TestResolveOverlaps:
+
+    def test_empty(self):
+        assert resolve_overlaps([], 10) == []
+
+    def test_already_spaced_is_untouched(self):
+        desired = [0.0, 20.0, 40.0]
+        assert resolve_overlaps(desired, 10) == pytest.approx(desired)
+
+    def test_coincident_points_are_spread(self):
+        out = resolve_overlaps([50.0, 50.0, 50.0], 10)
+        assert out == pytest.approx([40.0, 50.0, 60.0])   # symmetric about the mean
+
+    def test_minimum_gap_is_honoured(self):
+        out = resolve_overlaps([0.0, 1.0, 2.0, 3.0], 10)
+        gaps = [b - a for a, b in zip(out, out[1:])]
+        assert all(g >= 10 - 1e-9 for g in gaps)
+
+    def test_order_is_preserved(self):
+        out = resolve_overlaps([0.0, 0.5, 1.0, 30.0], 10)
+        assert out == sorted(out)
+
+    def test_centre_of_mass_is_preserved(self):
+        """PAVA moves points minimally, so the mean should not drift."""
+        desired = [10.0, 12.0, 13.0, 40.0]
+        out = resolve_overlaps(desired, 10)
+        assert sum(out) / len(out) == pytest.approx(sum(desired) / len(desired))
+
+    def test_beats_greedy_on_displacement(self):
+        """A greedy forward sweep piles all the error on one end; PAVA should not."""
+        desired = [0.0] * 5
+        out = resolve_overlaps(desired, 10)
+        greedy = [i * 10.0 for i in range(5)]
+        cost = sum((o - d) ** 2 for o, d in zip(out, desired))
+        greedy_cost = sum((g - d) ** 2 for g, d in zip(greedy, desired))
+        assert cost < greedy_cost
+
+
+# ---------------------------------------------------------------------------
+# Energy scales
+# ---------------------------------------------------------------------------
+
+class TestScales:
+
+    def test_linear_is_monotonic_and_spans_the_unit_interval(self):
+        scale = LinearScale().prepare([0.0, 1e14, 2e14])
+        values = [scale.normalize(e) for e in (0.0, 1e14, 2e14)]
+        assert values == sorted(values)
+        assert 0.0 < values[0] < values[-1] < 1.0        # padding keeps it off the edges
+        assert values[1] == pytest.approx(0.5)
+
+    def test_linear_handles_a_single_level(self):
+        scale = LinearScale().prepare([5e13])
+        assert 0.0 <= scale.normalize(5e13) <= 1.0
+
+    def test_compressed_is_monotonic(self):
+        energies = [0.0, 1e14, 1.01e14, 1.02e14]
+        scale = CompressedScale(strength=0.8).prepare(energies)
+        values = [scale.normalize(e) for e in energies]
+        assert values == sorted(values)
+
+    def test_compressed_expands_crowded_regions(self):
+        """Three levels bunched above a big gap should get more room than linearly."""
+        energies = [0.0, 1e14, 1.01e14, 1.02e14]
+        linear = LinearScale().prepare(energies)
+        compressed = CompressedScale(strength=0.8).prepare(energies)
+        lin_spread = linear.normalize(energies[3]) - linear.normalize(energies[1])
+        com_spread = compressed.normalize(energies[3]) - compressed.normalize(energies[1])
+        assert com_spread > lin_spread
+
+    def test_ticks_lie_inside_the_plot(self):
+        scale = LinearScale().prepare([0.0, 3e14])
+        ticks = scale.ticks()
+        assert ticks
+        assert all(-0.001 <= frac <= 1.001 for frac, _ in ticks)
+
+    def test_empty_input_is_rejected(self):
+        with pytest.raises(ValueError):
+            LinearScale().prepare([])
+
+
+# ---------------------------------------------------------------------------
+# Column policies
+# ---------------------------------------------------------------------------
+
+class TestColumnPolicy:
+
+    def test_by_J_sorts_ascending(self, toy_atom):
+        policy = ColumnPolicy('J')
+        keys = [policy(l)[0] for l in toy_atom.levels.values()]
+        assert min(keys) == 0.5
+
+    def test_by_parity_gives_two_columns(self, toy_atom):
+        policy = ColumnPolicy('parity')
+        assert {policy(l)[1] for l in toy_atom.levels.values()} == {'even', 'odd'}
+
+    def test_unknown_policy_is_rejected(self):
+        with pytest.raises(ValueError, match='Unknown column policy'):
+            ColumnPolicy('nonsense')
+
+    def test_callable_policy(self, toy_atom):
+        g = Grotrian(toy_atom, columns=lambda l: (0.0, 'all'))
+        g.add_levels(toy_atom.levels.values())
+        assert len(g.build().headers) == 1
+
+
+# ---------------------------------------------------------------------------
+# Layout
+# ---------------------------------------------------------------------------
+
+class TestLayout:
+
+    def _scene(self, atom, **kwargs):
+        g = Grotrian(atom, **kwargs)
+        g.add_levels(atom.levels.values())
+        return g.build()
+
+    def test_one_line_per_level(self, toy_atom):
+        scene = self._scene(toy_atom)
+        assert len(scene.lines) == len(toy_atom.levels)
+
+    def test_every_level_gets_an_anchor(self, toy_atom):
+        """Transitions will resolve against these, so none may be missing."""
+        scene = self._scene(toy_atom)
+        assert set(scene.anchors) == set(toy_atom.levels.values())
+
+    def test_higher_energy_is_higher_on_the_page(self, toy_atom):
+        scene = self._scene(toy_atom)
+        ground = scene.anchors[toy_atom.levels['1s2.2s 2S1/2']]
+        excited = scene.anchors[toy_atom.levels['1s2.3d 2D5/2']]
+        assert excited.y0 < ground.y0          # SVG y grows downwards
+
+    def test_labels_do_not_overlap_vertically(self, toy_atom):
+        scene = self._scene(toy_atom)
+        by_column = {}
+        for label in scene.labels:
+            by_column.setdefault(round(label.x, 3), []).append(label.y)
+        for ys in by_column.values():
+            ys.sort()
+            gaps = [b - a for a, b in zip(ys, ys[1:])]
+            assert all(g >= scene.theme.min_label_spacing - 1e-6 for g in gaps)
+
+    def test_labels_stay_inside_the_canvas(self, toy_atom):
+        scene = self._scene(toy_atom)
+        for label in scene.labels:
+            assert label.x + estimate_text_width(label.runs, label.size) <= scene.width + 1e-6
+
+    def test_labels_do_not_intrude_on_the_next_column(self, toy_atom):
+        """The reserved gutter is what makes this hold without real font metrics."""
+        scene = self._scene(toy_atom)
+        starts = sorted({round(line.x0, 3) for line in scene.lines})
+        for label in scene.labels:
+            following = [s for s in starts if s > label.x]
+            if following:
+                assert label.x + estimate_text_width(label.runs, label.size) <= following[0]
+
+    def test_empty_diagram_is_rejected(self, toy_atom):
+        with pytest.raises(ValueError, match='at least one level'):
+            layout([], Theme(), ColumnPolicy('J'))
+
+    def test_style_overrides_reach_the_scene(self, toy_atom):
+        g = Grotrian(toy_atom)
+        g.add_levels(toy_atom.levels.values(), color='#ff0000', linewidth=9.0)
+        scene = g.build()
+        assert all(line.color == '#ff0000' for line in scene.lines)
+        assert all(line.linewidth == 9.0 for line in scene.lines)
+
+    def test_label_can_be_suppressed(self, toy_atom):
+        g = Grotrian(toy_atom)
+        g.add_levels(toy_atom.levels.values(), label=False)
+        assert g.build().labels == []
+
+
+# ---------------------------------------------------------------------------
+# The Grotrian facade
+# ---------------------------------------------------------------------------
+
+class TestGrotrian:
+
+    def test_render_is_pure(self, toy_atom):
+        """The matplotlib version doubled its state on every render; this must not."""
+        g = Grotrian(toy_atom).add_levels(toy_atom.levels.values())
+        first, second = g.render(), g.render()
+        assert first == second
+        assert len(g.build().lines) == len(toy_atom.levels)
+
+    def test_chaining_returns_self(self, toy_atom):
+        g = Grotrian(toy_atom)
+        assert g.add_level(toy_atom.levels['1s2.2s 2S1/2']) is g
+        assert g.style_levels(lambda l: True, color='#123456') is g
+
+    def test_style_levels_is_selective(self, toy_atom):
+        g = Grotrian(toy_atom).add_levels(toy_atom.levels.values())
+        g.style_levels(lambda l: l.term.parity == -1, color='#b3541e')
+        colors = {line.color for line in g.build().lines}
+        assert '#b3541e' in colors and len(colors) == 2
+
+    def test_lookup_by_name(self, toy_atom):
+        g = Grotrian(toy_atom).add_level('1s2.2s 2S1/2')
+        assert g.levels[0] is toy_atom.levels['1s2.2s 2S1/2']
+
+    def test_lookup_by_name_without_atom_is_an_error(self):
+        with pytest.raises(ValueError, match='no atom'):
+            Grotrian().add_level('1s2.2s 2S1/2')
+
+    def test_unknown_name_is_an_error(self, toy_atom):
+        with pytest.raises(KeyError):
+            Grotrian(toy_atom).add_level('not a level')
+
+    def test_save_writes_a_file(self, toy_atom, tmp_path):
+        path = Grotrian(toy_atom).add_levels(toy_atom.levels.values()).save(tmp_path / 'g.svg')
+        assert path.exists()
+        assert path.read_text(encoding='utf-8').startswith('<')
+
+    def test_repr_svg_for_jupyter(self, toy_atom):
+        g = Grotrian(toy_atom).add_levels(toy_atom.levels.values())
+        assert g._repr_svg_().lstrip().startswith('<')
+
+    def test_auto(self, toy_atom):
+        g = Grotrian.auto(toy_atom, n_levels=3)
+        assert len(g.levels) == 3
+        assert g.title == 'toy'
+
+
+# ---------------------------------------------------------------------------
+# SVG output
+# ---------------------------------------------------------------------------
+
+class TestSvgOutput:
+
+    @pytest.fixture
+    def svg(self, toy_atom):
+        return Grotrian.auto(toy_atom, n_levels=5).render()
+
+    def test_is_well_formed_xml(self, svg):
+        ET.fromstring(svg)
+
+    def test_has_a_viewbox(self, svg):
+        assert 'viewBox' in ET.fromstring(svg).attrib
+
+    def test_draws_a_line_per_level(self, svg):
+        root = ET.fromstring(svg)
+        lines = root.findall(f'.//{SVG_NS}line')
+        assert len(lines) >= 5
+
+    def test_term_symbols_become_tspans(self, svg):
+        """Superscript multiplicity and subscript J are the whole point of using SVG."""
+        root = ET.fromstring(svg)
+        spans = root.findall(f'.//{SVG_NS}tspan')
+        assert spans
+        texts = {s.text for s in spans if s.text}
+        assert '2' in texts        # multiplicity
+        assert '1/2' in texts      # J
+
+    def test_levels_carry_tooltips(self, svg):
+        root = ET.fromstring(svg)
+        assert root.findall(f'.//{SVG_NS}title')
+
+    def test_dark_theme_changes_the_background(self, toy_atom):
+        light = Grotrian(toy_atom, theme=Theme()).add_levels(toy_atom.levels.values()).render()
+        dark = Grotrian(toy_atom, theme=DARK).add_levels(toy_atom.levels.values()).render()
+        assert DARK.background in dark
+        assert dark != light
+
+
+# ---------------------------------------------------------------------------
+# End to end on real data
+# ---------------------------------------------------------------------------
+
+@pytest.mark.slow
+class TestRealSpecies:
+
+    @pytest.mark.parametrize('name,n', [('171Yb II', 14), ('43Ca II', 10),
+                                        ('165Ho I', 12), ('20Ne I', 12)])
+    def test_species_render_cleanly(self, name, n):
+        """Covers LS, JK and JJ term markup, and the awkward species."""
+        import atomtoolkit
+        atom = atomtoolkit.load_species(name)
+        g = Grotrian.auto(atom, n_levels=n, scale=CompressedScale())
+        scene, svg = g.build(), g.render()
+        ET.fromstring(svg)
+        assert len(scene.lines) == n
+        assert all(0 <= line.y <= scene.height for line in scene.lines)
+        for label in scene.labels:
+            assert label.x + estimate_text_width(label.runs, label.size) <= scene.width + 1e-6
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: hyperfine and Zeeman substructure
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def hf_atom():
+    """A two-manifold atom with deliberately unequal hyperfine splittings.
+
+    The excited manifold is 10x narrower than the ground one, which is what a *global*
+    hyperfine scale has to represent faithfully.
+    """
+    from atomtoolkit import GHz
+    a = Atom(name='hf-toy', I=1.5)
+    ground = EnergyLevel(Term('1s2.2s', '2S', 0.5), level=0.0 * Hz, hfA=1.0 * GHz)
+    excited = EnergyLevel(Term('1s2.2p', '2P*', 0.5), level=100 * THz, hfA=0.1 * GHz)
+    flat = EnergyLevel(Term('1s2.3d', '2D', 1.5), level=180 * THz)     # no hf data
+    for level in (ground, excited, flat):
+        a.add_level(level)
+    return a
+
+
+class TestHyperfineScale:
+
+    def test_span_is_zero_without_data(self, hf_atom):
+        from atomtoolkit.render.grotrian.layout import hyperfine_span
+        assert hyperfine_span(hf_atom.levels['1s2.3d 2D3/2']) == 0.0
+
+    def test_scale_is_driven_by_the_widest_span(self, hf_atom):
+        from atomtoolkit.render.grotrian.layout import hyperfine_scale, hyperfine_span
+        levels = [hf_atom.levels['1s2.2s 2S1/2'], hf_atom.levels['1s2.2p 2P*1/2']]
+        m = hyperfine_scale(levels, band_px=46.0)
+        widest = max(hyperfine_span(l) for l in levels)
+        assert m * widest == pytest.approx(46.0)
+
+    def test_scale_ignores_small_gaps(self):
+        """The near-degeneracy case: a tiny internal gap must not inflate the scale.
+
+        137Ba+ 5d 2D5/2 has F=4 and F=3 0.496 MHz apart inside a 135 MHz span. Sizing
+        from the smallest gap would demand a band hundreds of times too tall.
+        """
+        from atomtoolkit.render.grotrian.layout import hyperfine_scale
+
+        class FakeSub:
+            def __init__(self, shift): self.shift_Hz = shift
+
+        class FakeLevel:
+            level_Hz = 0.0
+            def sublevels(self):
+                return [FakeSub(s) for s in (-30.225e6, -29.729e6, 33.139e6, 104.811e6)]
+
+        m = hyperfine_scale([FakeLevel()], band_px=46.0)
+        assert m * 135.036e6 == pytest.approx(46.0, rel=1e-3)
+
+    def test_no_data_anywhere_gives_zero_scale(self, hf_atom):
+        from atomtoolkit.render.grotrian.layout import hyperfine_scale
+        assert hyperfine_scale([hf_atom.levels['1s2.3d 2D3/2']], 46.0) == 0.0
+
+    def test_format_splitting(self):
+        from atomtoolkit.render.grotrian.layout import format_splitting
+        assert format_splitting(3.226e9).endswith('GHz')
+        assert format_splitting(4.96e5).endswith('kHz')
+
+
+class TestHyperfineLayout:
+
+    def _scene(self, atom, **style):
+        g = Grotrian(atom)
+        g.add_level(atom.levels['1s2.2s 2S1/2'], detail='hyperfine', **style)
+        g.add_level(atom.levels['1s2.2p 2P*1/2'], detail='hyperfine', **style)
+        return g.build()
+
+    def test_one_line_per_sublevel(self, hf_atom):
+        scene = self._scene(hf_atom)
+        expected = sum(len(hf_atom.levels[n].sublevels())
+                       for n in ('1s2.2s 2S1/2', '1s2.2p 2P*1/2'))
+        assert len(scene.lines) == expected
+
+    def test_sublevels_get_anchors(self, hf_atom):
+        """Transitions in phase 3 will resolve against these."""
+        scene = self._scene(hf_atom)
+        for sublevel in hf_atom.levels['1s2.2s 2S1/2'].sublevels():
+            assert sublevel in scene.anchors
+
+    def test_manifold_anchor_spans_the_whole_fan(self, hf_atom):
+        scene = self._scene(hf_atom)
+        manifold = hf_atom.levels['1s2.2s 2S1/2']
+        anchor = scene.anchors[manifold]
+        sub_ys = [scene.anchors[s].y0 for s in manifold.sublevels()]
+        assert anchor.y0 == pytest.approx(min(sub_ys))
+        assert anchor.y1 == pytest.approx(max(sub_ys))
+
+    def test_relative_sizes_are_preserved(self, hf_atom):
+        """A 10x smaller splitting must be drawn 10x smaller -- the point of one scale."""
+        scene = self._scene(hf_atom)
+        def band(name):
+            a = scene.anchors[hf_atom.levels[name]]
+            return a.y1 - a.y0
+        assert band('1s2.2s 2S1/2') / band('1s2.2p 2P*1/2') == pytest.approx(10.0, rel=1e-3)
+
+    def test_ordering_is_by_energy_not_by_F(self):
+        """A negative hyperfine A inverts the ladder (137Ba+ 5d 2D5/2 runs F=4,3,2,1)."""
+        from atomtoolkit import GHz
+        a = Atom(name='inverted', I=0.5)
+        a.add_level(EnergyLevel(Term('1s2.2s', '2S', 0.5), level=0.0 * Hz, hfA=-1.0 * GHz))
+        scene = Grotrian(a).add_level(a.levels['1s2.2s 2S1/2'],
+                                      detail='hyperfine').build()
+        level = a.levels['1s2.2s 2S1/2']
+        for sublevel in level.sublevels():
+            drawn_y = scene.anchors[sublevel].y0
+            for other in level.sublevels():
+                if other.shift_Hz > sublevel.shift_Hz:
+                    assert scene.anchors[other].y0 < drawn_y   # higher energy is higher up
+
+    def test_missing_data_falls_back_to_schematic(self, hf_atom):
+        """Most manifolds have no hyperfine data, so this is the common path."""
+        g = Grotrian(hf_atom)
+        g.add_level(hf_atom.levels['1s2.3d 2D3/2'], detail='hyperfine')
+        scene = g.build()
+        assert len(scene.lines) == len(hf_atom.levels['1s2.3d 2D3/2'].sublevels())
+        assert scene.brackets and scene.brackets[0].dashed   # dashed == not to scale
+
+    def test_real_splittings_are_not_dashed(self, hf_atom):
+        scene = self._scene(hf_atom)
+        assert all(not b.dashed for b in scene.brackets)
+
+    def test_scalebar_reports_the_reference_splitting(self, hf_atom):
+        scene = self._scene(hf_atom)
+        assert scene.scalebar is not None
+        assert 'hyperfine scale' in scene.scalebar.label
+
+    def test_explicit_hf_scale_is_respected(self, hf_atom):
+        g = Grotrian(hf_atom, hf_scale=1e-8)
+        g.add_level(hf_atom.levels['1s2.2s 2S1/2'], detail='hyperfine')
+        scene = g.build()
+        anchor = scene.anchors[hf_atom.levels['1s2.2s 2S1/2']]
+        from atomtoolkit.render.grotrian.layout import hyperfine_span
+        span = hyperfine_span(hf_atom.levels['1s2.2s 2S1/2'])
+        assert anchor.y1 - anchor.y0 == pytest.approx(span * 1e-8)
+
+    def test_hf_labels_do_not_move_the_lines(self, hf_atom):
+        """Labels relax to stay readable; the geometry stays physical."""
+        g = Grotrian(hf_atom)
+        g.add_level(hf_atom.levels['1s2.2p 2P*1/2'], detail='hyperfine')
+        with_labels = g.build()
+        g2 = Grotrian(hf_atom)
+        g2.add_level(hf_atom.levels['1s2.2p 2P*1/2'], detail='hyperfine', hf_labels=False)
+        without = g2.build()
+        assert ([l.y for l in with_labels.lines] == [l.y for l in without.lines])
+
+
+class TestZeemanLayout:
+
+    def test_fan_is_horizontal(self, hf_atom):
+        """Zeeman sublevels spread by m_F in x, unlike hyperfine which stacks in y."""
+        g = Grotrian(hf_atom, B=0.0)
+        g.add_level(hf_atom.levels['1s2.2s 2S1/2'], detail='zeeman')
+        scene = g.build()
+        xs = {round(line.x0, 3) for line in scene.lines}
+        assert len(xs) > 1
+
+    def test_one_line_per_zeeman_sublevel(self, hf_atom):
+        g = Grotrian(hf_atom, B=0.0)
+        g.add_level(hf_atom.levels['1s2.2s 2S1/2'], detail='zeeman')
+        expected = sum(len(hf.sublevels())
+                       for hf in hf_atom.levels['1s2.2s 2S1/2'].sublevels())
+        assert len(g.build().lines) == expected
+
+    def test_zeeman_sublevels_get_anchors(self, hf_atom):
+        g = Grotrian(hf_atom, B=0.0)
+        g.add_level(hf_atom.levels['1s2.2s 2S1/2'], detail='zeeman')
+        scene = g.build()
+        for hf in hf_atom.levels['1s2.2s 2S1/2'].sublevels():
+            for z in hf.sublevels():
+                assert z in scene.anchors
+
+    def test_field_splits_the_fan_vertically(self, hf_atom):
+        """At B=0 each F row is flat; at high field the m_F states separate in y."""
+        level = hf_atom.levels['1s2.2s 2S1/2']
+        flat = Grotrian(hf_atom, B=0.0).add_level(level, detail='zeeman').build()
+        split = Grotrian(hf_atom, B=4000.0).add_level(level, detail='zeeman').build()
+        assert len({round(l.y, 4) for l in split.lines}) > \
+               len({round(l.y, 4) for l in flat.lines})
+
+
+class TestScaleReferenceModes:
+    """'auto' sizes to the excited states, not the ground state.
+
+    Ground-state hyperfine splittings run 5-8x larger than anything else across the
+    bundled species (5.5x in 43Ca+, 8.4x in 87Rb), so sizing to them squashes every other
+    manifold to a sliver.
+    """
+
+    def test_auto_skips_the_lowest_manifold(self, hf_atom):
+        from atomtoolkit.render.grotrian.layout import hyperfine_reference, hyperfine_span
+        levels = [hf_atom.levels['1s2.2s 2S1/2'], hf_atom.levels['1s2.2p 2P*1/2']]
+        excited_span = hyperfine_span(hf_atom.levels['1s2.2p 2P*1/2'])
+        assert hyperfine_reference(levels, 'auto') == pytest.approx(excited_span)
+
+    def test_widest_uses_the_ground_state(self, hf_atom):
+        from atomtoolkit.render.grotrian.layout import hyperfine_reference, hyperfine_span
+        levels = [hf_atom.levels['1s2.2s 2S1/2'], hf_atom.levels['1s2.2p 2P*1/2']]
+        ground_span = hyperfine_span(hf_atom.levels['1s2.2s 2S1/2'])
+        assert hyperfine_reference(levels, 'widest') == pytest.approx(ground_span)
+
+    def test_auto_falls_back_when_only_one_manifold_has_data(self, hf_atom):
+        from atomtoolkit.render.grotrian.layout import hyperfine_reference, hyperfine_span
+        only = [hf_atom.levels['1s2.2s 2S1/2']]
+        assert hyperfine_reference(only, 'auto') == pytest.approx(hyperfine_span(only[0]))
+
+    def test_auto_makes_the_ground_state_overflow_proportionally(self, hf_atom):
+        """The ground state is 10x the excited one here, so its band is 10x hf_band."""
+        g = Grotrian(hf_atom, hf_scale='auto')
+        g.add_level(hf_atom.levels['1s2.2s 2S1/2'], detail='hyperfine')
+        g.add_level(hf_atom.levels['1s2.2p 2P*1/2'], detail='hyperfine')
+        scene = g.build()
+        excited = scene.anchors[hf_atom.levels['1s2.2p 2P*1/2']]
+        ground = scene.anchors[hf_atom.levels['1s2.2s 2S1/2']]
+        assert excited.y1 - excited.y0 == pytest.approx(scene.theme.hf_band, rel=1e-3)
+        assert ground.y1 - ground.y0 == pytest.approx(scene.theme.hf_band * 10, rel=1e-3)
+
+    def test_quantity_scale(self, hf_atom):
+        """hf_scale=Q_(1, 'GHz') means '1 GHz fills the band'."""
+        from atomtoolkit import GHz
+        g = Grotrian(hf_atom, hf_scale=1.0 * GHz)
+        g.add_level(hf_atom.levels['1s2.2s 2S1/2'], detail='hyperfine')
+        anchor = g.build().anchors[hf_atom.levels['1s2.2s 2S1/2']]
+        # the ground manifold spans exactly 1 GHz here (hfA = 1 GHz, I=3/2, J=1/2)
+        from atomtoolkit.render.grotrian.layout import hyperfine_span
+        span = hyperfine_span(hf_atom.levels['1s2.2s 2S1/2'])
+        expected = span / 1e9 * g.theme.hf_band
+        assert anchor.y1 - anchor.y0 == pytest.approx(expected, rel=1e-6)
+
+
+class TestZeemanExaggeration:
+
+    def _bands(self, atom, **kwargs):
+        level = atom.levels['1s2.2s 2S1/2']
+        g = Grotrian(atom, B=2.0, **kwargs).add_level(level, detail='zeeman')
+        scene = g.build()
+        return scene, level
+
+    def test_match_keeps_zeeman_on_the_hyperfine_scale(self, hf_atom):
+        """Faithful, and therefore visually flat at ordinary fields.
+
+        The offsets are non-zero -- the physics is still applied -- but at 2 G they come
+        out sub-pixel, which is exactly why an exaggeration option is needed.
+        """
+        scene, level = self._bands(hf_atom, z_scale='match')
+        ys = sorted(line.y for line in scene.lines)
+        rows = []
+        for y in ys:                       # cluster into F rows
+            if rows and y - rows[-1][-1] < 1.0:
+                rows[-1].append(y)
+            else:
+                rows.append([y])
+        assert len(rows) == len(level.sublevels())
+        assert all(row[-1] - row[0] < 1.0 for row in rows)   # each row is sub-pixel
+
+    def test_auto_exaggerates_until_the_fan_splits(self, hf_atom):
+        scene, level = self._bands(hf_atom, z_scale='auto')
+        ys = {round(line.y, 6) for line in scene.lines}
+        assert len(ys) > len(level.sublevels())
+
+    def test_exaggeration_is_reported_on_the_scalebar(self, hf_atom):
+        scene, _ = self._bands(hf_atom, z_scale='auto')
+        assert scene.scalebar is not None
+        assert 'exaggerated' in scene.scalebar.label
+
+    def test_match_does_not_claim_exaggeration(self, hf_atom):
+        scene, _ = self._bands(hf_atom, z_scale='match')
+        assert scene.scalebar is None or 'exaggerated' not in scene.scalebar.label
+
+    def test_hyperfine_spacing_is_unaffected_by_zeeman_exaggeration(self, hf_atom):
+        """Exaggerating Zeeman must not silently rescale the hyperfine splitting."""
+        level = hf_atom.levels['1s2.2s 2S1/2']
+        flat = Grotrian(hf_atom, B=0.0, z_scale='match').add_level(
+            level, detail='zeeman').build()
+        loud = Grotrian(hf_atom, B=0.0, z_scale='auto').add_level(
+            level, detail='zeeman').build()
+        # at B=0 there is no Zeeman shift to exaggerate, so geometry must be identical
+        assert sorted(round(l.y, 6) for l in flat.lines) == \
+               sorted(round(l.y, 6) for l in loud.lines)
+
+
+class TestPerLevelScales:
+    """A per-manifold override, for when one manifold's internal structure must be
+    resolved even though the shared scale collapses it (137Ba+ 5d 2D5/2 is ~1 px)."""
+
+    def _band(self, scene, atom, name):
+        anchor = scene.anchors[atom.levels[name]]
+        return anchor.y1 - anchor.y0
+
+    def test_default_inherits_the_global_scale(self, hf_atom):
+        g = Grotrian(hf_atom)
+        g.add_level(hf_atom.levels['1s2.2s 2S1/2'], detail='hyperfine')
+        g.add_level(hf_atom.levels['1s2.2p 2P*1/2'], detail='hyperfine')
+        scene = g.build()
+        ratio = (self._band(scene, hf_atom, '1s2.2s 2S1/2')
+                 / self._band(scene, hf_atom, '1s2.2p 2P*1/2'))
+        assert ratio == pytest.approx(10.0, rel=1e-3)      # true 10x size difference
+
+    def test_fit_makes_one_manifold_fill_the_band(self, hf_atom):
+        g = Grotrian(hf_atom)
+        g.add_level(hf_atom.levels['1s2.2s 2S1/2'], detail='hyperfine')
+        g.add_level(hf_atom.levels['1s2.2p 2P*1/2'], detail='hyperfine', hf_scale='fit')
+        scene = g.build()
+        assert self._band(scene, hf_atom, '1s2.2p 2P*1/2') == \
+            pytest.approx(scene.theme.hf_band, rel=1e-3)
+
+    def test_exaggerate_multiplies_the_inherited_scale(self, hf_atom):
+        plain = Grotrian(hf_atom).add_level(
+            hf_atom.levels['1s2.2p 2P*1/2'], detail='hyperfine').build()
+        loud = Grotrian(hf_atom).add_level(
+            hf_atom.levels['1s2.2p 2P*1/2'], detail='hyperfine', hf_exaggerate=4.0).build()
+        assert (self._band(loud, hf_atom, '1s2.2p 2P*1/2')
+                == pytest.approx(4 * self._band(plain, hf_atom, '1s2.2p 2P*1/2'), rel=1e-6))
+
+    def test_override_does_not_affect_other_manifolds(self, hf_atom):
+        """The whole point of a shared scale is that one override stays local."""
+        g = Grotrian(hf_atom)
+        g.add_level(hf_atom.levels['1s2.2s 2S1/2'], detail='hyperfine')
+        g.add_level(hf_atom.levels['1s2.2p 2P*1/2'], detail='hyperfine', hf_exaggerate=6.0)
+        scene = g.build()
+        reference = Grotrian(hf_atom).add_level(
+            hf_atom.levels['1s2.2s 2S1/2'], detail='hyperfine').add_level(
+            hf_atom.levels['1s2.2p 2P*1/2'], detail='hyperfine').build()
+        assert (self._band(scene, hf_atom, '1s2.2s 2S1/2')
+                == pytest.approx(self._band(reference, hf_atom, '1s2.2s 2S1/2')))
+
+    def test_off_scale_manifold_is_annotated_with_its_true_span(self, hf_atom):
+        """Drawing one manifold off the shared scale must not mislead about its size."""
+        from atomtoolkit.render.grotrian.layout import format_splitting, hyperfine_span
+        g = Grotrian(hf_atom)
+        g.add_level(hf_atom.levels['1s2.2s 2S1/2'], detail='hyperfine')
+        g.add_level(hf_atom.levels['1s2.2p 2P*1/2'], detail='hyperfine', hf_exaggerate=5.0)
+        scene = g.build()
+        expected = format_splitting(hyperfine_span(hf_atom.levels['1s2.2p 2P*1/2']))
+        texts = {run[0] for label in scene.labels for run in label.runs}
+        assert expected in texts
+
+    def test_on_scale_manifolds_are_not_annotated(self, hf_atom):
+        from atomtoolkit.render.grotrian.layout import format_splitting, hyperfine_span
+        g = Grotrian(hf_atom)
+        g.add_level(hf_atom.levels['1s2.2p 2P*1/2'], detail='hyperfine')
+        scene = g.build()
+        unwanted = format_splitting(hyperfine_span(hf_atom.levels['1s2.2p 2P*1/2']))
+        texts = {run[0] for label in scene.labels for run in label.runs}
+        assert unwanted not in texts
+
+    def test_quantity_override(self, hf_atom):
+        from atomtoolkit import GHz
+        from atomtoolkit.render.grotrian.layout import hyperfine_span
+        g = Grotrian(hf_atom).add_level(hf_atom.levels['1s2.2s 2S1/2'],
+                                        detail='hyperfine', hf_scale=1.0 * GHz)
+        scene = g.build()
+        span = hyperfine_span(hf_atom.levels['1s2.2s 2S1/2'])
+        assert self._band(scene, hf_atom, '1s2.2s 2S1/2') == \
+            pytest.approx(span / 1e9 * scene.theme.hf_band, rel=1e-6)
+
+    def test_per_level_zeeman_exaggeration(self, hf_atom):
+        level = hf_atom.levels['1s2.2s 2S1/2']
+        plain = Grotrian(hf_atom, B=2.0).add_level(level, detail='zeeman').build()
+        loud = Grotrian(hf_atom, B=2.0).add_level(level, detail='zeeman',
+                                                  z_exaggerate=500.0).build()
+        spread = lambda sc: max(l.y for l in sc.lines) - min(l.y for l in sc.lines)
+        assert spread(loud) > spread(plain)
+
+    def test_overhang_accounts_for_the_override(self, hf_atom):
+        """An exaggerated manifold must still fit on the canvas."""
+        g = Grotrian(hf_atom)
+        g.add_level(hf_atom.levels['1s2.2s 2S1/2'], detail='hyperfine', hf_exaggerate=4.0)
+        g.add_level(hf_atom.levels['1s2.2p 2P*1/2'], detail='hyperfine')
+        scene = g.build()
+        assert all(0 <= line.y <= scene.height for line in scene.lines)

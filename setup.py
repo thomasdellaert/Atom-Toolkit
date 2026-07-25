@@ -18,6 +18,7 @@ setup(
     long_description_content_type='text/markdown',
     python_requires='>=3.8',
     install_requires=[
-          'pint', 'pandas', 'pint-pandas', 'numpy', 'networkx', 'sympy', 'matplotlib', 'scipy', 'tqdm'
+          'pint', 'pandas', 'pint-pandas', 'numpy', 'networkx', 'sympy', 'matplotlib', 'scipy', 'tqdm',
+          'svgwrite'
       ],
 )
