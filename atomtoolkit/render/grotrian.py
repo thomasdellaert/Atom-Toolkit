@@ -211,7 +211,6 @@ class Grotrian:
         linewidths = [d.get('linewidth', 2) for d in filtered_df['kwargs']]
         lines = matplotlib.collections.LineCollection(segments, colors=colors, linewidths=linewidths)
         axes.add_collection(lines)
-
         # TODO: Labels (either as box-levels or labels of individual lines, at the gross, F, and mF levels)
 
     def render_transitions(self, axes):

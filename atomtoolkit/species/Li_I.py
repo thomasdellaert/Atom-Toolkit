@@ -2,18 +2,14 @@
 Atom configuration file. This file builds a full atom and can save it as a JSON file.
 """
 
-from atomtoolkit import Q_, IO
-import pathlib
-
-absroot = pathlib.Path(__file__).parents[1]
-RESOURCE_PATH = absroot.joinpath('resources')
+from atomtoolkit import Q_, IO, resource_path
 
 NAME = '7Li I'
 I = 1.5
 NUM_LEVELS = 300
 ALLOWED_TRANSITIONS = (True, False, False)
 
-_energy_level_df = IO.load_NIST_data_from_csv(absroot / 'resources/LiI.csv')
+_energy_level_df = IO.load_NIST_data_from_csv(resource_path('LiI.csv'))
 
 Li7 = IO.generate_full_from_dataframe(_energy_level_df,
                                       name=NAME,

@@ -1,0 +1,14 @@
+include README.md
+include LICENSE
+include requirements.txt
+
+# Bundled NIST ASD level data and hyperfine/transition CSVs. Without these the species
+# library has nothing to build from.
+recursive-include atomtoolkit/resources *.csv
+
+# Prebuilt species snapshots are derived artifacts; they are regenerated on demand by
+# species.build_snapshots() and must not ship.
+recursive-exclude atomtoolkit/species *.json
+
+global-exclude *.py[cod]
+global-exclude .DS_Store

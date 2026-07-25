@@ -2,13 +2,10 @@
 Atom configuration file. This file builds a full atom and can save it as a JSON file.
 """
 
-from atomtoolkit import Q_, IO
-from atomtoolkit.atom import Transition
-import pathlib
+from atomtoolkit import Q_, IO, resource_path
 
-absroot = pathlib.Path(__file__).parents[1]
-RESOURCE_PATH = absroot.joinpath('resources')
-TRANSITIONS_PATH = absroot.joinpath('resources/Yb_II_Oscillator_Strengths.csv')
+from atomtoolkit.atom import Transition
+TRANSITIONS_PATH = resource_path('Yb_II_Oscillator_Strengths.csv')
 HYPERFINE_PATH = None
 
 NAME = '174Yb II'
@@ -16,7 +13,7 @@ I = 0
 NUM_LEVELS = 300
 ALLOWED_TRANSITIONS = (True, False, False)
 
-_energy_level_df = IO.load_NIST_data_from_csv(absroot / 'resources/YbII.csv')
+_energy_level_df = IO.load_NIST_data_from_csv(resource_path('YbII.csv'))
 _transition_df = IO.load_transition_data(
     str(TRANSITIONS_PATH),
     columns={

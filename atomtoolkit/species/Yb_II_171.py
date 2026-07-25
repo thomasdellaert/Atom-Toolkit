@@ -2,20 +2,17 @@
 Atom configuration file. This file builds a full atom and can save it as a JSON file.
 """
 
-from atomtoolkit import Q_, IO
-import pathlib
+from atomtoolkit import Q_, IO, resource_path
 
-absroot = pathlib.Path(__file__).parents[1]
-RESOURCE_PATH = absroot.joinpath('resources')
-TRANSITIONS_PATH = absroot.joinpath('resources/Yb_II_Oscillator_Strengths.csv')
-HYPERFINE_PATH = absroot.joinpath('resources/171Yb_Hyperfine.csv')
+TRANSITIONS_PATH = resource_path('Yb_II_Oscillator_Strengths.csv')
+HYPERFINE_PATH = resource_path('171Yb_Hyperfine.csv')
 
 NAME = '171Yb II'
 I = 1/2
 NUM_LEVELS = 300
 ALLOWED_TRANSITIONS = (True, False, False)
 
-_energy_level_df = IO.load_NIST_data_from_csv(absroot / 'resources/YbII.csv')
+_energy_level_df = IO.load_NIST_data_from_csv(resource_path('YbII.csv'))
 _transition_df = IO.load_transition_data(
     TRANSITIONS_PATH,
     columns={
@@ -43,7 +40,11 @@ t.set_frequency(Q_(729.476090, 'THz'))
 t = Yb171.add_transition((Yb171.levels['4f13.(2F*).6s2 2F*7/2'], Yb171.levels['4f13.(2F*<7/2>).5d.6s.(1D) 1[3/2]*3/2']), A=Q_(50, 'kHz'))
 # t.set_frequency(Q_(394.423900, 'THz'))
 
-# Set any additional properties
+# Nuclear g-factor for 171Yb (Blaum et al. 2013)
+Yb171.gI = -0.9951390
+Yb171.levels['4f14.6s 2S1/2'].use_nonlinear_zeeman = True
+# The quadratic_zeeman values below are superseded by exact diagonalisation when
+# use_nonlinear_zeeman=True. Retained for documentation of the low-field limit.
 Yb171.levels['4f14.6s 2S1/2']['F=0']['mF=0'].quadratic_zeeman = -155.305
 Yb171.levels['4f14.6s 2S1/2']['F=1']['mF=0'].quadratic_zeeman = 155.305
 

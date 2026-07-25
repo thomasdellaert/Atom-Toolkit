@@ -1,16 +1,14 @@
-from atomtoolkit import Q_, IO, transition_strengths
+from atomtoolkit import Q_, IO, transition_strengths, resource_path
+
 from atomtoolkit import a0, e, MHz
 import numpy as np
-import pathlib
-
-absroot = pathlib.Path(__file__).parents[1]
 
 NAME = "133Ba II"
 I = 1/2
 NUM_LEVELS = 300
 ALLOWED_TRANSITIONS = (True, False, False)
 
-_energy_level_df = IO.load_NIST_data_from_csv(absroot / 'resources/BaII.csv')
+_energy_level_df = IO.load_NIST_data_from_csv(resource_path('BaII.csv'))
 
 Ba133 = IO.generate_full_from_dataframe(_energy_level_df,
                                         name=NAME,

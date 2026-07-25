@@ -1,6 +1,8 @@
 import csv
+import io
 import re
 import urllib.error
+import urllib.request
 import warnings
 
 import pandas as pd
@@ -20,7 +22,10 @@ def _parse_NIST_df(df: pd.DataFrame, save=False, species: str = None) -> pd.Data
     Both sources produce the same Excel-quoted CSV format, so the pipeline is identical.
     """
     # === strip the data of extraneous symbols ===
-    df_clean = df.applymap(lambda k: k.strip(' ="?') if isinstance(k, str) else k)
+    # DataFrame.applymap was deprecated in pandas 2.1 and removed in 3.0; DataFrame.map is
+    # its replacement and does not exist before 2.1. Support both.
+    elementwise = df.map if hasattr(df, 'map') else df.applymap
+    df_clean = elementwise(lambda k: k.strip(' ="?') if isinstance(k, str) else k)
 
     # === coerce types ===
     df_clean['Configuration'] = df_clean['Configuration'].astype('str')
@@ -84,7 +89,16 @@ def _parse_NIST_df(df: pd.DataFrame, save=False, species: str = None) -> pd.Data
         if type(c1) != str:
             return
         if re.match(r'\(.+?\)\(.+?\)', c1):
-            return re.sub(r'\((.+?)\)', '({})', c0).format(*re.findall(r'\((.+?)\)', c1))
+            # Substitute the parent-term groups of c1 into c0 positionally. c0 can carry
+            # more parenthesised groups than c1 supplies (common in lanthanides, e.g.
+            # 4f10.(5I).6s.6p.(3P*) against (5I)(3P*)); leave any surplus group untouched
+            # rather than raising on the missing replacement.
+            replacements = iter(re.findall(r'\((.+?)\)', c1))
+
+            def _next_group(match):
+                return f'({next(replacements, match.group(1))})'
+
+            return re.sub(r'\((.+?)\)', _next_group, c0)
         elif re.match(r'\(.+?\).+\(.+?\)', c1):
             return c0.split('(')[0]+c1
         else:
@@ -129,14 +143,34 @@ def _parse_NIST_df(df: pd.DataFrame, save=False, species: str = None) -> pd.Data
     #  TODO: uncertainty
 
 
+# NIST's server 403s the default 'Python-urllib/3.x' User-Agent. Any other value is
+# accepted, so identify the tool honestly rather than impersonating a browser: that keeps
+# the traffic attributable, and lets NIST contact or rate-limit us if we ever misbehave.
+# Do NOT replace this with a spoofed browser string.
+_NIST_USER_AGENT = 'Atom-Toolkit/0.2.0 (+https://github.com/thomasdellaert/Atom-Toolkit)'
+
+
 def _fetch_NIST_data(species: str, term_ordered: bool = False) -> pd.DataFrame:
-    """Fetch raw NIST ASD level data from the web API and return the unparsed dataframe."""
+    """Fetch raw NIST ASD level data from the web API and return the unparsed dataframe.
+
+    Requests ``format=2`` (Excel-quoted CSV), which is byte-for-byte the same format
+    the ASD Levels web form produces, so the API path and
+    :func:`load_NIST_data_from_csv` feed :func:`_parse_NIST_df` identical input.
+
+    .. warning::
+        ``energy1.pl`` is the ASD web form's own backend, not a documented or versioned
+        public API. NIST can change its parameters or output without notice. Prefer the
+        CSVs cached in ``resources/`` for anything reproducible, and treat this function
+        as a convenience for adding a *new* species — fetch once, save the CSV, commit it.
+        Please also cite the ASD (Kramida et al., NIST Atomic Spectra Database) in work
+        that uses this data.
+    """
     url = (
         'https://physics.nist.gov/cgi-bin/ASD/energy1.pl?de=0'
         + '&spectrum=' + species.replace(' ', '+')
         + '&submit=Retrieve+Data'
         + '&units=0'
-        + '&format=3'
+        + '&format=2'
         + '&output=0'
         + '&multiplet_ordered=' + ('on' if term_ordered else '0')
         + '&conf_out=on'
@@ -144,11 +178,15 @@ def _fetch_NIST_data(species: str, term_ordered: bool = False) -> pd.DataFrame:
         + '&level_out=on'
         + '&unc_out=on'
         + '&j_out=on'
+        + '&g_out=on'
         + '&lande_out=on'
         + '&perc_out=on'
         + '&temp='
     )
-    return pd.read_csv(url, index_col=False)
+    request = urllib.request.Request(url, headers={'User-Agent': _NIST_USER_AGENT})
+    with urllib.request.urlopen(request, timeout=60) as response:
+        raw = response.read().decode('utf-8', errors='replace')
+    return pd.read_csv(io.StringIO(raw), index_col=False)
 
 
 _NIST_CSV_INSTRUCTIONS = """\
@@ -410,3 +448,23 @@ def generate_full_from_dataframe(df, name, I=0.0, **kwargs):
         a.populate_transitions(**kwargs)
     a.populate_internal_transitions()
     return a
+
+
+# ---------------------------------------------------------------------------
+# TODO: Species registry
+# ---------------------------------------------------------------------------
+# A get_species(name) function (or atomtoolkit.load('Yb II 171')) that returns
+# a ready-to-use Atom from the bundled species library without requiring the
+# caller to know about species/ file paths.
+#
+# Suggested interface:
+#   atomtoolkit.available_species()  -> list of names, e.g. ['Yb II 171', 'Ba II 133', ...]
+#   atomtoolkit.load_species('Yb II 171') -> Atom  (loads from the prebuilt JSON snapshot)
+#
+# The species/ directory now covers the common trapped ions (Be+, Mg+, Ca+, Sr+, Ba+,
+# Ra+, Zn+, Cd+, Hg+, Yb+) and the alkali metals (Li, Na, K, Rb, Cs, Fr), so the
+# registry is the remaining piece of work here. See species/__init__.py for the
+# current inventory.
+#
+# Still missing: Al II (27), the aluminium-ion clock species, whose logic-spectroscopy
+# scheme needs a co-trapped ion and so does not fit the one-atom-per-file pattern.

@@ -115,8 +115,8 @@ def readable_LK_to_LS(J: float, L: float, K: float, sc: float, so: float) -> Lis
 
 def get_term_coupling(term: str) -> str:
     """
-            :return: A string corresponding to the coupling detected in the term symbol
-            """
+    :return: A string corresponding to the coupling detected in the term symbol
+    """
     if '[' in term:
         if term[0] in 'SPDFGHIKLMNOQRTUVWXYZ':
             return 'LK'
@@ -201,7 +201,7 @@ def parse_JJ_term(conf: str, term: str) -> Tuple[float, ...]:
     """
      Parses a JJ-coupled term.
      Looks for the following in self.term:
-         ({Jc, Jo})<{J}
+         ({Jc, Jo})<{J}>
      Examples:
          (2, 1/2)<5/2>
 

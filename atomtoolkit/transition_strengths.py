@@ -62,12 +62,7 @@ def dipole_mel_to_A(mel, J0, J1, omega):
 @functools.lru_cache(maxsize=None)
 def tkq_transition_strength(I: float, k: int, q: int,
                             J0: float, F0: float, M0: float, J1: float, F1: float, M1: float) -> float:
-    prod = 1
-    prod *= (2 * F0 + 1) * (2 * F1 + 2) * wigner6j(J0, J1, k,
-                                                   F1, F0, I) ** 2
-    prod *= wigner3j(F1, k, F0,
-                     -M1, q, M0) ** 2
-    return prod
+    return tkq_mel(I, k, q, J0, F0, M0, J1, F1, M1)**2
 
 
 @functools.lru_cache(maxsize=None)
@@ -230,6 +225,24 @@ def LK_to_LS(J: float, L: float, K: float, sc: float, so: float) -> np.array:
                                                                               so, J, outss[i]) for i in
                          range(len(outls))])
     return np.stack([outls, outss, outpercs])
+
+
+# ---------------------------------------------------------------------------
+# TODO: Dynamic polarizability and blackbody radiation (BBR) shift
+# ---------------------------------------------------------------------------
+# dynamic_polarizability(atom, level, laser_freq) -> (alpha_scalar, alpha_tensor, alpha_vector)
+#   Compute the scalar, tensor, and vector dynamic polarizabilities by summing
+#   reduced matrix elements over all connected levels weighted by detuning.
+#   Requires A coefficients on all relevant transitions.
+#
+# bbr_shift(atom, level, T_K=300.0) -> pint.Quantity (Hz)
+#   Blackbody radiation shift via ΔE_BBR = -(1/2) α_scalar(ω=0) · <E²>_BBR
+#   where <E²>_BBR = (831.9 V/m)² · (T/300 K)⁴ for room temperature.
+#   Essential for optical lattice clock evaluations.
+#
+# magic_wavelength(atom, level_a, level_b) -> list of pint.Quantity
+#   Find wavelengths where alpha_scalar(level_a) == alpha_scalar(level_b), i.e.
+#   where the differential AC Stark shift on the qubit transition vanishes.
 
 
 if __name__ == '__main__':

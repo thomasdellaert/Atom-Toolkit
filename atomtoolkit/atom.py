@@ -13,7 +13,7 @@ import pandas as pd
 import pint
 from tqdm import tqdm
 
-from . import Q_, ureg, util, Hz, G, mu_B
+from . import Q_, ureg, util, Hz, G, mu_B, mu_N
 from .atom_helpers import LevelStructure, TransitionStructure
 from .term import Term, MultiTerm
 from .wigner import wigner3j, wigner6j
@@ -266,6 +266,9 @@ class EnergyLevel(BaseLevel):
                 self.lande = lande
         except TypeError:
             self.lande = self.compute_gJ()
+        # Nonlinear Zeeman flag and spline LUT (populated by precompute_zeeman)
+        self.use_nonlinear_zeeman: bool = False
+        self._zeeman_splines: Optional[dict] = None
 
     def get_manifold(self) -> EnergyLevel:
         """A fine structure level *is* a manifold."""
@@ -339,6 +342,58 @@ class EnergyLevel(BaseLevel):
         """Clear the cached HF shift on all already-computed HFLevel sublevels."""
         for hfl in self._sublevels.values():
             hfl._shift_cache = None
+
+    # endregion
+
+    # region Nonlinear Zeeman LUT
+
+    def precompute_zeeman(self, B_min: float, B_max: float, n_points: int = 200) -> None:
+        """Precompute a cubic-spline LUT for the nonlinear Zeeman energies.
+
+        After calling this, :meth:`ZLevel.level_hz_nonlinear` (and
+        :meth:`ZLevel.level_hz_at` when ``use_nonlinear_zeeman`` is True) will
+        evaluate the spline instead of re-diagonalising, making B-sweep loops
+        orders of magnitude faster.
+
+        Parameters
+        ----------
+        B_min, B_max : float
+            Field range in gauss.  Queries outside this range fall back to
+            direct diagonalisation with a warning.
+        n_points : int
+            Number of knot points.  200 is typically sub-Hz accurate over
+            a few hundred gauss; increase for very wide ranges or steep
+            nonlinearity.
+        """
+        try:
+            from scipy.interpolate import CubicSpline
+        except ImportError as exc:
+            raise ImportError(
+                "scipy is required for precompute_zeeman. "
+                "Install it with: pip install scipy"
+            ) from exc
+        from .zeeman import diagonalize_hfz_batch, _hf_shift_hz, _mF_blocks
+
+        B_array = np.linspace(B_min, B_max, n_points)
+        batch = diagonalize_hfz_batch(self, B_array)
+
+        J = float(self.term.J)
+        I = float(self.atom.I)
+
+        self._zeeman_splines = {}
+        for mF, eigenvalues_array in batch.items():
+            # Determine F ordering by ascending B=0 HF energy (adiabatic labels)
+            F_list = sorted(
+                [float(f) for f in np.arange(abs(J - I), J + I + 1) if f >= abs(mF) - 1e-9],
+                key=lambda f: _hf_shift_hz(J, I, f, self.hfA_Hz, self.hfB_Hz, self.hfC_Hz),
+            )
+            for idx, F in enumerate(F_list):
+                spline = CubicSpline(B_array, eigenvalues_array[:, idx])
+                self._zeeman_splines[(F, mF)] = (spline, (B_min, B_max))
+
+    def clear_zeeman_cache(self) -> None:
+        """Discard the precomputed spline LUT, reverting to live diagonalisation."""
+        self._zeeman_splines = None
 
     # endregion
 
@@ -478,15 +533,27 @@ class HFLevel(BaseLevel):
 
     def compute_gF(self) -> float:
         """
-        Computes the Lande g-value for the hyperfine level, given its parent's g-value
-        :return: gF
+        Computes the Lande g-value for the hyperfine level.
+
+        Includes both the electronic (gJ) and nuclear (gI) contributions:
+
+            gF = gJ · [F(F+1)+J(J+1)-I(I+1)] / [2F(F+1)]
+               - gI · (μN/μB) · [F(F+1)+I(I+1)-J(J+1)] / [2F(F+1)]
+
+        The nuclear term is ~1/1836 × gI and is zero when atom.gI is unset (0.0).
+
+        :return: gF (dimensionless; multiply by μB to get the moment in energy/field units)
         """
         F = self.term.F
         J = self.term.J
         I = self.atom.I
-        if F != 0:
-            return self.manifold.lande * (F * (F + 1) + J * (J + 1) - I * (I + 1)) / (2 * F * (F + 1))
-        return 0.0
+        if F == 0:
+            return 0.0
+        denom = 2 * F * (F + 1)
+        electronic = self.manifold.lande * (F * (F + 1) + J * (J + 1) - I * (I + 1)) / denom
+        gI = getattr(self.atom, 'gI', 0.0)
+        nuclear = gI * (mu_N / mu_B).magnitude * (F * (F + 1) + I * (I + 1) - J * (J + 1)) / denom
+        return electronic - nuclear
 
 
 class ZLevel(HFLevel):
@@ -494,7 +561,7 @@ class ZLevel(HFLevel):
     A Zeeman sublevel (currently) is the lowest of the level hierarchy. It defines its position relative
     to a parent hyperfine sublevel, dependent on the atom's magnetic field. It has no sublevels.
     """
-
+    # CONSIDER: Should this inherit from BaseLevel instead?
     def __init__(self, term: MultiTerm, parent: HFLevel = None):
         super().__init__(term, parent)
         # FIXME: Originally I wanted this to accept an arbitrary lambda function etc to encompass any
@@ -516,25 +583,76 @@ class ZLevel(HFLevel):
         return
 
     def shift_hz_at(self, B_gauss: float) -> float:
-        """Zeeman shift in Hz at a given field strength."""
+        """Perturbative Zeeman shift in Hz: gF·mF·μB·B + quadratic_zeeman·B²."""
         return (self.gF * self.term.mF * mu_B.to(Hz / G).magnitude * B_gauss
                 + self.quadratic_zeeman * B_gauss ** 2)
 
     def level_hz_at(self, B_gauss: float) -> float:
-        """Absolute energy in Hz at a given field strength."""
+        """Absolute energy in Hz at a given field strength.
+
+        Dispatches to :meth:`level_hz_nonlinear` when the parent manifold has
+        ``use_nonlinear_zeeman = True``, otherwise uses the perturbative formula.
+        """
+        if self.manifold.use_nonlinear_zeeman:
+            if self.quadratic_zeeman != 0.0:
+                warnings.warn(
+                    f"{self.name}: quadratic_zeeman is set but use_nonlinear_zeeman=True "
+                    f"— the exact diagonalisation supersedes it. "
+                    f"Remove the quadratic_zeeman assignment to silence this warning.",
+                    stacklevel=2,
+                )
+            return self.level_hz_nonlinear(B_gauss)
         return self.parent.level_Hz + self.shift_hz_at(B_gauss)
+
+    def level_hz_nonlinear(self, B_gauss: float) -> float:
+        """Exact nonlinear Zeeman energy via H_HF + H_Z diagonalisation (Hz).
+
+        Uses the spline LUT if :meth:`EnergyLevel.precompute_zeeman` has been
+        called on the parent manifold; otherwise falls back to cached
+        matrix diagonalisation.
+
+        Requires ``atom.gI`` to be set for the nuclear Zeeman contribution.
+        """
+        from .zeeman import level_hz_nonlinear as _nlz
+        return _nlz(self, B_gauss)
+
+    def shift_hz_nonlinear(self, B_gauss: float) -> float:
+        """Nonlinear Zeeman shift only (absolute energy minus EnergyLevel centroid)."""
+        return self.level_hz_nonlinear(B_gauss) - self.manifold.level_Hz
+
+    def zeeman_sensitivity_hz_per_gauss(self, B_gauss: float = 0.0, delta: float = 1e-3) -> float:
+        """First-order Zeeman sensitivity dE/dB in Hz/G at a given field.
+
+        For linear Zeeman levels (``use_nonlinear_zeeman=False``), returns the exact
+        first-order coefficient gF·mF·μB.
+
+        For nonlinear Zeeman levels, evaluates a central finite-difference derivative
+        of the exact H_HF + H_Z eigenenergy, making it straightforward to scan for
+        magnetically-insensitive ('clock') states where the sensitivity crosses zero.
+
+        Parameters
+        ----------
+        B_gauss : float
+            Magnetic field in gauss at which to evaluate the sensitivity.
+            Defaults to B = 0.
+        delta : float
+            Finite-difference step in gauss (default 1e-3 G).
+
+        Returns
+        -------
+        float : dE/dB in Hz/G.
+        """
+        if self.manifold.use_nonlinear_zeeman:
+            if B_gauss > delta:
+                return (self.level_hz_at(B_gauss + delta) - self.level_hz_at(B_gauss - delta)) / (2 * delta)
+            else:
+                return (self.level_hz_at(B_gauss + delta) - self.level_hz_at(B_gauss)) / delta
+        return self.gF * self.term.mF * float(mu_B.to(Hz / G).magnitude)
 
     @property
     def shift_Hz(self) -> float:
         """Zeeman shift at B=0 (always zero; use shift_hz_at(B) for finite fields)."""
         return 0.0
-
-    # def nonlinear_zeeman(self, B):
-    #     """
-    #     Can be overridden to add any functional form to the Zeeman shift
-    #     example: level.nonlinear_zeeman = lambda B: 155.305 * B ** 2
-    #     """
-    #     return 0
 
 
 ############################################
@@ -640,6 +758,135 @@ class BaseTransition(ABC):
     @property
     def omega(self) -> pint.Quantity:
         return self.freq * 2 * np.pi
+
+    @property
+    def total_A(self) -> Optional[pint.Quantity]:
+        """Total spontaneous emission rate from the upper level (Hz).
+
+        For gross-level Transitions this equals ``self.A``.  For HFTransitions
+        and ZTransitions it climbs the parent chain to the root Transition,
+        returning the gross natural linewidth Γ that governs saturation and
+        scattering.
+        """
+        t = self
+        while t.parent is not None:
+            t = t.parent
+        return t.A
+
+    @property
+    def I_sat(self) -> pint.Quantity:
+        """Saturation intensity for this transition (W/m²).
+
+        For a gross-level Transition (``rel_strength = 1``) this is the standard
+        cycling-transition saturation intensity:
+
+            I_sat = π h ν³ Γ / (3 c²)
+
+        For a subtransition (HFTransition, ZTransition) with angular-momentum
+        coupling factor ``S = rel_strength < 1``, the saturation intensity is
+        higher because the sublevel pair couples to the field with a reduced
+        dipole matrix element d_sub = d_cycling · √S:
+
+            I_sat_sub = π h ν³ Γ / (3 c² S) = I_sat_cycling / S
+
+        Here Γ = ``total_A`` is the gross Einstein A coefficient (total natural
+        linewidth), not the partial linewidth ``self.A`` of the subtransition.
+
+        Raises
+        ------
+        ValueError : if the gross-level A coefficient is missing, or if
+            ``rel_strength == 0`` (forbidden transition — I_sat is undefined).
+        """
+        A_total = self.total_A
+        if A_total is None:
+            raise ValueError(
+                f"Transition {self.name!r} has no A coefficient — cannot compute I_sat."
+            )
+        if self.rel_strength == 0.0:
+            raise ValueError(
+                f"Transition {self.name!r} is forbidden (rel_strength=0) — I_sat is undefined."
+            )
+        h = ureg.planck_constant
+        c = ureg.speed_of_light
+        return (np.pi * h * self.freq ** 3 * A_total / (3 * c ** 2 * self.rel_strength)).to('W/m**2')
+
+    def saturation_parameter(self, intensity: pint.Quantity) -> float:
+        """On-resonance saturation parameter s = I / I_sat (dimensionless).
+
+        For a subtransition, ``I_sat`` is the sublevel-specific saturation
+        intensity (larger than the cycling-transition value by ``1/rel_strength``),
+        so *s* already accounts for the reduced coupling strength.
+
+        Parameters
+        ----------
+        intensity : pint Quantity
+            Laser intensity (any unit convertible to W/m²).
+
+        Returns
+        -------
+        float : s = I / I_sat.
+        """
+        return float((intensity / self.I_sat).to('').magnitude)
+
+    def rabi_frequency(self, intensity: pint.Quantity) -> pint.Quantity:
+        """On-resonance Rabi frequency Ω/(2π) for this transition (Hz).
+
+        Derived from Ω = Γ √(s/2) where Γ = ``total_A`` is the gross natural
+        linewidth and *s* = ``saturation_parameter(intensity)`` is the
+        sublevel-specific saturation parameter.  For a gross-level Transition
+        (``rel_strength=1``) this is the cycling Rabi frequency.  For a
+        subtransition it is reduced by √(rel_strength), reflecting the weaker
+        coupling.  The angular Rabi frequency for Hamiltonians is 2π × this
+        value.
+
+        Parameters
+        ----------
+        intensity : pint Quantity
+            Laser intensity (any unit convertible to W/m²).
+
+        Returns
+        -------
+        pint Quantity : Ω/(2π) in Hz.
+        """
+        A_total = self.total_A
+        if A_total is None:
+            raise ValueError(f"Transition {self.name!r} has no A coefficient.")
+        s = self.saturation_parameter(intensity)
+        return (A_total * np.sqrt(s / 2)).to(Hz)
+
+    def scattering_rate(self, intensity: pint.Quantity,
+                        detuning: pint.Quantity = None) -> pint.Quantity:
+        """Photon scattering rate for a two-level model (photons/s).
+
+        Uses the optical Bloch equation steady-state result:
+
+            R_sc = (Γ/2) · s / (1 + s + (2Δ/Γ)²)
+
+        where Γ = ``total_A`` is the gross natural linewidth, *s* =
+        ``saturation_parameter(intensity)`` is the sublevel-specific saturation
+        parameter, and Δ is the laser detuning.  At resonance the rate saturates
+        to Γ/2 as I → ∞ regardless of which sublevel pair is driven; at large
+        detuning it tends to (Γ/4) · s · (Γ/Δ)².
+
+        Parameters
+        ----------
+        intensity : pint Quantity
+            Laser intensity (any unit convertible to W/m²).
+        detuning : pint Quantity, optional
+            Laser detuning from resonance (any unit convertible to Hz).
+            Defaults to on-resonance (Δ = 0).
+
+        Returns
+        -------
+        pint Quantity : scattering rate in Hz (photons/s).
+        """
+        A_total = self.total_A
+        if A_total is None:
+            raise ValueError(f"Transition {self.name!r} has no A coefficient.")
+        s = self.saturation_parameter(intensity)
+        Gamma = A_total.to(Hz)
+        x2 = 0.0 if detuning is None else float((2 * detuning.to(Hz) / Gamma).magnitude) ** 2
+        return (Gamma / 2 * s / (1 + s + x2)).to(Hz)
 
     def compute_linewidth(self) -> Tuple[pint.Quantity or None, float]:
         """
@@ -753,10 +1000,17 @@ class Transition(BaseTransition):
             return AllowedTypes()
         # for now, I'm assuming that E2 transitions within a manifold are impossible or at least strongly suppressed.
         # Correct me if I'm wrong!
+        #
+        # A photon of multipole order k carries k units of angular momentum, so J0, J1 and k
+        # must satisfy the full triangle condition |J1 - J0| <= k <= J1 + J0 -- note the lower
+        # bound as well as the upper one. Dropping the lower bound would wrongly allow
+        # J=0 -> J=0 for every multipole (e.g. the alkaline-earth 1S0 -> 3P*0 clock
+        # transitions, which are strictly forbidden and only become weakly allowed in odd
+        # isotopes through hyperfine mixing), and J=0 -> J=1 for E2.
         return AllowedTypes(
-            E1=(np.abs(J1 - J0) <= 1.0 and p0 != p1),
-            M1=(np.abs(J1 - J0) <= 1.0 and p0 == p1),
-            E2=(np.abs(J1 - J0) <= 2.0 and p0 == p1 and not (self.E_1 is self.E_2)),
+            E1=(np.abs(J1 - J0) <= 1.0 <= J1 + J0 and p0 != p1),
+            M1=(np.abs(J1 - J0) <= 1.0 <= J1 + J0 and p0 == p1),
+            E2=(np.abs(J1 - J0) <= 2.0 <= J1 + J0 and p0 == p1 and not (self.E_1 is self.E_2)),
         )
 
     def _assign_models(self):
@@ -890,7 +1144,7 @@ class ZTransition(BaseTransition):
 #                   Atom                   #
 ############################################
 
-_ATOM_JSON_SCHEMA = 2   # bump when the to_dict format changes
+_ATOM_JSON_SCHEMA = 3   # bump when the to_dict format changes
 
 
 def _migrate_atom_dict(d: dict, from_schema: int) -> dict:
@@ -906,6 +1160,8 @@ def _migrate_atom_dict(d: dict, from_schema: int) -> dict:
     _migrations: dict = {
         # schema 1 stored B_gauss; schema 2 removes it (B moved to Environment)
         1: lambda d: {k: v for k, v in d.items() if k != 'B_gauss'},
+        # schema 3 adds gI (nuclear g-factor) and per-level use_nonlinear_zeeman
+        2: lambda d: {**d, 'gI': d.get('gI', 0.0)},
     }
     for version in range(from_schema, _ATOM_JSON_SCHEMA):
         d = _migrations[version](d)
@@ -944,6 +1200,7 @@ class Atom:
         """
         self.name = name
         self.I = util.frac_to_float(I)
+        self.gI: float = 0.0  # nuclear g-factor (dimensionless, in nuclear magneton units)
 
         self._levelsModel = nx.Graph()
         self._hfModel = nx.Graph()
@@ -1131,14 +1388,15 @@ class Atom:
                         quad_z[f"{hf_key} {z_key}"] = zl.quadratic_zeeman
 
             levels.append({
-                "terms":            term_list,
-                "level_Hz":         lvl.level_Hz,
-                "hfA_Hz":           lvl.hfA_Hz,
-                "hfB_Hz":           lvl.hfB_Hz,
-                "hfC_Hz":           lvl.hfC_Hz,
-                "lande":            lvl.lande,
-                "alias":            lvl._alias,
-                "quadratic_zeeman": quad_z,
+                "terms":                 term_list,
+                "level_Hz":              lvl.level_Hz,
+                "hfA_Hz":                lvl.hfA_Hz,
+                "hfB_Hz":                lvl.hfB_Hz,
+                "hfC_Hz":                lvl.hfC_Hz,
+                "lande":                 lvl.lande,
+                "alias":                 lvl._alias,
+                "quadratic_zeeman":      quad_z,
+                "use_nonlinear_zeeman":  lvl.use_nonlinear_zeeman,
             })
 
         transitions = []
@@ -1156,6 +1414,7 @@ class Atom:
             "_schema":     _ATOM_JSON_SCHEMA,
             "name":        self.name,
             "I":           self.I,
+            "gI":          self.gI,
             "levels":      levels,
             "transitions": transitions,
         }
@@ -1190,6 +1449,7 @@ class Atom:
         d = _migrate_atom_dict(d, schema)
 
         a = cls(d['name'], I=d['I'])
+        a.gI = d.get('gI', 0.0)
 
         # --- levels -------------------------------------------------------
         aliases_to_set = {}   # level_name → alias  (applied after add_level)
@@ -1208,6 +1468,7 @@ class Atom:
                 hfB=lvl_data['hfB_Hz'] * Hz,
                 hfC=lvl_data['hfC_Hz'] * Hz,
             )
+            e.use_nonlinear_zeeman = lvl_data.get('use_nonlinear_zeeman', False)
             a.add_level(e)
 
             if lvl_data.get('alias'):
@@ -1278,13 +1539,33 @@ class Atom:
             num_levels = len(df)
         a = Atom(name, I=I)
         rows = tqdm(range(num_levels))
+        skipped = []
         for i in rows:
             try:
                 e = EnergyLevel.from_dataframe(df, i)
+                if e.term.J is None:
+                    # NIST lumps some high-l Rydberg multiplets together with no J at all
+                    # (Mg I '3s.7i I', for instance). Without J there are no selection
+                    # rules, sublevels or g-factors to be had, so the level is unusable.
+                    raise ValueError('no J value given')
                 rows.set_description(f'adding level {e.name:109}')
                 a.add_level(e)
             except KeyError:
                 pass
+            except (ValueError, TypeError, IndexError) as exc:
+                # A term symbol the parser doesn't handle (deeply nested JJ/JK couplings
+                # in heavy elements, say) shouldn't take the whole species down with it.
+                # Skip the level and report it, so the rest of the atom is still usable.
+                try:
+                    label = f'{df["Configuration"][i]} {df["Term"][i]} J={df["J"][i]}'
+                except KeyError:  # pragma: no cover - malformed dataframe
+                    label = f'row {i}'
+                skipped.append(f'{label} ({type(exc).__name__}: {exc})')
+        if skipped:
+            warnings.warn(
+                f'{name}: skipped {len(skipped)} unusable level(s):\n  ' + '\n  '.join(skipped),
+                stacklevel=2,
+            )
         return a
 
     def populate_transitions(self, allowed: Tuple[bool, ...] = (True, False, False), **_):
@@ -1377,7 +1658,14 @@ class Atom:
     def compute_branching_ratios(self, key: str) -> Dict[str: float]:
         """
         Compute the branching ratios from a level to other levels.
-        Requires that all levels to be considered have assigned A coefficients
+        Requires that all levels to be considered have assigned A coefficients.
+
+        Note: this only considers direct (one-step) decays.  For cascade branching
+        (e.g. excited → metastable → ground) see the TODO below.
+
+        TODO: add compute_cascade_branching_ratios() that follows multi-step decay
+        chains and returns effective ground-state population fractions.
+
         :param key: the key of the level to compute
         :return: a dict of level names and the branching ratios to those levels
         """
@@ -1394,6 +1682,94 @@ class Atom:
 
         ratios = {k.name: t.magnitude / totalAs for k, t in A_coeffs.items()}
         return ratios
+
+    def transitions_near(self, center: pint.Quantity, tolerance: pint.Quantity) -> List[Transition]:
+        """Find all transitions within *tolerance* of *center* wavelength or frequency.
+
+        TODO: Not yet implemented.
+
+        Parameters
+        ----------
+        center : pint Quantity
+            Centre wavelength (nm, m, …) or frequency (Hz, THz, …) to search near.
+        tolerance : pint Quantity
+            Half-width of the search window in the same unit family.
+
+        Returns
+        -------
+        list of Transition sorted by proximity to *center*.
+        """
+        raise NotImplementedError("transitions_near is not yet implemented.")
+
+    def find_clock_transitions(
+            self,
+            B_range: Tuple[float, float] = (0.0, 100.0),
+            sensitivity_threshold: float = 1e3,
+    ) -> List[Tuple['ZLevel', 'ZLevel', float]]:
+        """Find Zeeman sublevel pairs with near-zero first-order field sensitivity.
+
+        A 'clock' pair (|a⟩, |b⟩) satisfies |d(E_a - E_b)/dB| < sensitivity_threshold
+        at some field B inside *B_range*.  Requires ``use_nonlinear_zeeman=True`` on
+        the relevant manifolds to capture nonlinear turning points.
+
+        TODO: Not yet implemented.
+
+        Parameters
+        ----------
+        B_range : (float, float)
+            Search range in gauss (default 0–100 G).
+        sensitivity_threshold : float
+            Maximum differential sensitivity in Hz/G to consider clock-like.
+
+        Returns
+        -------
+        list of (lower_ZLevel, upper_ZLevel, B_zero_crossing_gauss) tuples.
+        """
+        raise NotImplementedError("find_clock_transitions is not yet implemented.")
+
+    def ac_stark_shift(self, level: EnergyLevel, laser_freq: pint.Quantity,
+                       intensity: pint.Quantity) -> pint.Quantity:
+        """Scalar AC Stark shift on *level* from an off-resonant laser (Hz).
+
+        Computes ΔE = Σ_j ħΩ_j² / (2(ω - ω_j)) summed over all connected levels j,
+        using the A coefficients and transition matrix elements stored in the atom.
+        Requires A coefficients on all connected transitions.
+
+        TODO: Not yet implemented.  Also missing: tensor and vector light shifts,
+        magic-wavelength finder (where the differential shift between two levels
+        vanishes), and dynamic polarizability as a function of laser wavelength.
+
+        Parameters
+        ----------
+        level : EnergyLevel
+            The level whose energy shift is requested.
+        laser_freq : pint Quantity
+            Laser frequency (Hz, THz, nm, …).
+        intensity : pint Quantity
+            Laser intensity (W/m², mW/cm², …).
+
+        Returns
+        -------
+        pint Quantity : AC Stark shift in Hz.
+        """
+        raise NotImplementedError("ac_stark_shift is not yet implemented.")
+
+    def doppler_cooling_limit(self, transition_key: Tuple[str, str]) -> pint.Quantity:
+        """Doppler cooling limit temperature T_D = ħΓ/(2k_B) for a transition (K).
+
+        TODO: Not yet implemented.  Related quantities also missing:
+        maximum scattering force F_max = ħkΓ/2, radiation pressure acceleration,
+        and capture velocity for a given beam geometry.
+
+        Parameters
+        ----------
+        transition_key : (lower_name, upper_name)
+
+        Returns
+        -------
+        pint Quantity : Doppler limit temperature in K.
+        """
+        raise NotImplementedError("doppler_cooling_limit is not yet implemented.")
 
     def enforce_consistency(self, node_or_trans: BaseLevel or BaseTransition = None):
         """Enforces consistency of the Atom's internal levelsModel. It does this by traversing all the
