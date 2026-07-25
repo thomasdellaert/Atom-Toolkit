@@ -1000,10 +1000,17 @@ class Transition(BaseTransition):
             return AllowedTypes()
         # for now, I'm assuming that E2 transitions within a manifold are impossible or at least strongly suppressed.
         # Correct me if I'm wrong!
+        #
+        # A photon of multipole order k carries k units of angular momentum, so J0, J1 and k
+        # must satisfy the full triangle condition |J1 - J0| <= k <= J1 + J0 -- note the lower
+        # bound as well as the upper one. Dropping the lower bound would wrongly allow
+        # J=0 -> J=0 for every multipole (e.g. the alkaline-earth 1S0 -> 3P*0 clock
+        # transitions, which are strictly forbidden and only become weakly allowed in odd
+        # isotopes through hyperfine mixing), and J=0 -> J=1 for E2.
         return AllowedTypes(
-            E1=(np.abs(J1 - J0) <= 1.0 and p0 != p1),
-            M1=(np.abs(J1 - J0) <= 1.0 and p0 == p1),
-            E2=(np.abs(J1 - J0) <= 2.0 and p0 == p1 and not (self.E_1 is self.E_2)),
+            E1=(np.abs(J1 - J0) <= 1.0 <= J1 + J0 and p0 != p1),
+            M1=(np.abs(J1 - J0) <= 1.0 <= J1 + J0 and p0 == p1),
+            E2=(np.abs(J1 - J0) <= 2.0 <= J1 + J0 and p0 == p1 and not (self.E_1 is self.E_2)),
         )
 
     def _assign_models(self):
@@ -1536,6 +1543,11 @@ class Atom:
         for i in rows:
             try:
                 e = EnergyLevel.from_dataframe(df, i)
+                if e.term.J is None:
+                    # NIST lumps some high-l Rydberg multiplets together with no J at all
+                    # (Mg I '3s.7i I', for instance). Without J there are no selection
+                    # rules, sublevels or g-factors to be had, so the level is unusable.
+                    raise ValueError('no J value given')
                 rows.set_description(f'adding level {e.name:109}')
                 a.add_level(e)
             except KeyError:
@@ -1551,8 +1563,7 @@ class Atom:
                 skipped.append(f'{label} ({type(exc).__name__}: {exc})')
         if skipped:
             warnings.warn(
-                f'{name}: skipped {len(skipped)} level(s) whose term symbols could not be '
-                f'parsed:\n  ' + '\n  '.join(skipped),
+                f'{name}: skipped {len(skipped)} unusable level(s):\n  ' + '\n  '.join(skipped),
                 stacklevel=2,
             )
         return a

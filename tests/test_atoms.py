@@ -385,6 +385,64 @@ class TestSubtransitions:
 
 
 # ---------------------------------------------------------------------------
+# TestSelectionRules
+# ---------------------------------------------------------------------------
+
+class TestSelectionRules:
+    """Transition.transition_allowed must enforce the *full* triangle condition
+    |J1 - J0| <= k <= J1 + J0 for a multipole of order k, not just the upper bound.
+
+    The lower bound is what forbids J=0 -> J=0 for every multipole (a photon carries
+    at least one unit of angular momentum) and J=0 -> J=1 for E2.
+    """
+
+    @staticmethod
+    def _levels(J0, J1, parity_flip):
+        """Two levels with the given J values; parity_flip picks opposite parities."""
+        a = Atom(name='sel')
+        # '1S'/'1P*' etc. -- the trailing '*' is what marks odd parity
+        lo = EnergyLevel(Term('1s2', '1S', J0), level=0.0 * Hz)
+        hi = EnergyLevel(Term('1s.2p', '1P*' if parity_flip else '1P', J1), level=100 * THz)
+        a.add_level(lo)
+        a.add_level(hi)
+        return lo, hi
+
+    def test_J0_to_J0_forbidden_for_all_multipoles(self):
+        """1S0 -> 3P*0, the alkaline-earth clock transition: strictly forbidden.
+
+        It becomes weakly allowed in odd isotopes only through hyperfine mixing,
+        which is not something the gross-structure selection rules should model.
+        """
+        for parity_flip in (True, False):
+            lo, hi = self._levels(0, 0, parity_flip)
+            allowed = Transition(lo, hi).transition_allowed()
+            assert not allowed.E1
+            assert not allowed.M1
+            assert not allowed.E2
+
+    def test_J0_to_J1_forbidden_for_E2(self):
+        """E2 needs J0 + J1 >= 2, so 0 -> 1 is out even though |dJ| <= 2."""
+        lo, hi = self._levels(0, 1, parity_flip=False)
+        assert not Transition(lo, hi).transition_allowed().E2
+
+    def test_half_to_half_forbidden_for_E2(self):
+        """J=1/2 -> J=1/2 also fails the lower bound (1/2 + 1/2 = 1 < 2)."""
+        lo, hi = self._levels(0.5, 0.5, parity_flip=False)
+        assert not Transition(lo, hi).transition_allowed().E2
+
+    def test_ordinary_transitions_still_allowed(self):
+        """The fix must not over-restrict: these are all genuinely allowed."""
+        lo, hi = self._levels(0, 1, parity_flip=True)
+        assert Transition(lo, hi).transition_allowed().E1      # 1S0 -> 1P*1
+        lo, hi = self._levels(0, 2, parity_flip=False)
+        assert Transition(lo, hi).transition_allowed().E2      # J=0 -> J=2 quadrupole
+        lo, hi = self._levels(0.5, 1.5, parity_flip=True)
+        assert Transition(lo, hi).transition_allowed().E1      # S1/2 -> P*3/2
+        lo, hi = self._levels(0.5, 2.5, parity_flip=False)
+        assert Transition(lo, hi).transition_allowed().E2      # S1/2 -> D5/2 clock
+
+
+# ---------------------------------------------------------------------------
 # TestIO
 # ---------------------------------------------------------------------------
 
