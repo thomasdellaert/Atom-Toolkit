@@ -1532,6 +1532,7 @@ class Atom:
             num_levels = len(df)
         a = Atom(name, I=I)
         rows = tqdm(range(num_levels))
+        skipped = []
         for i in rows:
             try:
                 e = EnergyLevel.from_dataframe(df, i)
@@ -1539,6 +1540,21 @@ class Atom:
                 a.add_level(e)
             except KeyError:
                 pass
+            except (ValueError, TypeError, IndexError) as exc:
+                # A term symbol the parser doesn't handle (deeply nested JJ/JK couplings
+                # in heavy elements, say) shouldn't take the whole species down with it.
+                # Skip the level and report it, so the rest of the atom is still usable.
+                try:
+                    label = f'{df["Configuration"][i]} {df["Term"][i]} J={df["J"][i]}'
+                except KeyError:  # pragma: no cover - malformed dataframe
+                    label = f'row {i}'
+                skipped.append(f'{label} ({type(exc).__name__}: {exc})')
+        if skipped:
+            warnings.warn(
+                f'{name}: skipped {len(skipped)} level(s) whose term symbols could not be '
+                f'parsed:\n  ' + '\n  '.join(skipped),
+                stacklevel=2,
+            )
         return a
 
     def populate_transitions(self, allowed: Tuple[bool, ...] = (True, False, False), **_):
