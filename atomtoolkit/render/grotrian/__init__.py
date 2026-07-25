@@ -37,10 +37,13 @@ from typing import Callable, Iterable, List, Optional, Sequence, Union
 
 from .layout import Anchor, Scene, layout, resolve_overlaps
 from .scale import CompressedScale, EnergyScale, LinearScale
-from .spec import DARK, LIGHT, ColumnPolicy, LevelSpec, LevelStyle, Theme
+from .color import is_visible, wavelength_to_hex
+from .spec import (DARK, LIGHT, ColumnPolicy, LevelSpec, LevelStyle, Theme,
+                   TransitionSpec, TransitionStyle)
 from .svg import render_svg
 
-__all__ = ['Grotrian', 'Theme', 'LevelStyle', 'ColumnPolicy',
+__all__ = ['Grotrian', 'Theme', 'LevelStyle', 'TransitionStyle', 'ColumnPolicy',
+           'wavelength_to_hex', 'is_visible',
            'LinearScale', 'CompressedScale', 'EnergyScale',
            'Scene', 'Anchor', 'layout', 'render_svg', 'resolve_overlaps',
            'LIGHT', 'DARK']
@@ -95,6 +98,7 @@ class Grotrian:
                         else ColumnPolicy(by=columns) if isinstance(columns, str)
                         else ColumnPolicy(by='custom', key=columns))
         self._specs: List[LevelSpec] = []
+        self._transitions: List[TransitionSpec] = []
 
     # -- building ----------------------------------------------------------
 
@@ -115,6 +119,33 @@ class Grotrian:
         """Add several levels with a shared style."""
         for level in levels:
             self.add_level(level, **style)
+        return self
+
+    def add_transition(self, transition, **style) -> 'Grotrian':
+        """Draw a transition between two levels.
+
+        :param transition: a ``BaseTransition``, or a ``(lower, upper)`` pair of levels
+            or level names. Order is normalised, so either way round works.
+        :param style: any :class:`~.spec.TransitionStyle` field -- ``color`` (defaults to
+            the wavelength's own colour), ``width``, ``route`` (``'auto'``/``'straight'``/
+            ``'arc'``), ``wavy`` (the convention for spontaneous decay), ``dash``,
+            ``head``, ``label`` (``'wavelength'``, ``'frequency'`` or literal text),
+            ``port``
+
+        ::
+
+            g.add_transition(('4f14.6s 2S1/2', '4f14.6p 2P*1/2'), label='wavelength')
+            g.add_transition(atom.transitions['cooling'], wavy=True, head='none')
+        """
+        if hasattr(transition, 'E_lower') and hasattr(transition, 'E_upper'):
+            lower, upper = transition.E_lower, transition.E_upper
+        else:
+            lower, upper = transition
+        lower, upper = self._resolve(lower), self._resolve(upper)
+        if upper.level_Hz < lower.level_Hz:
+            lower, upper = upper, lower
+        self._transitions.append(
+            TransitionSpec(lower=lower, upper=upper, style=TransitionStyle(**style)))
         return self
 
     def style_levels(self, predicate: Callable, **style) -> 'Grotrian':
@@ -157,7 +188,8 @@ class Grotrian:
 
         Useful for inspecting geometry, or for feeding an alternative renderer.
         """
-        return layout(self._specs, self.theme, self.columns, self.scale, self.title,
+        return layout(self._specs, self.theme, self.columns, self._transitions,
+                      self.scale, self.title,
                       hf_scale=self.hf_scale, b_gauss=self.b_gauss,
                       z_scale=self.z_scale)
 

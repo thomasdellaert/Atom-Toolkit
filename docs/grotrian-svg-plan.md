@@ -1,9 +1,26 @@
 # Rewriting the Grotrian renderer on direct SVG
 
-**Status: phases 1 and 2 implemented** (skeleton, columns, linear + compressed energy scales,
+**Status: phases 1-3 implemented** (skeleton, columns, linear + compressed energy scales,
 level lines, term-symbol labels, PAVA label de-overlap, themes, `_repr_svg_`, `save()`).
 The old matplotlib `Grotrian` and the broken `arrows.py` are deleted. Phases 2–5 below are
 still plans.
+
+Phase 3 adds transitions. Notes from that build:
+
+- Arrows resolve endpoints through `Scene.anchors`, never raw energies, so a transition
+  into a magnified fan lands on the sublevel line actually drawn. Endpoints walk up the
+  hierarchy when a level is not drawn itself, and a transition to a level absent from the
+  diagram warns and is skipped rather than guessing.
+- A manifold drawn as a fan has an anchor spanning the whole band, whose centre falls
+  *between* sublevel lines -- so arrows attach to the band edge facing their partner
+  instead, and always meet a drawn line.
+- Colour comes from the wavelength (Bruton's spectral fit), fading to grey outside the
+  visible band; non-visible lines also dash themselves, since colour alone is not a
+  reliable signal. Wavy lines are exempt from auto-dashing -- a dashed squiggle is noise.
+- Arc control points are perpendicular to the chord. Offsetting along +x, the obvious
+  first implementation, barely bends a diagonal.
+- `svgwrite` hands out incrementing auto-ids, which broke the documented purity of
+  `render()`; arrowhead marker ids are now derived from the marker's own appearance.
 
 Phase 2 adds hyperfine and Zeeman substructure, drawn *in place* on a single global
 magnification. Notes from that build:

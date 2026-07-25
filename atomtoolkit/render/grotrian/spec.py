@@ -11,7 +11,8 @@ from typing import Callable, Optional, Tuple
 
 from ... import util
 
-__all__ = ['LevelStyle', 'LevelSpec', 'Theme', 'ColumnPolicy', 'LIGHT', 'DARK']
+__all__ = ['LevelStyle', 'LevelSpec', 'TransitionStyle', 'TransitionSpec',
+           'Theme', 'ColumnPolicy', 'LIGHT', 'DARK']
 
 
 @dataclass(frozen=True)
@@ -57,6 +58,31 @@ class LevelSpec:
 
 
 @dataclass(frozen=True)
+class TransitionStyle:
+    """Per-transition appearance. ``None`` means "work it out"."""
+
+    color: Optional[str] = None          #: default: derived from the wavelength
+    width: Optional[float] = None
+    opacity: float = 1.0
+    route: str = 'auto'                  #: 'auto', 'straight' or 'arc'
+    curvature: float = 0.16              #: arc bulge, as a fraction of the span
+    dash: str = 'auto'                   #: 'auto' dashes non-visible lines, or 'solid'/'dashed'
+    wavy: bool = False                   #: squiggle, the convention for spontaneous decay
+    head: str = 'end'                    #: 'end', 'both' or 'none'
+    label: Optional[str] = None          #: 'wavelength', 'frequency', or literal text
+    port: str = 'auto'                   #: 'auto', 'left', 'center' or 'right'
+
+
+@dataclass(frozen=True)
+class TransitionSpec:
+    """One requested transition, lower level first."""
+
+    lower: object
+    upper: object
+    style: TransitionStyle = field(default_factory=TransitionStyle)
+
+
+@dataclass(frozen=True)
 class Theme:
     """Global appearance. Sizes are in SVG user units (nominally px)."""
 
@@ -98,6 +124,14 @@ class Theme:
     bracket_width: float = 5.0
     bracket_gap: float = 5.0
     show_hf_scalebar: bool = True        #: one bar annotating the global hyperfine scale
+
+    # --- transitions ---
+    transition_width: float = 1.9
+    transition_head: float = 7.0         #: arrowhead length in px
+    transition_label_size: float = 10.5
+    transition_label_gap: float = 4.0    #: text offset perpendicular to the arrow
+    wavy_amplitude: float = 2.6
+    wavy_period: float = 11.0
 
     # --- Zeeman structure ---
     z_band: float = 30.0                 #: px given to the largest Zeeman spread present

@@ -97,7 +97,9 @@ By default `ZLevel.level_hz_at(B)` uses the linear form `gF·mF·μB·B`. For fi
   - **Lines are physical, labels relax.** Near-degenerate sublevels overlap honestly while their `F` labels de-overlap onto leaders.
   - Zeeman uses the *same* vertical scale as hyperfine (its sublevels carry the hyperfine shift plus a much smaller Zeeman one) and fans horizontally by m_F. `B=` routes through `ZLevel.level_hz_at`, so `use_nonlinear_zeeman` manifolds get exact diagonalisation for free.
   - Manifolds with no hyperfine data — still the majority — get an evenly spaced schematic fan with a **dashed** bracket, so missing data never reads as real structure.
-  - Transitions are phase 3; `Scene.anchors` already records every drawn sublevel box for them.
+  - **Transitions** (`add_transition((lower, upper), ...)`, order-normalised; also accepts a `Transition` object) resolve endpoints via `Scene.anchors`, never raw energies — an arrow into a magnified fan must land on the line actually drawn. Missing endpoints warn and skip. A fanned manifold's anchor spans the band, so arrows attach to the *edge facing their partner* rather than the centre, which falls between sublevel lines.
+  - Arrow colour comes from the wavelength (`color.py`, Bruton's fit), fading to grey outside 380–780 nm; non-visible lines auto-dash. `wavy=True` (spontaneous decay) suppresses auto-dashing. `route='arc'` bulges perpendicular to the chord — offsetting along +x barely bends a diagonal.
+  - Anything emitting SVG must keep `render()` pure: `svgwrite` auto-ids break byte-equality, so marker ids are derived deterministically from appearance.
   - `examples/grotrian_gallery.py` renders a visual regression gallery; run it after touching the renderer.
 
 ### Species files (`species/`)

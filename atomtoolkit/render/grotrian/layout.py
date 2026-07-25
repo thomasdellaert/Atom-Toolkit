@@ -10,6 +10,8 @@ Coordinates are SVG user units with y increasing downwards, so higher energy mea
 
 from __future__ import annotations
 
+import math
+import warnings
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Sequence, Tuple, Union
 
@@ -17,8 +19,9 @@ from .scale import EnergyScale, LinearScale
 from .spec import ColumnPolicy, LevelSpec, Theme
 
 __all__ = ['Scene', 'LevelLine', 'Label', 'Leader', 'AxisTick', 'Anchor', 'ColumnHeader',
-           'Bracket', 'ScaleBar', 'layout', 'resolve_overlaps', 'hyperfine_scale',
-           'format_splitting']
+           'Bracket', 'ScaleBar', 'Arrow', 'layout', 'resolve_overlaps',
+           'hyperfine_scale', 'hyperfine_reference', 'format_splitting',
+           'transition_wavelength_nm']
 
 
 # ---------------------------------------------------------------------------
@@ -94,6 +97,23 @@ class Bracket:
 
 
 @dataclass(frozen=True)
+class Arrow:
+    """A transition. ``control`` is None for a straight line, else a quadratic control."""
+    x0: float
+    y0: float
+    x1: float
+    y1: float
+    color: str
+    width: float
+    control: Optional[Tuple[float, float]] = None
+    dashed: bool = False
+    wavy: bool = False
+    head: str = 'end'
+    opacity: float = 1.0
+    title: str = ''
+
+
+@dataclass(frozen=True)
 class ScaleBar:
     """Annotates the single global hyperfine magnification."""
     x: float
@@ -115,6 +135,7 @@ class Scene:
     ticks: List[AxisTick] = field(default_factory=list)
     headers: List[ColumnHeader] = field(default_factory=list)
     brackets: List[Bracket] = field(default_factory=list)
+    arrows: List[Arrow] = field(default_factory=list)
     scalebar: Optional[ScaleBar] = None
     anchors: Dict[object, Anchor] = field(default_factory=dict)
     axis_label: str = ''
@@ -295,12 +316,70 @@ def format_splitting(hz: float) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Transitions
+# ---------------------------------------------------------------------------
+
+_C_NM_HZ = 2.99792458e17      # speed of light in nm/s
+
+
+def transition_wavelength_nm(lower, upper) -> float:
+    """Vacuum wavelength of a transition between two levels, in nm.
+
+    Computed straight from the level energies rather than from a Transition object, so it
+    works for any pair -- including sublevel pairs that were never added to the atom.
+    """
+    delta = abs(upper.level_Hz - lower.level_Hz)
+    return _C_NM_HZ / delta if delta > 0 else float('inf')
+
+
+def _resolve_anchor(scene: Scene, level):
+    """Find the drawn box for a level, falling back up the hierarchy.
+
+    A transition may point at a sublevel of a manifold that was drawn collapsed, or at a
+    manifold whose sublevels were drawn individually. Walking up to the nearest drawn
+    ancestor is what makes both cases land on something sensible.
+    """
+    if level in scene.anchors:
+        return scene.anchors[level]
+    for attr in ('parent', 'manifold'):
+        ancestor = getattr(level, attr, None)
+        if ancestor is not None and ancestor in scene.anchors:
+            return scene.anchors[ancestor]
+    return None
+
+
+def _port(anchor: Anchor, mode: str, toward_right: Optional[bool],
+          partner_y: Optional[float] = None) -> Tuple[float, float]:
+    """Pick the attachment point on a level.
+
+    For a manifold drawn as a hyperfine fan the anchor spans the whole band, and its
+    centre falls in the gap *between* sublevel lines -- an arrow drawn from there appears
+    to start in mid-air. Attach to the edge of the band facing the partner instead, so
+    the arrow always meets a drawn line.
+    """
+    x_mid, y_mid = anchor.center
+    if partner_y is not None and anchor.y1 > anchor.y0:
+        y_mid = anchor.y0 if partner_y < anchor.y0 else (
+            anchor.y1 if partner_y > anchor.y1 else y_mid)
+    if mode == 'left':
+        return anchor.x0, y_mid
+    if mode == 'right':
+        return anchor.x1, y_mid
+    if mode == 'center' or toward_right is None:
+        return x_mid, y_mid
+    # 'auto' across columns: attach on the side facing the partner, a third of the way in
+    third = (anchor.x1 - anchor.x0) / 3.0
+    return (x_mid + third if toward_right else x_mid - third), y_mid
+
+
+# ---------------------------------------------------------------------------
 # The engine
 # ---------------------------------------------------------------------------
 
 def layout(specs: Sequence[LevelSpec],
            theme: Theme,
            policy: ColumnPolicy,
+           transitions: Sequence['TransitionSpec'] = (),
            scale: Optional[EnergyScale] = None,
            title: str = '',
            hf_scale: Union[str, float] = 'auto',
@@ -311,6 +390,7 @@ def layout(specs: Sequence[LevelSpec],
     :param specs: what to draw
     :param theme: sizes and colours
     :param policy: column assignment
+    :param transitions: transitions to draw between them
     :param scale: gross energy transform; defaults to :class:`LinearScale`
     :param title: optional diagram title
     :param hf_scale: hyperfine magnification in px per Hz, or ``'auto'`` to fit the
@@ -533,6 +613,8 @@ def layout(specs: Sequence[LevelSpec],
             max_label_right = max(max_label_right,
                                   text_x + estimate_text_width(runs, theme.label_size))
 
+    _place_transitions(scene, transitions, theme)
+
     if bar_strip:
         bar_bottom = height - theme.margin_bottom
         text = f'hyperfine scale: {format_splitting(theme.hf_band / m_hf)}'
@@ -545,6 +627,91 @@ def layout(specs: Sequence[LevelSpec],
 
     scene.width = max(scene.width, max_label_right + theme.margin_right)
     return scene
+
+
+def _place_transitions(scene: Scene, transitions: Sequence['TransitionSpec'],
+                       theme: Theme) -> None:
+    """Route each transition between the *drawn* boxes of its endpoints.
+
+    Endpoints resolve through :func:`_resolve_anchor`, never through raw energies -- an
+    arrow into a magnified hyperfine fan has to land on the sublevel line actually drawn,
+    which may be far from where its true energy would put it.
+    """
+    from .color import is_visible, wavelength_to_hex
+
+    for spec in transitions:
+        lower = _resolve_anchor(scene, spec.lower)
+        upper = _resolve_anchor(scene, spec.upper)
+        if lower is None or upper is None:
+            warnings.warn(
+                f'Skipping a transition: {"lower" if lower is None else "upper"} level is '
+                f'not drawn in this diagram. Add it with add_level() first.',
+                stacklevel=3)
+            continue
+
+        style = spec.style
+        nm = transition_wavelength_nm(spec.lower, spec.upper)
+        visible = is_visible(nm)
+        color = style.color or wavelength_to_hex(nm)
+        # 'auto' dashes non-visible lines -- but a wavy line already reads as "different",
+        # and dashing a squiggle just looks noisy.
+        dashed = ((not visible) and not style.wavy) if style.dash == 'auto' \
+            else (style.dash == 'dashed')
+
+        same_column = abs(lower.center[0] - upper.center[0]) < 1e-6
+        toward_right = None if same_column else upper.center[0] > lower.center[0]
+        x0, y0 = _port(lower, style.port, toward_right, upper.center[1])
+        x1, y1 = _port(upper, style.port, None if same_column else not toward_right,
+                       lower.center[1])
+
+        control = None
+        arc = style.route == 'arc' or (style.route == 'auto' and same_column
+                                       and abs(y1 - y0) > 1e-6 and _crowded(scene, x0, y0, y1))
+        # unit normal to the chord: an arc must bulge *perpendicular*, since offsetting
+        # along +x barely bends a diagonal
+        dx, dy = x1 - x0, y1 - y0
+        chord = math.hypot(dx, dy) or 1.0
+        nx, ny = -dy / chord, dx / chord
+        if nx < 0:                       # keep the bulge on a consistent side
+            nx, ny = -nx, -ny
+        if arc:
+            mx, my = (x0 + x1) / 2, (y0 + y1) / 2
+            control = (mx + nx * style.curvature * chord,
+                       my + ny * style.curvature * chord)
+
+        scene.arrows.append(Arrow(
+            x0=x0, y0=y0, x1=x1, y1=y1, control=control,
+            color=color, width=style.width or theme.transition_width,
+            dashed=dashed, wavy=style.wavy, head=style.head, opacity=style.opacity,
+            title=f'{_level_name(spec.lower)} -> {_level_name(spec.upper)}   '
+                  f'{nm:.2f} nm' if nm != float('inf') else ''))
+
+        if style.label:
+            text = style.label
+            if style.label == 'wavelength':
+                text = f'{nm:.1f} nm' if nm < 1e4 else f'{nm / 1000:.2f} µm'
+            elif style.label == 'frequency':
+                text = format_splitting(abs(spec.upper.level_Hz - spec.lower.level_Hz))
+            mx = (x0 + x1) / 2 if control is None else (x0 + 2 * control[0] + x1) / 4
+            my = (y0 + y1) / 2 if control is None else (y0 + 2 * control[1] + y1) / 4
+            offset = theme.transition_label_gap + theme.transition_label_size * 0.3
+            scene.labels.append(Label(
+                x=mx + nx * offset, y=my + ny * offset + theme.transition_label_size * 0.35,
+                runs=((text, 'normal'),), color=color,
+                size=theme.transition_label_size))
+
+
+def _crowded(scene: Scene, x: float, y_from: float, y_to: float) -> bool:
+    """Would a vertical line at x cross a level line between these two heights?"""
+    lo, hi = sorted((y_from, y_to))
+    for line in scene.lines:
+        if line.x0 - 1 <= x <= line.x1 + 1 and lo + 1 < line.y < hi - 1:
+            return True
+    return False
+
+
+def _level_name(level) -> str:
+    return getattr(level, 'name', str(level))
 
 
 def _hyperfine_positions(sublevels: Sequence, y_parent: float, m_hf: float,

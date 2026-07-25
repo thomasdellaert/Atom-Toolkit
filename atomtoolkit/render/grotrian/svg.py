@@ -7,11 +7,12 @@ in drawing taste.
 
 from __future__ import annotations
 
-from typing import Sequence, Tuple
+import math
+from typing import List, Sequence, Tuple
 
 import svgwrite
 
-from .layout import Scene
+from .layout import Arrow, Scene
 
 __all__ = ['render_svg']
 
@@ -33,6 +34,45 @@ def _add_runs(text_element, runs: Sequence[Tuple[str, str]], size: float) -> Non
     if current:                     # return to the baseline so following text is unaffected
         tail = svgwrite.text.TSpan('', dy=[f'{-current * size:.2f}'])
         text_element.add(tail)
+
+
+def _quadratic_point(p0, pc, p1, t: float) -> Tuple[float, float]:
+    """Point at parameter t on a quadratic Bezier."""
+    u = 1 - t
+    return (u * u * p0[0] + 2 * u * t * pc[0] + t * t * p1[0],
+            u * u * p0[1] + 2 * u * t * pc[1] + t * t * p1[1])
+
+
+def _wavy_points(arrow: Arrow, amplitude: float, period: float,
+                 head_gap: float) -> List[Tuple[float, float]]:
+    """Sample a squiggle along the arrow's path.
+
+    A wavy line is the usual convention for spontaneous emission. The wave is laid out
+    perpendicular to the local path direction, and damped to zero at both ends so the
+    tail meets the level line and the head meets the arrowhead cleanly.
+    """
+    p0 = (arrow.x0, arrow.y0)
+    p1 = (arrow.x1, arrow.y1)
+    pc = arrow.control or ((p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2)
+    length = math.hypot(p1[0] - p0[0], p1[1] - p0[1])
+    if length < 1e-6:
+        return [p0, p1]
+    stop = max(0.0, 1.0 - head_gap / length)
+    steps = max(int(length / 2.0), 12)
+    cycles = max(length / period, 1.0)
+
+    points = []
+    for i in range(steps + 1):
+        t = stop * i / steps
+        x, y = _quadratic_point(p0, pc, p1, t)
+        # tangent of the quadratic, for the perpendicular offset
+        tx = 2 * (1 - t) * (pc[0] - p0[0]) + 2 * t * (p1[0] - pc[0])
+        ty = 2 * (1 - t) * (pc[1] - p0[1]) + 2 * t * (p1[1] - pc[1])
+        norm = math.hypot(tx, ty) or 1.0
+        damp = math.sin(math.pi * min(t / stop if stop else 0.0, 1.0)) ** 0.5
+        offset = amplitude * damp * math.sin(2 * math.pi * cycles * (t / stop if stop else 0))
+        points.append((x - ty / norm * offset, y + tx / norm * offset))
+    return points
 
 
 def render_svg(scene: Scene, precision: int = 2) -> str:
@@ -130,6 +170,53 @@ def render_svg(scene: Scene, precision: int = 2) -> str:
             element.set_desc(title=line.title)
         lines.add(element)
     dwg.add(lines)
+
+    # --- transitions (under the labels, over the level lines) --------------
+    if scene.arrows:
+        markers = {}
+        for arrow in scene.arrows:
+            if arrow.head == 'none':
+                continue
+            key = (arrow.color, round(arrow.width, 2))
+            if key in markers:
+                continue
+            size = theme.transition_head
+            # svgwrite hands out incrementing auto-ids, which would make two renders of
+            # the same scene differ byte-for-byte. render() is documented as pure, so the
+            # id is derived deterministically from what the marker actually looks like.
+            marker_id = f'head-{arrow.color.lstrip("#")}-{round(arrow.width * 100):d}'
+            marker = dwg.marker(id=marker_id, insert=(size * 0.9, size / 2),
+                                size=(size, size), orient='auto', markerUnits='userSpaceOnUse')
+            marker.add(dwg.path(d=f'M0,0 L{size},{size / 2} L0,{size} z', fill=arrow.color))
+            dwg.defs.add(marker)
+            markers[key] = marker
+
+        for arrow in scene.arrows:
+            key = (arrow.color, round(arrow.width, 2))
+            head_gap = theme.transition_head * 0.9 if arrow.head != 'none' else 0.0
+            if arrow.wavy:
+                points = _wavy_points(arrow, theme.wavy_amplitude, theme.wavy_period,
+                                      head_gap)
+                d = 'M ' + ' L '.join(f'{r(x)},{r(y)}' for x, y in points)
+            elif arrow.control is not None:
+                d = (f'M {r(arrow.x0)},{r(arrow.y0)} '
+                     f'Q {r(arrow.control[0])},{r(arrow.control[1])} '
+                     f'{r(arrow.x1)},{r(arrow.y1)}')
+            else:
+                d = f'M {r(arrow.x0)},{r(arrow.y0)} L {r(arrow.x1)},{r(arrow.y1)}'
+            element = dwg.path(d=d, fill='none', stroke=arrow.color,
+                               stroke_width=arrow.width, stroke_linecap='round')
+            if arrow.dashed:
+                element.update({'stroke-dasharray': '5 3'})
+            if arrow.opacity != 1.0:
+                element.update({'stroke-opacity': f'{arrow.opacity:.3f}'})
+            if arrow.head in ('end', 'both'):
+                element.set_markers((None, None, markers[key]))
+            if arrow.head == 'both':
+                element.update({'marker-start': markers[key].get_funciri()})
+            if arrow.title:
+                element.set_desc(title=arrow.title)
+            dwg.add(element)
 
     # --- labels ------------------------------------------------------------
     for label in scene.labels:

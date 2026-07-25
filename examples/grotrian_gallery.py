@@ -143,9 +143,61 @@ def ytterbium_zeeman() -> Grotrian:
     g = Grotrian(yb, title='¹⁷¹Yb⁺  ·  Zeeman fans at 5 G, exaggerated',
                  B=Q_(5.0, 'G'), theme=theme, scale=CompressedScale(),
                  z_scale='auto')
-    for name in ('4f14.6s 2S1/2', '4f14.5d 2D3/2', '4f14.6p 2P*1/2'):
+    for name in ('4f14.6s 2S1/2', '4f14.5d 2D3/2', '4f14.6p 2P*1/2', '4f14.5d 2D5/2', '4f13.(2F*).6s2 2F*7/2'):
         g.add_level(name, detail='zeeman')
     g.style_levels(lambda l: l.term.parity == -1, color='#b3541e')
+    return g
+
+
+def ytterbium_scheme() -> Grotrian:
+    """¹⁷¹Yb⁺ with its actual laser scheme — the phase-3 reference diagram.
+
+    Arrows are coloured by their own wavelength, which is the one piece of styling a
+    Grotrian diagram can do that is genuinely physical. Non-visible lines dash themselves;
+    spontaneous decay is drawn wavy and headless by convention.
+    """
+    yb = atomtoolkit.load_species('171Yb II')
+    levels = ('4f14.6s 2S1/2', '4f14.5d 2D3/2', '4f14.5d 2D5/2',
+              '4f13.(2F*).6s2 2F*7/2', '4f14.6p 2P*1/2', '4f14.6p 2P*3/2',
+              '4f13.(2F*<7/2>).5d.6s.(3D) 3[3/2]*1/2')
+    g = Grotrian(yb, title='¹⁷¹Yb⁺  ·  laser scheme',
+                 scale=CompressedScale(strength=0.72))
+    for name in levels:
+        g.add_level(name, color='#5a5a5a')
+    g.style_levels(lambda l: l.name in ('4f14.6s 2S1/2', '4f14.5d 2D3/2',
+                                        '4f13.(2F*).6s2 2F*7/2'),
+                   color='#1a1a1a', linewidth=3.2)
+
+    # 369.5 nm cooling/detection, and its spontaneous decay back down
+    g.add_transition(('4f14.6s 2S1/2', '4f14.6p 2P*1/2'), label='wavelength')
+    g.add_transition(('4f14.6p 2P*1/2', '4f14.5d 2D3/2'), wavy=True, head='none')
+    # 935 nm repump out of the D3/2 shelf
+    g.add_transition(('4f14.5d 2D3/2', '4f13.(2F*<7/2>).5d.6s.(3D) 3[3/2]*1/2'),
+                     label='wavelength')
+    # 411 nm electric-quadrupole clock line
+    g.add_transition(('4f14.6s 2S1/2', '4f14.5d 2D5/2'), route='arc', label='wavelength')
+    # 3.4 um F7/2 -> D5/2, deep in the infrared so it dashes itself
+    g.add_transition(('4f13.(2F*).6s2 2F*7/2', '4f14.5d 2D5/2'), label='wavelength')
+    return g
+
+
+def barium_hyperfine_transitions() -> Grotrian:
+    """¹³⁷Ba⁺: a microwave transition *inside* one hyperfine manifold, plus an optical one.
+
+    The F=1 -> F=2 ground-state transition lives entirely within a single magnified fan,
+    which is the case that only works because arrows resolve against drawn anchors rather
+    than true energies.
+    """
+    ba = atomtoolkit.load_species('137Ba II')
+    g = Grotrian(ba, title='¹³⁷Ba⁺  ·  microwave and optical transitions',
+                 scale=CompressedScale(strength=0.6))
+    for name in ('6s 2S1/2', '5d 2D3/2', '6p 2P*1/2'):
+        g.add_level(name, detail='hyperfine')
+    ground = ba.levels['6s 2S1/2']
+    g.add_transition((ground['F=1'], ground['F=2']), label='frequency',
+                     route='arc', color='#1b6ca8')
+    g.add_transition(('6s 2S1/2', '6p 2P*1/2'), label='wavelength')
+    g.add_transition(('6p 2P*1/2', '5d 2D3/2'), wavy=True, head='none', label='wavelength')
     return g
 
 
@@ -159,6 +211,8 @@ GALLERY = {
     'ba137_hyperfine': barium_hyperfine,
     'ca43_schematic_gross': schematic_gross_real_hyperfine,
     'yb171_zeeman': ytterbium_zeeman,
+    'yb171_scheme': ytterbium_scheme,
+    'ba137_transitions': barium_hyperfine_transitions,
 }
 
 

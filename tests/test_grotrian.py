@@ -698,3 +698,200 @@ class TestPerLevelScales:
         g.add_level(hf_atom.levels['1s2.2p 2P*1/2'], detail='hyperfine')
         scene = g.build()
         assert all(0 <= line.y <= scene.height for line in scene.lines)
+
+
+# ---------------------------------------------------------------------------
+# Phase 3: transitions
+# ---------------------------------------------------------------------------
+
+class TestWavelengthColour:
+
+    def test_visible_band(self):
+        from atomtoolkit.render.grotrian.color import is_visible
+        assert is_visible(493) and is_visible(650)
+        assert not is_visible(369) and not is_visible(935)
+
+    def test_spectral_hues_are_right(self):
+        """A green line must come out green, not merely 'some colour'."""
+        from atomtoolkit.render.grotrian.color import wavelength_to_hex
+        def rgb(nm):
+            h = wavelength_to_hex(nm)
+            return int(h[1:3], 16), int(h[3:5], 16), int(h[5:7], 16)
+        r, g, b = rgb(532)
+        assert g > r and g > b                      # green
+        r, g, b = rgb(650)
+        assert r > g and r > b                      # red
+        r, g, b = rgb(470)
+        assert b > r                                # blue
+
+    def test_far_infrared_desaturates(self):
+        from atomtoolkit.render.grotrian.color import wavelength_to_hex
+        h = wavelength_to_hex(3000)
+        r, g, b = int(h[1:3], 16), int(h[3:5], 16), int(h[5:7], 16)
+        assert max(r, g, b) - min(r, g, b) < 30      # essentially grey
+
+    def test_degenerate_wavelength_is_handled(self):
+        from atomtoolkit.render.grotrian.color import wavelength_to_hex
+        assert wavelength_to_hex(0).startswith('#')
+
+
+class TestTransitions:
+
+    def _g(self, atom, **kwargs):
+        g = Grotrian(atom, **kwargs)
+        g.add_levels(atom.levels.values())
+        return g
+
+    def test_wavelength_from_level_energies(self, toy_atom):
+        from atomtoolkit.render.grotrian.layout import transition_wavelength_nm
+        lower = toy_atom.levels['1s2.2s 2S1/2']
+        upper = toy_atom.levels['1s2.2p 2P*1/2']
+        nm = transition_wavelength_nm(lower, upper)
+        assert nm == pytest.approx(2.99792458e17 / 100e12, rel=1e-9)   # 100 THz
+
+    def test_add_by_names_and_by_levels(self, toy_atom):
+        g = self._g(toy_atom)
+        g.add_transition(('1s2.2s 2S1/2', '1s2.2p 2P*1/2'))
+        g.add_transition((toy_atom.levels['1s2.2s 2S1/2'],
+                          toy_atom.levels['1s2.3d 2D5/2']))
+        assert len(g.build().arrows) == 2
+
+    def test_order_is_normalised(self, toy_atom):
+        """Given upper-first, the arrow must still point from lower to upper."""
+        g = self._g(toy_atom)
+        g.add_transition(('1s2.2p 2P*1/2', '1s2.2s 2S1/2'))
+        arrow = g.build().arrows[0]
+        assert arrow.y0 > arrow.y1                  # starts low on the page, ends high
+
+    def test_accepts_a_transition_object(self, toy_atom):
+        from atomtoolkit.atom import Transition
+        t = Transition(toy_atom.levels['1s2.2s 2S1/2'], toy_atom.levels['1s2.2p 2P*1/2'])
+        toy_atom.add_transition(t)
+        g = self._g(toy_atom)
+        g.add_transition(t)
+        assert len(g.build().arrows) == 1
+
+    def test_endpoints_use_drawn_anchors(self, toy_atom):
+        g = self._g(toy_atom)
+        g.add_transition(('1s2.2s 2S1/2', '1s2.2p 2P*1/2'))
+        scene = g.build()
+        arrow = scene.arrows[0]
+        lower = scene.anchors[toy_atom.levels['1s2.2s 2S1/2']]
+        assert lower.x0 <= arrow.x0 <= lower.x1
+        assert arrow.y0 == pytest.approx(lower.y0)
+
+    def test_missing_level_warns_and_skips(self, toy_atom):
+        g = Grotrian(toy_atom)
+        g.add_level(toy_atom.levels['1s2.2s 2S1/2'])          # only one level drawn
+        g.add_transition(('1s2.2s 2S1/2', '1s2.2p 2P*1/2'))
+        with pytest.warns(UserWarning, match='not drawn'):
+            scene = g.build()
+        assert scene.arrows == []
+
+    def test_sublevel_falls_back_to_the_drawn_manifold(self, hf_atom):
+        """A transition to a sublevel of a manifold drawn collapsed still lands."""
+        g = Grotrian(hf_atom)
+        g.add_level(hf_atom.levels['1s2.2s 2S1/2'])           # gross, no substructure
+        g.add_level(hf_atom.levels['1s2.2p 2P*1/2'])
+        sublevel = hf_atom.levels['1s2.2p 2P*1/2'].sublevels()[0]
+        g.add_transition((hf_atom.levels['1s2.2s 2S1/2'], sublevel))
+        scene = g.build()
+        assert len(scene.arrows) == 1
+
+    def test_transition_into_a_hyperfine_fan_lands_on_the_sublevel(self, hf_atom):
+        g = Grotrian(hf_atom)
+        g.add_level(hf_atom.levels['1s2.2s 2S1/2'])
+        g.add_level(hf_atom.levels['1s2.2p 2P*1/2'], detail='hyperfine')
+        sublevel = hf_atom.levels['1s2.2p 2P*1/2'].sublevels()[0]
+        g.add_transition((hf_atom.levels['1s2.2s 2S1/2'], sublevel))
+        scene = g.build()
+        assert scene.arrows[0].y1 == pytest.approx(scene.anchors[sublevel].y0)
+
+    def test_colour_comes_from_the_wavelength(self, toy_atom):
+        from atomtoolkit.render.grotrian.color import wavelength_to_hex
+        from atomtoolkit.render.grotrian.layout import transition_wavelength_nm
+        g = self._g(toy_atom)
+        g.add_transition(('1s2.2s 2S1/2', '1s2.2p 2P*1/2'))
+        nm = transition_wavelength_nm(toy_atom.levels['1s2.2s 2S1/2'],
+                                      toy_atom.levels['1s2.2p 2P*1/2'])
+        assert g.build().arrows[0].color == wavelength_to_hex(nm)
+
+    def test_explicit_colour_overrides(self, toy_atom):
+        g = self._g(toy_atom)
+        g.add_transition(('1s2.2s 2S1/2', '1s2.2p 2P*1/2'), color='#123456')
+        assert g.build().arrows[0].color == '#123456'
+
+    def test_non_visible_lines_are_dashed(self, toy_atom):
+        """3 um here, well into the infrared."""
+        g = self._g(toy_atom)
+        g.add_transition(('1s2.2p 2P*3/2', '1s2.3d 2D3/2'))
+        assert g.build().arrows[0].dashed
+
+    def test_wavy_lines_are_not_also_dashed(self, toy_atom):
+        """Wavy already signals 'different'; dashing a squiggle is just noise."""
+        g = self._g(toy_atom)
+        g.add_transition(('1s2.2p 2P*3/2', '1s2.3d 2D3/2'), wavy=True)
+        arrow = g.build().arrows[0]
+        assert arrow.wavy and not arrow.dashed
+
+    def test_arc_control_is_perpendicular_to_the_chord(self, toy_atom):
+        """Offsetting along +x barely bends a diagonal, so the bulge must be normal."""
+        g = self._g(toy_atom)
+        g.add_transition(('1s2.2s 2S1/2', '1s2.3d 2D5/2'), route='arc')
+        arrow = g.build().arrows[0]
+        assert arrow.control is not None
+        mx, my = (arrow.x0 + arrow.x1) / 2, (arrow.y0 + arrow.y1) / 2
+        chord = (arrow.x1 - arrow.x0, arrow.y1 - arrow.y0)
+        offset = (arrow.control[0] - mx, arrow.control[1] - my)
+        dot = chord[0] * offset[0] + chord[1] * offset[1]
+        assert abs(dot) < 1e-6                      # perpendicular
+
+    def test_straight_route_has_no_control(self, toy_atom):
+        g = self._g(toy_atom)
+        g.add_transition(('1s2.2s 2S1/2', '1s2.3d 2D5/2'), route='straight')
+        assert g.build().arrows[0].control is None
+
+    def test_labels(self, toy_atom):
+        g = self._g(toy_atom)
+        g.add_transition(('1s2.2s 2S1/2', '1s2.2p 2P*1/2'), label='wavelength')
+        g.add_transition(('1s2.2s 2S1/2', '1s2.3d 2D5/2'), label='frequency')
+        g.add_transition(('1s2.2p 2P*1/2', '1s2.3d 2D3/2'), label='cooling')
+        texts = {run[0] for label in g.build().labels for run in label.runs}
+        assert any('nm' in t or 'µm' in t for t in texts)
+        assert any('THz' in t or 'GHz' in t for t in texts)
+        assert 'cooling' in texts
+
+    def test_label_sits_off_the_line(self, toy_atom):
+        g = self._g(toy_atom)
+        g.add_transition(('1s2.2s 2S1/2', '1s2.2p 2P*1/2'), label='wavelength')
+        scene = g.build()
+        arrow = scene.arrows[0]
+        label = [l for l in scene.labels if 'nm' in l.runs[0][0]][0]
+        midpoint = ((arrow.x0 + arrow.x1) / 2, (arrow.y0 + arrow.y1) / 2)
+        assert abs(label.x - midpoint[0]) > 1.0     # displaced, not sitting on the path
+
+    def test_head_options(self, toy_atom):
+        g = self._g(toy_atom)
+        g.add_transition(('1s2.2s 2S1/2', '1s2.2p 2P*1/2'), head='none')
+        g.add_transition(('1s2.2s 2S1/2', '1s2.3d 2D5/2'), head='both')
+        heads = {arrow.head for arrow in g.build().arrows}
+        assert heads == {'none', 'both'}
+
+    def test_render_is_still_pure(self, toy_atom):
+        g = self._g(toy_atom)
+        g.add_transition(('1s2.2s 2S1/2', '1s2.2p 2P*1/2'), label='wavelength')
+        assert g.render() == g.render()
+
+    def test_svg_contains_arrow_paths_and_markers(self, toy_atom):
+        g = self._g(toy_atom)
+        g.add_transition(('1s2.2s 2S1/2', '1s2.2p 2P*1/2'))
+        root = ET.fromstring(g.render())
+        assert root.findall(f'.//{SVG_NS}marker')
+        assert root.findall(f'.//{SVG_NS}path')
+
+    def test_wavy_path_has_many_points(self, toy_atom):
+        g = self._g(toy_atom)
+        g.add_transition(('1s2.2s 2S1/2', '1s2.2p 2P*1/2'), wavy=True)
+        root = ET.fromstring(g.render())
+        paths = [p.get('d') for p in root.findall(f'.//{SVG_NS}path') if p.get('d')]
+        assert any(path.count('L') > 10 for path in paths)
