@@ -1,0 +1,37 @@
+# Scratch / junk — untracked working files, test outputs, one-off figures
+scratch/
+# One-off research notebooks and analysis scripts
+analysis/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.eggs/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Test / tooling caches
+.pytest_cache/
+.ipynb_checkpoints/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Test artifacts written into the repo root by tests/test_atoms.py
+/dummy.atom
+
+# Prebuilt species snapshots — regenerate with e.g. `cd species && python Ca_II_43.py`
+species/*.json
+
+# Claude Code local settings (project-level .claude/settings.json stays tracked)
+.claude/settings.local.json
+
+# OS
+.DS_Store
