@@ -255,17 +255,18 @@ def rubidium_broken_axis() -> Grotrian:
 def calcium_zeeman_labels() -> Grotrian:
     """⁴³Ca⁺ Zeeman fans with m_F labelling, and its level-of-detail fallback.
 
-    I = 7/2 gives F = 3 and 4 in the ground state, so 17 m_F sublevels in one manifold.
-    Wide columns label every one; narrow columns would instead summarise each row as
-    ``F=4, m=-4..4`` rather than print overlapping numbers.
+    m_F labels are off by default -- the sublevels are evenly spaced and most readers just
+    count along -- so this switches them on to show the behaviour. Only one shared row is
+    drawn per manifold, since every F row occupies the same m_F columns. If the slots are
+    too narrow to hold numbers the row is summarised as ``F=4, m=-4..4`` instead.
     """
     ca = atomtoolkit.load_species('43Ca II')
     ca.levels['3p6.4s 2S1/2'].use_nonlinear_zeeman = True
     theme = Theme(column_width=330.0, plot_height=540.0)
     g = Grotrian(ca, title='⁴³Ca⁺  ·  Zeeman structure with m_F labels',
                  B=Q_(4.0, 'G'), z_scale='auto', theme=theme, scale=CompressedScale())
-    g.add_level('3p6.4s 2S1/2', detail='zeeman')
-    g.add_level('3p6.4p 2P*1/2', detail='zeeman', color='#b3541e')
+    g.add_level('3p6.4s 2S1/2', detail='zeeman', z_labels=True)
+    g.add_level('3p6.4p 2P*1/2', detail='zeeman', z_labels=True, color='#b3541e')
     return g
 
 

@@ -7,7 +7,7 @@ lets ``Grotrian.render()`` be pure and repeatable.
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from typing import Callable, Optional, Tuple
+from typing import Callable, Optional, Tuple, Union
 
 from ... import util
 
@@ -33,7 +33,11 @@ class LevelStyle:
     show_parent: bool = False            #: also draw a faint line at the manifold centroid
     bracket: bool = True                 #: bracket grouping the hyperfine sublevels
     hf_labels: bool = True               #: label each sublevel with its F value
-    z_labels: bool = True                #: label m_F sublevels, subject to there being room
+    z_labels: bool = False               #: label m_F. Off by default: m_F sublevels are
+                                         #: evenly spaced and most readers just count
+                                         #: along. When on, one shared row of labels is
+                                         #: drawn for the whole manifold, since every F
+                                         #: row is vertically aligned in m_F anyway.
 
     # Per-manifold scale overrides. None means "inherit the diagram-wide scale", which is
     # the default and what keeps manifolds comparable. Override one when you need its
@@ -160,7 +164,10 @@ class Theme:
     margin_right: float = 26.0
     plot_height: float = 620.0
 
-    show_axis: bool = True
+    show_axis: Union[bool, str] = 'auto'  #: 'auto' hides the energy axis whenever
+                                          #: substructure is exaggerated -- ticks imply
+                                          #: you can read a value off the page, and
+                                          #: within a magnified manifold you cannot
     show_grid: bool = False
     show_headers: bool = True
 

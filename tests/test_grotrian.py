@@ -1124,9 +1124,10 @@ class TestBrokenScale:
 
 class TestZeemanLabels:
 
-    def _labels(self, atom, level, **kwargs):
-        g = Grotrian(atom, B=2.0, z_scale='auto', **kwargs)
-        g.add_level(level, detail='zeeman')
+    def _labels(self, atom, level, theme=None, **style):
+        """theme goes to the Grotrian; everything else is per-level style."""
+        g = Grotrian(atom, B=2.0, z_scale='auto', **({'theme': theme} if theme else {}))
+        g.add_level(level, detail='zeeman', **style)
         scene = g.build()
         return [''.join(run[0] for run in label.runs) for label in scene.labels]
 
@@ -1135,23 +1136,32 @@ class TestZeemanLabels:
         texts = self._labels(hf_atom, hf_atom.levels['1s2.2s 2S1/2'])
         assert any(t.startswith('F') for t in texts)
 
-    def test_wide_columns_label_each_sublevel(self, hf_atom):
+    def test_mF_labels_are_off_by_default(self, hf_atom):
+        """m_F sublevels are evenly spaced; most readers just count along."""
         texts = self._labels(hf_atom, hf_atom.levels['1s2.2s 2S1/2'],
                              theme=Theme(column_width=400.0))
+        assert not any(t.lstrip('-').replace('/', '').isdigit() for t in texts)
+
+    def test_wide_columns_label_each_slot_once(self, hf_atom):
+        """One shared row of m_F labels serves the manifold: F rows share m_F columns."""
+        texts = self._labels(hf_atom, hf_atom.levels['1s2.2s 2S1/2'], z_labels=True,
+                             theme=Theme(column_width=400.0))
         assert '-1' in texts and '1' in texts
+        assert texts.count('0') == 1        # not repeated per F row
 
     def test_narrow_columns_summarise_instead(self, hf_atom):
         """Never print illegible overlapping numbers; say the range once."""
-        texts = self._labels(hf_atom, hf_atom.levels['1s2.2s 2S1/2'],
+        texts = self._labels(hf_atom, hf_atom.levels['1s2.2s 2S1/2'], z_labels=True,
                              theme=Theme(column_width=40.0))
         assert any('..' in t for t in texts)
         assert '-1' not in texts
 
-    def test_labels_can_be_switched_off(self, hf_atom):
+    def test_row_labels_can_be_switched_off(self, hf_atom):
         g = Grotrian(hf_atom, B=2.0)
-        g.add_level(hf_atom.levels['1s2.2s 2S1/2'], detail='zeeman', z_labels=False)
+        g.add_level(hf_atom.levels['1s2.2s 2S1/2'], detail='zeeman',
+                    hf_labels=False, z_labels=False)
         texts = [''.join(r[0] for r in l.runs) for l in g.build().labels]
-        # the manifold's term symbol stays; only the F / m_F labels go
+        # the manifold's term symbol stays; the F and m_F labels go
         assert not any(t.startswith('F') or t.lstrip('-').isdigit() for t in texts)
 
     def test_labels_use_fractions_not_decimals(self):
@@ -1160,13 +1170,13 @@ class TestZeemanLabels:
         a = Atom(name='half', I=0.0)
         a.add_level(EnergyLevel(Term('1s2.2s', '2S', 0.5), level=0.0 * Hz, hfA=1 * GHz))
         g = Grotrian(a, B=2.0, theme=Theme(column_width=400.0))
-        g.add_level(a.levels['1s2.2s 2S1/2'], detail='zeeman')
+        g.add_level(a.levels['1s2.2s 2S1/2'], detail='zeeman', z_labels=True)
         texts = [''.join(r[0] for r in l.runs) for l in g.build().labels]
         assert '1/2' in texts and '-1/2' in texts
         assert '0.5' not in texts
 
     def test_no_negative_zero(self, hf_atom):
-        texts = self._labels(hf_atom, hf_atom.levels['1s2.2s 2S1/2'],
+        texts = self._labels(hf_atom, hf_atom.levels['1s2.2s 2S1/2'], z_labels=True,
                              theme=Theme(column_width=400.0))
         assert '-0' not in texts
 
@@ -1222,3 +1232,32 @@ class TestOverlapWarning:
             scene = self._grotrian(hf_atom, plot_height=40.0, hf_band=200.0).build()
         anchor = scene.anchors[hf_atom.levels['1s2.2p 2P*1/2']]
         assert anchor.y1 - anchor.y0 == pytest.approx(200.0, rel=1e-3)
+
+
+class TestAxisAutoHide:
+    """An energy axis invites reading values off the page. Inside a magnified manifold
+    that reading is wrong, so 'auto' drops the axis once substructure is drawn."""
+
+    def test_axis_shown_without_substructure(self, toy_atom):
+        g = Grotrian(toy_atom).add_levels(toy_atom.levels.values())
+        assert g.build().ticks
+
+    def test_axis_hidden_with_hyperfine(self, hf_atom):
+        g = Grotrian(hf_atom)
+        g.add_level(hf_atom.levels['1s2.2s 2S1/2'], detail='hyperfine')
+        assert g.build().ticks == []
+
+    def test_axis_hidden_with_zeeman(self, hf_atom):
+        g = Grotrian(hf_atom, B=1.0)
+        g.add_level(hf_atom.levels['1s2.2s 2S1/2'], detail='zeeman')
+        assert g.build().ticks == []
+
+    def test_axis_can_be_forced_on(self, hf_atom):
+        g = Grotrian(hf_atom, theme=Theme(show_axis=True))
+        g.add_level(hf_atom.levels['1s2.2s 2S1/2'], detail='hyperfine')
+        assert g.build().ticks
+
+    def test_axis_can_be_forced_off(self, toy_atom):
+        g = Grotrian(toy_atom, theme=Theme(show_axis=False))
+        g.add_levels(toy_atom.levels.values())
+        assert g.build().ticks == []

@@ -10,9 +10,13 @@ originally scoped (label relaxation, compressed axis, theming, `auto()`) had alr
 pulled forward into phase 1. Notes:
 
 - **Level-of-detail labelling.** Zeeman fans previously carried no labels at all. They now
-  get `F` labels per row and `m_F` labels per sublevel, but only when the slot pitch can
-  hold them; below that the row is summarised once as `F=2, m=-2..2`. The default must
-  never be illegible.
+  get `F` labels per row. `m_F` labels are **off by default** -- the sublevels are evenly
+  spaced and readers count along -- and when switched on, only **one shared row** is drawn
+  per manifold, because every F row occupies the same `m_F` columns. Below the minimum
+  pitch the row is summarised once as `F=2, m=-2..2`; the default must never be illegible.
+- **The energy axis auto-hides once substructure is exaggerated.** An axis invites reading
+  values off the page, and inside a magnified manifold that reading is wrong, so it is
+  actively confusing. The hyperfine scale bar carries the scale instead.
 - **`BrokenScale`**, promised in §4.1 and not previously built. Retained regions stay
   exactly linear and the nominated stretches collapse to a thin marked gap. Its
   `spanning()` helper requires a gap to be *anomalous* against the median spacing, not

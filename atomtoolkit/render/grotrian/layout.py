@@ -496,12 +496,19 @@ def layout(specs: Sequence[LevelSpec],
     plot_bottom = band_bottom_limit + over_down
     height = plot_bottom + theme.margin_bottom + bar_strip
 
+    # An energy axis invites the reader to read values off it. Once substructure is drawn
+    # magnified, vertical distance inside a manifold no longer means what the axis says,
+    # so 'auto' drops the axis and leaves the hyperfine scale bar to carry the scale.
+    show_axis = theme.show_axis
+    if show_axis == 'auto':
+        show_axis = not any_hf
+
     scene = Scene(width=width, height=height, theme=theme,
                   axis_label=scale.axis_label, title=title,
                   plot_top=plot_top, plot_bottom=plot_bottom,
                   axis_x=plot_left - 10.0)
 
-    if theme.show_axis:
+    if show_axis:
         for frac, text in scale.ticks():
             scene.ticks.append(AxisTick(y=band_bottom_limit - frac * usable_height,
                                         label=text))
@@ -859,10 +866,11 @@ def _draw_zeeman(scene: Scene, spec: LevelSpec, cx: float, y_parent: float,
     # Level of detail: individual m_F labels only when the slots are wide enough to hold
     # them. Otherwise the row is summarised once, which is far better than printing
     # illegible overlapping text -- the default must never be unreadable.
-    label_each = style.z_labels and pitch >= theme.min_label_pitch
+    label_mF = style.z_labels and pitch >= theme.min_label_pitch
 
     ys = []
     rows: Dict[object, List[float]] = {}
+    slots: Dict[float, float] = {}
     for hf, z in zlevels:
         # split the offset so hyperfine and Zeeman can carry different magnifications
         hf_shift = hf.shift_Hz
@@ -877,15 +885,23 @@ def _draw_zeeman(scene: Scene, spec: LevelSpec, cx: float, y_parent: float,
         ys.append(y)
         rows.setdefault(hf, []).append(y)
 
-        if label_each and z.term.mF is not None:
-            scene.labels.append(Label(
-                x=x_mid, y=y + theme.z_label_size + theme.z_label_gap,
-                runs=((util.float_to_frac(z.term.mF + 0.0), 'normal'),),
-                color=color, size=theme.z_label_size, anchor='middle'))
+        if z.term.mF is not None:
+            slots[z.term.mF] = x_mid
 
-    if style.z_labels:
+    if label_mF and slots:
+        # One shared row of m_F labels for the whole manifold: every F row occupies the
+        # same m_F columns, so repeating the numbers per row is pure noise -- especially
+        # once the Zeeman structure is dense.
+        base = max(ys) + theme.z_label_size + theme.z_label_gap
+        for mF, x_mid in sorted(slots.items()):
+            scene.labels.append(Label(
+                x=x_mid, y=base, runs=((util.float_to_frac(mF + 0.0), 'normal'),),
+                color=color, size=theme.z_label_size, anchor='middle'))
+        ys.append(base)
+
+    if style.hf_labels:
         _label_zeeman_rows(scene, rows, cx + theme.column_width / 2, theme, color,
-                           summarise=not label_each)
+                           summarise=style.z_labels and not label_mF)
     return min(ys), max(ys)
 
 
