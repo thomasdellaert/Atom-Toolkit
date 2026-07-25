@@ -11,7 +11,21 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 import pint
-from tqdm import tqdm
+from tqdm.auto import tqdm as _tqdm
+
+
+def tqdm(*args, **kwargs):
+    """Progress bar that stays quiet unless someone is watching a terminal.
+
+    ``disable=None`` is tqdm's "disable when stderr is not a TTY" mode. Without it,
+    building a single atom writes thousands of carriage-return updates, and any consumer
+    that records streams rather than rendering them -- a notebook, a log file, CI --
+    receives them as thousands of separate output records. Building one atom in a
+    notebook produced over 4500. ``tqdm.auto`` additionally uses the ipywidgets bar when
+    it is available.
+    """
+    kwargs.setdefault('disable', None)
+    return _tqdm(*args, **kwargs)
 
 from . import Q_, ureg, util, Hz, G, mu_B, mu_N
 from .atom_helpers import LevelStructure, TransitionStructure

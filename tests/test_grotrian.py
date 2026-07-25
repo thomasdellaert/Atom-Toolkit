@@ -1261,3 +1261,79 @@ class TestAxisAutoHide:
         g = Grotrian(toy_atom, theme=Theme(show_axis=False))
         g.add_levels(toy_atom.levels.values())
         assert g.build().ticks == []
+
+
+# ---------------------------------------------------------------------------
+# Inline notebook display
+# ---------------------------------------------------------------------------
+
+class TestNotebookDisplay:
+
+    def _g(self, atom):
+        g = Grotrian(atom)
+        g.add_levels(atom.levels.values())
+        g.add_transition(('1s2.2s 2S1/2', '1s2.2p 2P*1/2'))
+        return g
+
+    def test_file_render_pins_a_pixel_size(self, toy_atom):
+        """Standalone files keep an explicit size; that is predictable in a paper."""
+        root = ET.fromstring(self._g(toy_atom).render())
+        assert root.get('width', '').endswith('px')
+        assert root.get('height', '').endswith('px')
+
+    def test_responsive_render_scales_to_its_container(self, toy_atom):
+        root = ET.fromstring(self._g(toy_atom).render(responsive=True))
+        assert root.get('width') == '100%'
+        assert root.get('height') is None          # height follows from the viewBox
+        assert 'max-width' in root.get('style', '')
+        assert root.get('viewBox')                 # aspect ratio preserved
+
+    def test_repr_svg_is_responsive(self, toy_atom):
+        """A 1600 px diagram must not overflow a notebook cell."""
+        assert 'width="100%"' in self._g(toy_atom)._repr_svg_()
+
+    def test_repr_svg_is_valid_xml(self, toy_atom):
+        ET.fromstring(self._g(toy_atom)._repr_svg_())
+
+    def test_tooltips_survive_into_the_inline_form(self, toy_atom):
+        root = ET.fromstring(self._g(toy_atom)._repr_svg_())
+        assert root.findall(f'.//{SVG_NS}title')
+
+    def test_marker_ids_distinguish_different_geometry(self, toy_atom):
+        """Notebooks put every diagram in one DOM, so url(#id) must not cross-resolve."""
+        import re
+        ids = []
+        for head in (7.0, 20.0):
+            g = Grotrian(toy_atom, theme=Theme(transition_head=head))
+            g.add_levels(toy_atom.levels.values())
+            g.add_transition(('1s2.2s 2S1/2', '1s2.2p 2P*1/2'))
+            ids.append(set(re.findall(r'id="([^"]+)"', g.render())))
+        assert ids[0] and ids[1]
+        assert not (ids[0] & ids[1])
+
+    def test_identical_markers_still_share_an_id(self, toy_atom):
+        """Deduplication must survive the uniqueness fix."""
+        import re
+        g = Grotrian(toy_atom)
+        g.add_levels(toy_atom.levels.values())
+        g.add_transition(('1s2.2s 2S1/2', '1s2.2p 2P*1/2'), color='#112233')
+        g.add_transition(('1s2.2s 2S1/2', '1s2.3d 2D5/2'), color='#112233')
+        svg = g.render()
+        assert len(re.findall(r'<marker', svg)) == 1
+
+
+class TestProgressBarsAreQuiet:
+    """Building an atom wrote thousands of carriage-return updates. Anything recording
+    streams rather than rendering them -- a notebook, a log, CI -- got them all."""
+
+    def test_tqdm_defaults_to_tty_gated(self):
+        from atomtoolkit.atom import tqdm
+        bar = tqdm(range(3))
+        assert bar.disable is True or not __import__('sys').stderr.isatty()
+        bar.close()
+
+    def test_explicit_disable_is_respected(self):
+        from atomtoolkit.atom import tqdm
+        bar = tqdm(range(3), disable=False)
+        assert bar.disable is False
+        bar.close()

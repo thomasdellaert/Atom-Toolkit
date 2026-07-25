@@ -87,6 +87,8 @@ By default `ZLevel.level_hz_at(B)` uses the linear form `gF·mF·μB·B`. For fi
   - `scale.py` — `LinearScale` (default, literal), `CompressedScale` (space by level density; smooth), and `BrokenScale` (retained regions stay *exactly* linear, nominated stretches collapse to a marked gap). `BrokenScale.spanning()` only breaks a gap that is anomalous against the median spacing — with N evenly spaced levels every gap is 1/(N−1) of the range, so a fraction test alone fires on even data.
   - `layout.py` — pure functions producing a `Scene` of positioned primitives. `resolve_overlaps()` de-overlaps labels via PAVA isotonic regression (optimal minimum-displacement, unlike a greedy sweep). `Scene.anchors` maps each level to its *drawn* box — transitions must resolve against those, never raw energies.
   - `svg.py` — `Scene → str` via `svgwrite`. Deliberately dumb so golden-file tests mean something.
+  - **Notebook display**: `_repr_svg_` renders *responsively* (`width="100%"` + `max-width`, no fixed height) so a wide diagram scales to the cell instead of overflowing; `render()`/`save()` keep an explicit pixel size, which is more predictable in a paper. SVG `<title>` tooltips work inline.
+  - Anything emitting an SVG `id` must keep it unique **across diagrams**, since a notebook puts them all in one DOM and `url(#id)` cross-resolves. Marker ids encode everything that changes the marker's appearance (colour, width, head size) — identical markers still share an id, which is the intended deduplication.
   - `Grotrian.render()` is **pure and idempotent** (the matplotlib version doubled its state on every call). `Grotrian.auto(atom)` is the zero-config entry point and the honest test of the defaults.
   - Labels never need real font metrics because `Theme.label_gutter` reserves fixed space per column — see `docs/grotrian-svg-plan.md` §7.
   - **Substructure** (`detail='hyperfine'` / `'zeeman'`) is drawn in place on **one global magnification** shared by the whole diagram. Never size it from the smallest gap: ¹³⁷Ba⁺ 5d ²D₅/₂ has F=4/F=3 just 0.496 MHz apart inside a 135 MHz span, so that rule demands a band thousands of px tall. A shared scale also keeps splittings comparable between manifolds, which is what a reader reads off the figure.
@@ -139,6 +141,9 @@ Note: `tests/test_atoms.py` exercises the deprecated pickle path by writing `dum
 - `analysis/` — gitignored one-off research notebooks and scripts (`hf_fit.py`, `zeeman_demo_173Yb.ipynb`, `critical_field_calc.ipynb`, …). Kept separate from `scratch/` because it's real work, just not library content.
 - Tracked notebooks at the repo root (`grotrians.ipynb`, `spectra.ipynb`, `testing.ipynb`, `transforms_tutorial.ipynb`) are demo/documentation material — leave them tracked.
 - `species/*.json` snapshots are gitignored (14 MB, fully derived). Regenerate them by running the species `.py` file, never by editing the JSON by hand.
+
+### Progress bars
+`atomtoolkit.atom.tqdm` wraps `tqdm.auto` with `disable=None`, tqdm's "quiet unless stderr is a TTY" mode. Terminal users still get bars; notebooks, logs and CI get silence. Without it, building one atom emitted ~4500 carriage-return updates, which a notebook records as ~4500 separate output records. Use this wrapper rather than importing `tqdm` directly.
 
 ### Unit conventions
 All *public* quantities use `pint` with the shared registry, and the spectroscopy context is always active, so `.to('Hz')` and `.to('cm**-1')` conversions work throughout.

@@ -75,11 +75,16 @@ def _wavy_points(arrow: Arrow, amplitude: float, period: float,
     return points
 
 
-def render_svg(scene: Scene, precision: int = 2) -> str:
+def render_svg(scene: Scene, precision: int = 2, responsive: bool = False) -> str:
     """Render a scene to an SVG document string.
 
     :param scene: the positioned diagram
     :param precision: decimal places for coordinates
+    :param responsive: scale to the width of the container instead of pinning a pixel
+        size. Used for inline notebook display, where a 1600 px diagram would otherwise
+        overflow the cell; the ``viewBox`` preserves the aspect ratio and ``max-width``
+        stops it enlarging past its natural size. Files keep an explicit size, which is
+        more predictable when the SVG is dropped into a paper.
     :return: a complete standalone ``<svg>`` document
     """
     theme = scene.theme
@@ -87,6 +92,11 @@ def render_svg(scene: Scene, precision: int = 2) -> str:
                            viewBox=f'0 0 {scene.width:.0f} {scene.height:.0f}',
                            profile='full')
     dwg.attribs['font-family'] = theme.font_family
+    if responsive:
+        dwg.attribs['width'] = '100%'
+        dwg.attribs.pop('height', None)
+        dwg.attribs['style'] = f'max-width:{scene.width:.0f}px;height:auto'
+        dwg.attribs['preserveAspectRatio'] = 'xMinYMin meet'
 
     def r(value: float) -> float:
         return round(value, precision)
@@ -201,7 +211,14 @@ def render_svg(scene: Scene, precision: int = 2) -> str:
             # svgwrite hands out incrementing auto-ids, which would make two renders of
             # the same scene differ byte-for-byte. render() is documented as pure, so the
             # id is derived deterministically from what the marker actually looks like.
-            marker_id = f'head-{arrow.color.lstrip("#")}-{round(arrow.width * 100):d}'
+            # The id must cover everything that changes how the marker *looks*. It
+            # previously omitted the head size, so two diagrams whose themes differed only
+            # there produced identical ids for different geometry -- harmless in isolation,
+            # but in a notebook every diagram shares one DOM and the second would resolve
+            # url(#...) to the first one's arrowhead.
+            marker_id = (f'head-{arrow.color.lstrip("#")}'
+                         f'-{round(arrow.width * 100):d}'
+                         f'-{round(theme.transition_head * 10):d}')
             marker = dwg.marker(id=marker_id, insert=(size * 0.9, size / 2),
                                 size=(size, size), orient='auto', markerUnits='userSpaceOnUse')
             marker.add(dwg.path(d=f'M0,0 L{size},{size / 2} L0,{size} z', fill=arrow.color))

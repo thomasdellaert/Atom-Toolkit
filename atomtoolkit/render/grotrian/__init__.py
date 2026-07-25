@@ -205,9 +205,13 @@ class Grotrian:
                       hf_scale=self.hf_scale, b_gauss=self.b_gauss,
                       z_scale=self.z_scale)
 
-    def render(self) -> str:
-        """Render to an SVG document string. Pure -- safe to call repeatedly."""
-        return render_svg(self.build())
+    def render(self, responsive: bool = False) -> str:
+        """Render to an SVG document string. Pure -- safe to call repeatedly.
+
+        :param responsive: scale to the container width rather than a fixed pixel size.
+            :meth:`_repr_svg_` uses this so wide diagrams fit a notebook cell.
+        """
+        return render_svg(self.build(), responsive=responsive)
 
     def save(self, path: Union[str, pathlib.Path]) -> pathlib.Path:
         """Write the SVG to ``path`` and return it."""
@@ -216,8 +220,13 @@ class Grotrian:
         return path
 
     def _repr_svg_(self) -> str:
-        """Display inline in Jupyter with no boilerplate."""
-        return self.render()
+        """Display inline in Jupyter with no boilerplate.
+
+        Rendered responsively, so a diagram wider than the notebook cell scales down
+        instead of overflowing it. Tooltips (the SVG ``<title>`` on every level and
+        transition) work in the notebook too.
+        """
+        return self.render(responsive=True)
 
     def __repr__(self) -> str:
         return f'<Grotrian: {len(self._specs)} levels, columns={self.columns.by!r}>'
