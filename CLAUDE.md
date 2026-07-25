@@ -98,7 +98,11 @@ Conventions that bite when editing these files:
 
 **`Ho_I_165.py` is a deliberate stress test**, not just data: J=15/2 ground state with I=7/2 gives 128 ground-manifold Zeeman sublevels, excited configurations are JK/JJ-coupled, and `hfB` (−1668 MHz) is larger than `hfA` (+801 MHz), so the quadrupole term is not a perturbation. Use it when changing `term.py`, `compute_gJ`, or the hyperfine code.
 
-Species integration tests are in `tests/test_species.py`, marked `@pytest.mark.slow`.
+**Registry** (`species/__init__.py`): `species.available_species()` lists all 49 display names by reading one `NAME =` line per file — it deliberately imports nothing, since importing a species module builds its atom. `species.load_species('Yb II 171')` resolves forgiving name forms (`'171Yb II'`, `'Yb_II_171'`, `'yb ii 171'`), prefers a `.json` snapshot when it is newer than its `.py`, falls back to building from CSV, and caches the result. Atoms are shared, so `copy=True` is needed before mutating. `species.build_snapshots()` regenerates snapshots.
+
+**Packaging gap:** `setup.py` packages only `['atomtoolkit', 'atomtoolkit.render']`, so neither `species/` nor `resources/` is installed — the PyPI wheel has no species library, and species modules resolve data via `Path(__file__).parents[1] / 'resources'`, which only exists in a checkout. Options are written up in `docs/packaging-proposal.md`. Note that PEP 420 namespace packages *cannot* solve this: `atomtoolkit` is a regular package with an essential `__init__.py`, and a regular package cannot be extended by a separate distribution (verified empirically).
+
+Species integration tests are in `tests/test_species.py`, marked `@pytest.mark.slow`; registry tests are in `tests/test_species_registry.py` (fast, apart from a slow-marked loading class).
 
 ### Tests (`tests/`)
 `test_atoms.py` (levels, transitions, serialisation, lab-quantity helpers, stub behaviour), `test_zeeman.py` (diagonalisation, Breit-Rabi cross-checks, spline LUT, sensitivity), `test_term.py`, `test_util.py`, `test_transition_strengths.py`, `test_environment.py`, `test_dynamics.py` (qutip-gated), `test_species.py` (slow). The `slow` marker is registered in `tests/conftest.py`, not in a pytest config file.

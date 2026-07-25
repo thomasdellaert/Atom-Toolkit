@@ -106,17 +106,42 @@ All quantities use a shared [pint](https://pint.readthedocs.io/) unit registry w
 ## Species files
 
 The `species/` directory contains ready-to-use atoms with hyperfine coefficients, nuclear
-g-factors, and corrected transitions already applied. Each module exposes its `Atom` under a
-short name:
+g-factors, and corrected transitions already applied. The registry is the easiest way in —
+no module names or file paths required:
+
+```python
+import species
+
+species.available_species()             # -> ['133Ba II', '112Cd I', '133Cs I', ...]
+yb = species.load_species('Yb II 171')  # -> Atom
+sr = species.load_species('87Sr I')
+```
+
+Name matching is forgiving: `'Yb II 171'`, `'171Yb II'`, `'Yb_II_171'` and `'yb ii 171'` all
+resolve to the same species, and an unknown name raises a `KeyError` suggesting the closest
+matches. Listing is instant — it reads one line from each file and imports nothing.
+
+You can still import a module directly if you prefer; each exposes its `Atom` under a short
+name:
 
 ```python
 from species import Yb_II_171, Ca_II_43
-a = Yb_II_171.Yb171       # pre-built Atom object
+a = Yb_II_171.Yb171
 b = Ca_II_43.Ca43
 ```
 
 Energy levels come from NIST ASD CSVs cached in `resources/`, so building a species never
-touches the network. Run a species file as `__main__` to regenerate its `.json` snapshot.
+touches the network.
+
+`load_species()` prefers a prebuilt `.json` snapshot when one exists and is newer than its
+`.py` — that turns a ~40 s Rb build into a ~1 s load — and otherwise builds from the CSV.
+Snapshots are gitignored, so a fresh clone just builds; regenerate them with
+`species.build_snapshots()` or by running a species file as `__main__`. Loaded atoms are
+cached and shared, so pass `copy=True` if you intend to mutate one.
+
+> **Note:** the species library ships with the source repository but **not** with the PyPI
+> wheel — `setup.py` packages only `atomtoolkit` and `atomtoolkit.render`. See
+> [docs/packaging-proposal.md](docs/packaging-proposal.md) for the options to fix that.
 
 ### Bundled species
 
