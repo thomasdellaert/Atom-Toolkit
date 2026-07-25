@@ -895,3 +895,154 @@ class TestTransitions:
         root = ET.fromstring(g.render())
         paths = [p.get('d') for p in root.findall(f'.//{SVG_NS}path') if p.get('d')]
         assert any(path.count('L') > 10 for path in paths)
+
+
+# ---------------------------------------------------------------------------
+# Pluggable spectral colour models
+# ---------------------------------------------------------------------------
+
+class TestSpectralModels:
+
+    def test_registry_models_all_work(self):
+        from atomtoolkit.render.grotrian.color import SPECTRA
+        for name, model in SPECTRA.items():
+            assert model(500).startswith('#') and len(model(500)) == 7, name
+
+    def test_get_spectrum_accepts_name_map_and_callable(self):
+        from atomtoolkit.render.grotrian.color import (BrutonSpectrum, SPECTRA,
+                                                       get_spectrum)
+        assert get_spectrum('rainbow') is SPECTRA['rainbow']
+        model = BrutonSpectrum()
+        assert get_spectrum(model) is model
+        assert get_spectrum(lambda nm: '#abcdef')(500) == '#abcdef'
+        assert get_spectrum(None)(500).startswith('#')
+
+    def test_unknown_name_lists_the_options(self):
+        from atomtoolkit.render.grotrian.color import get_spectrum
+        with pytest.raises(ValueError, match='rainbow'):
+            get_spectrum('not-a-model')
+
+    def test_bad_type_is_rejected(self):
+        from atomtoolkit.render.grotrian.color import get_spectrum
+        with pytest.raises(TypeError):
+            get_spectrum(42)
+
+    def test_interpolation_hits_its_control_points(self):
+        from atomtoolkit.render.grotrian.color import InterpolatedSpectrum
+        model = InterpolatedSpectrum([400, 600], [0, 255], [255, 0], [0, 0])
+        assert model(400) == '#00ff00'
+        assert model(600) == '#ff0000'
+        assert model(500) == '#808000'          # halfway; blue is 0 at both ends
+
+    def test_interpolation_clamps_outside_its_range(self):
+        from atomtoolkit.render.grotrian.color import InterpolatedSpectrum
+        model = InterpolatedSpectrum([400, 600], [0, 255], [255, 0], [0, 0])
+        assert model(100) == model(400)
+        assert model(9000) == model(600)
+
+    def test_saturation_option(self):
+        from atomtoolkit.render.grotrian.color import InterpolatedSpectrum
+        muted = InterpolatedSpectrum([400, 600], [120, 120], [60, 60], [60, 60])
+        vivid = InterpolatedSpectrum([400, 600], [120, 120], [60, 60], [60, 60],
+                                     saturate=True)
+        assert vivid(500) != muted(500)
+        h = vivid(500)
+        r, g, b = int(h[1:3], 16), int(h[3:5], 16), int(h[5:7], 16)
+        assert min(r, g, b) == 0                # fully saturated
+
+    def test_malformed_control_points_are_rejected(self):
+        from atomtoolkit.render.grotrian.color import InterpolatedSpectrum
+        with pytest.raises(ValueError, match='same length'):
+            InterpolatedSpectrum([400, 600], [0], [0, 0], [0, 0])
+        with pytest.raises(ValueError, match='two control points'):
+            InterpolatedSpectrum([400], [0], [0], [0])
+        with pytest.raises(ValueError, match='ascending'):
+            InterpolatedSpectrum([600, 400], [0, 0], [0, 0], [0, 0])
+
+    def test_models_disagree_as_expected(self):
+        """The whole reason this is pluggable: the models are genuinely different."""
+        from atomtoolkit.render.grotrian.color import SPECTRA
+        assert SPECTRA['bruton'](493.5) != SPECTRA['rainbow'](493.5)
+
+    def test_spectrum_changes_arrow_colour(self, toy_atom):
+        g1 = Grotrian(toy_atom, spectrum='bruton')
+        g2 = Grotrian(toy_atom, spectrum='rainbow')
+        for g in (g1, g2):
+            g.add_levels(toy_atom.levels.values())
+            g.add_transition(('1s2.2s 2S1/2', '1s2.2p 2P*1/2'))
+        assert g1.build().arrows[0].color != g2.build().arrows[0].color
+
+    def test_bad_spectrum_fails_at_construction(self, toy_atom):
+        with pytest.raises(ValueError):
+            Grotrian(toy_atom, spectrum='nope')
+
+
+# ---------------------------------------------------------------------------
+# Block ("fancy") arrows
+# ---------------------------------------------------------------------------
+
+class TestBlockArrows:
+
+    def _arrow(self, atom, **style):
+        g = Grotrian(atom)
+        g.add_levels(atom.levels.values())
+        g.add_transition(('1s2.2s 2S1/2', '1s2.3d 2D5/2'), block=True, **style)
+        return g.build()
+
+    def test_block_produces_a_polygon(self, toy_atom):
+        arrow = self._arrow(toy_atom).arrows[0]
+        assert arrow.polygon is not None and len(arrow.polygon) == 7
+
+    def test_tail_is_flat(self, toy_atom):
+        """The defining feature: the tail is cut horizontally, flush with the level."""
+        arrow = self._arrow(toy_atom).arrows[0]
+        first, last = arrow.polygon[0], arrow.polygon[-1]
+        assert first[1] == pytest.approx(last[1])
+        assert first[1] == pytest.approx(arrow.y0)
+
+    def test_shaft_is_as_wide_as_the_source_level(self, toy_atom):
+        scene = self._arrow(toy_atom)
+        arrow = scene.arrows[0]
+        source = scene.anchors[toy_atom.levels['1s2.2s 2S1/2']]
+        width = abs(arrow.polygon[-1][0] - arrow.polygon[0][0])
+        assert width == pytest.approx(source.x1 - source.x0)
+
+    def test_explicit_width_overrides(self, toy_atom):
+        arrow = self._arrow(toy_atom, block_width=40.0).arrows[0]
+        assert abs(arrow.polygon[-1][0] - arrow.polygon[0][0]) == pytest.approx(40.0)
+
+    def test_tip_is_the_endpoint(self, toy_atom):
+        arrow = self._arrow(toy_atom).arrows[0]
+        assert arrow.polygon[3] == pytest.approx((arrow.x1, arrow.y1))
+
+    def test_head_is_wider_than_the_shaft(self, toy_atom):
+        arrow = self._arrow(toy_atom).arrows[0]
+        shoulder_span = abs(arrow.polygon[1][0] - arrow.polygon[5][0])
+        flare_span = abs(arrow.polygon[2][0] - arrow.polygon[4][0])
+        assert flare_span > shoulder_span
+
+    def test_head_scales_with_width_not_length(self, toy_atom):
+        """A fraction-of-length head becomes an enormous wedge on a long diagonal."""
+        narrow = self._arrow(toy_atom, block_width=20.0).arrows[0]
+        wide = self._arrow(toy_atom, block_width=60.0).arrows[0]
+        def head_len(a):
+            import math
+            return math.hypot(a.polygon[3][0] - a.polygon[1][0],
+                              a.polygon[3][1] - a.polygon[1][1])
+        assert head_len(wide) > head_len(narrow)
+
+    def test_block_arrows_are_translucent_by_default(self, toy_atom):
+        assert self._arrow(toy_atom).arrows[0].opacity < 1.0
+
+    def test_svg_emits_a_polygon(self, toy_atom):
+        g = Grotrian(toy_atom)
+        g.add_levels(toy_atom.levels.values())
+        g.add_transition(('1s2.2s 2S1/2', '1s2.3d 2D5/2'), block=True)
+        root = ET.fromstring(g.render())
+        assert root.findall(f'.//{SVG_NS}polygon')
+
+    def test_non_block_arrows_have_no_polygon(self, toy_atom):
+        g = Grotrian(toy_atom)
+        g.add_levels(toy_atom.levels.values())
+        g.add_transition(('1s2.2s 2S1/2', '1s2.3d 2D5/2'))
+        assert g.build().arrows[0].polygon is None

@@ -201,6 +201,41 @@ def barium_hyperfine_transitions() -> Grotrian:
     return g
 
 
+def ytterbium_fancy() -> Grotrian:
+    """¹⁷¹Yb⁺ drawn in the style of a paper figure.
+
+    A block arrow for the driven 411 nm quadrupole line -- as wide as the level it rises
+    from, with a flat tail sitting on that level -- and wavy decays labelled with their
+    branching ratios. Colours come from the hand-tuned ``rainbow`` model rather than the
+    spectral fit, so they match what these lasers actually look like.
+    """
+    yb = atomtoolkit.load_species('171Yb II')
+    g = Grotrian(yb, title='¹⁷¹Yb⁺  ·  block arrows, rainbow spectrum',
+                 spectrum='rainbow', scale=CompressedScale(strength=0.62),
+                 theme=Theme(column_width=150.0))
+    for name in ('4f14.6s 2S1/2', '4f14.5d 2D3/2', '4f14.5d 2D5/2',
+                 '4f13.(2F*).6s2 2F*7/2'):
+        g.add_level(name, detail='hyperfine')
+    g.add_transition(('4f14.6s 2S1/2', '4f14.5d 2D5/2'), block=True, label='wavelength')
+    g.add_transition(('4f14.5d 2D5/2', '4f14.5d 2D3/2'), wavy=True, label='0.0002')
+    g.add_transition(('4f14.5d 2D5/2', '4f13.(2F*).6s2 2F*7/2'), wavy=True, label='0.82')
+    g.add_transition(('4f14.6s 2S1/2', '4f14.5d 2D3/2'), wavy=True, label='435.5 nm')
+    return g
+
+
+def spectrum_comparison() -> Grotrian:
+    """The same lines under the two colour models, for comparing them side by side."""
+    ba = atomtoolkit.load_species('137Ba II')
+    g = Grotrian(ba, title='¹³⁷Ba⁺  ·  rainbow-saturated spectrum',
+                 spectrum='rainbow-saturated', scale=CompressedScale())
+    for name in ('6s 2S1/2', '5d 2D3/2', '5d 2D5/2', '6p 2P*1/2', '6p 2P*3/2'):
+        g.add_level(name, color='#3a3a3a')
+    g.add_transition(('6s 2S1/2', '6p 2P*1/2'), block=True, label='wavelength')
+    g.add_transition(('6p 2P*1/2', '5d 2D3/2'), wavy=True, label='wavelength')
+    g.add_transition(('6s 2S1/2', '5d 2D5/2'), route='arc', label='wavelength')
+    return g
+
+
 GALLERY = {
     'yb171_flagship': flagship,
     'ca43_linear': calcium,
@@ -213,6 +248,8 @@ GALLERY = {
     'yb171_zeeman': ytterbium_zeeman,
     'yb171_scheme': ytterbium_scheme,
     'ba137_transitions': barium_hyperfine_transitions,
+    'yb171_fancy': ytterbium_fancy,
+    'ba137_spectrum': spectrum_comparison,
 }
 
 

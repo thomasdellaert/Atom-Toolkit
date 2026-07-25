@@ -175,7 +175,7 @@ def render_svg(scene: Scene, precision: int = 2) -> str:
     if scene.arrows:
         markers = {}
         for arrow in scene.arrows:
-            if arrow.head == 'none':
+            if arrow.head == 'none' or arrow.polygon is not None:
                 continue
             key = (arrow.color, round(arrow.width, 2))
             if key in markers:
@@ -191,7 +191,21 @@ def render_svg(scene: Scene, precision: int = 2) -> str:
             dwg.defs.add(marker)
             markers[key] = marker
 
+        # block arrows go down first: a thin stroked arrow is often drawn on top of one
         for arrow in scene.arrows:
+            if arrow.polygon is None:
+                continue
+            points = [(r(x), r(y)) for x, y in arrow.polygon]
+            element = dwg.polygon(points=points, fill=arrow.color, stroke='none')
+            if arrow.opacity != 1.0:
+                element.update({'fill-opacity': f'{arrow.opacity:.3f}'})
+            if arrow.title:
+                element.set_desc(title=arrow.title)
+            dwg.add(element)
+
+        for arrow in scene.arrows:
+            if arrow.polygon is not None:
+                continue
             key = (arrow.color, round(arrow.width, 2))
             head_gap = theme.transition_head * 0.9 if arrow.head != 'none' else 0.0
             if arrow.wavy:

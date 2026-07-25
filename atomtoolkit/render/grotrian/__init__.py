@@ -33,17 +33,20 @@ axis. Hyperfine/Zeeman insets and transitions are phases 2 and 3.
 from __future__ import annotations
 
 import pathlib
+from dataclasses import replace
 from typing import Callable, Iterable, List, Optional, Sequence, Union
 
 from .layout import Anchor, Scene, layout, resolve_overlaps
 from .scale import CompressedScale, EnergyScale, LinearScale
-from .color import is_visible, wavelength_to_hex
+from .color import (SPECTRA, BrutonSpectrum, InterpolatedSpectrum, SpectralMap,
+                    get_spectrum, is_visible, wavelength_to_hex)
 from .spec import (DARK, LIGHT, ColumnPolicy, LevelSpec, LevelStyle, Theme,
                    TransitionSpec, TransitionStyle)
 from .svg import render_svg
 
 __all__ = ['Grotrian', 'Theme', 'LevelStyle', 'TransitionStyle', 'ColumnPolicy',
-           'wavelength_to_hex', 'is_visible',
+           'wavelength_to_hex', 'is_visible', 'get_spectrum', 'SPECTRA',
+           'SpectralMap', 'BrutonSpectrum', 'InterpolatedSpectrum',
            'LinearScale', 'CompressedScale', 'EnergyScale',
            'Scene', 'Anchor', 'layout', 'render_svg', 'resolve_overlaps',
            'LIGHT', 'DARK']
@@ -64,7 +67,8 @@ class Grotrian:
                  title: str = '',
                  hf_scale: Union[str, float] = 'auto',
                  B=None,
-                 z_scale: Union[str, float] = 'match'):
+                 z_scale: Union[str, float] = 'match',
+                 spectrum=None):
         """
         :param atom: the Atom these levels belong to. Optional, but lets
             :meth:`add_levels` accept level *names*.
@@ -73,6 +77,10 @@ class Grotrian:
             :class:`~.spec.ColumnPolicy`, or a callable ``level -> (sort_key, label)``
         :param scale: energy transform; defaults to :class:`~.scale.LinearScale` in cm⁻¹
         :param title: drawn above the diagram
+        :param spectrum: wavelength-to-colour model for transitions -- a name from
+            :data:`~.color.SPECTRA` (``'bruton'``, ``'rainbow'``, ``'rainbow-saturated'``),
+            a :class:`~.color.SpectralMap`, or any callable ``nm -> '#rrggbb'``. Overrides
+            ``theme.spectrum``.
         :param z_scale: ``'match'`` (default) keeps Zeeman on the hyperfine scale;
             ``'auto'`` exaggerates it so the largest Zeeman spread fills ``theme.z_band``.
             Also accepts px/Hz or a splitting ``Quantity``. Exaggeration is usually needed
@@ -91,6 +99,9 @@ class Grotrian:
         self.scale = scale or LinearScale()
         self.hf_scale = hf_scale
         self.z_scale = z_scale
+        if spectrum is not None:
+            get_spectrum(spectrum)          # fail fast on a bad name
+            self.theme = replace(self.theme, spectrum=spectrum)
         # B may be a pint Quantity or a bare number of gauss
         self.b_gauss = 0.0 if B is None else float(getattr(B, 'to', lambda _: B)('gauss').magnitude
                                                    if hasattr(B, 'to') else B)

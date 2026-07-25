@@ -72,6 +72,15 @@ class TransitionStyle:
     label: Optional[str] = None          #: 'wavelength', 'frequency', or literal text
     port: str = 'auto'                   #: 'auto', 'left', 'center' or 'right'
 
+    # --- block ("fancy") arrows ---
+    block: bool = False                  #: wide filled arrow instead of a stroked line
+    block_width: Optional[float] = None  #: default: the width of the source level line
+    block_flare: float = 1.6             #: head width, as a multiple of the shaft width
+    block_head: float = 1.15             #: head length, also as a multiple of the shaft
+                                         #: width -- a fraction of the arrow's *length*
+                                         #: makes a wedge out of any long diagonal
+    block_opacity: float = 0.42          #: block arrows read best translucent
+
 
 @dataclass(frozen=True)
 class TransitionSpec:
@@ -126,6 +135,7 @@ class Theme:
     show_hf_scalebar: bool = True        #: one bar annotating the global hyperfine scale
 
     # --- transitions ---
+    spectrum: str = 'bruton'             #: wavelength -> colour model; see color.SPECTRA
     transition_width: float = 1.9
     transition_head: float = 7.0         #: arrowhead length in px
     transition_label_size: float = 10.5

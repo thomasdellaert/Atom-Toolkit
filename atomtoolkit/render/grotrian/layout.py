@@ -106,6 +106,7 @@ class Arrow:
     color: str
     width: float
     control: Optional[Tuple[float, float]] = None
+    polygon: Optional[Tuple[Tuple[float, float], ...]] = None   #: set for block arrows
     dashed: bool = False
     wavy: bool = False
     head: str = 'end'
@@ -637,7 +638,8 @@ def _place_transitions(scene: Scene, transitions: Sequence['TransitionSpec'],
     arrow into a magnified hyperfine fan has to land on the sublevel line actually drawn,
     which may be far from where its true energy would put it.
     """
-    from .color import is_visible, wavelength_to_hex
+    from .color import get_spectrum, is_visible
+    spectrum = get_spectrum(theme.spectrum)
 
     for spec in transitions:
         lower = _resolve_anchor(scene, spec.lower)
@@ -652,7 +654,7 @@ def _place_transitions(scene: Scene, transitions: Sequence['TransitionSpec'],
         style = spec.style
         nm = transition_wavelength_nm(spec.lower, spec.upper)
         visible = is_visible(nm)
-        color = style.color or wavelength_to_hex(nm)
+        color = style.color or spectrum(nm)
         # 'auto' dashes non-visible lines -- but a wavy line already reads as "different",
         # and dashing a squiggle just looks noisy.
         dashed = ((not visible) and not style.wavy) if style.dash == 'auto' \
@@ -679,10 +681,15 @@ def _place_transitions(scene: Scene, transitions: Sequence['TransitionSpec'],
             control = (mx + nx * style.curvature * chord,
                        my + ny * style.curvature * chord)
 
+        polygon = None
+        if style.block:
+            polygon = _block_polygon(x0, y0, x1, y1, lower, style)
+
         scene.arrows.append(Arrow(
-            x0=x0, y0=y0, x1=x1, y1=y1, control=control,
+            x0=x0, y0=y0, x1=x1, y1=y1, control=control, polygon=polygon,
             color=color, width=style.width or theme.transition_width,
-            dashed=dashed, wavy=style.wavy, head=style.head, opacity=style.opacity,
+            dashed=dashed, wavy=style.wavy, head=style.head,
+            opacity=style.block_opacity if style.block else style.opacity,
             title=f'{_level_name(spec.lower)} -> {_level_name(spec.upper)}   '
                   f'{nm:.2f} nm' if nm != float('inf') else ''))
 
@@ -699,6 +706,50 @@ def _place_transitions(scene: Scene, transitions: Sequence['TransitionSpec'],
                 x=mx + nx * offset, y=my + ny * offset + theme.transition_label_size * 0.35,
                 runs=((text, 'normal'),), color=color,
                 size=theme.transition_label_size))
+
+
+def _block_polygon(x0: float, y0: float, x1: float, y1: float,
+                   source: Anchor, style) -> Tuple[Tuple[float, float], ...]:
+    """Outline of a wide "fancy" arrow rising from a level line.
+
+    Two things make this read correctly, both taken from how these are drawn by hand:
+
+    * the shaft is as wide as the **source level line**, so the arrow visibly grows out of
+      that level rather than being an abstract connector;
+    * the tail is cut **flat** -- horizontally, flush with the level line -- rather than
+      square to the arrow's own axis, so it sits on the level instead of hovering at an
+      angle to it.
+
+    The head, by contrast, is built square to the axis and sized from the shaft width, not
+    from the arrow's length: a fraction-of-length head turns into an enormous wedge on a
+    long diagonal, and flat shoulders shear visibly on a steep one.
+    """
+    width = style.block_width if style.block_width is not None else (source.x1 - source.x0)
+    width = max(width, 4.0)
+
+    dx, dy = x1 - x0, y1 - y0
+    length = math.hypot(dx, dy) or 1.0
+    ux, uy = dx / length, dy / length
+    nx, ny = -uy, ux                      # unit normal
+
+    # Flat (horizontal) tail cut, unless the arrow is so shallow that a horizontal cut
+    # would degenerate, in which case fall back to a square one.
+    if abs(uy) < 0.2:
+        base = [(x0 + nx * width / 2, y0 + ny * width / 2),
+                (x0 - nx * width / 2, y0 - ny * width / 2)]
+    else:
+        base = [(x0 - width / 2, y0), (x0 + width / 2, y0)]
+
+    # perpendicular offsets of the two tail corners, so the shaft sides stay parallel
+    offsets = [(bx - x0) * nx + (by - y0) * ny for bx, by in base]
+
+    head_len = min(max(style.block_head * width, 7.0), 0.45 * length)
+    px, py = x1 - ux * head_len, y1 - uy * head_len
+    shoulder = [(px + nx * o, py + ny * o) for o in offsets]
+    flare = [(px + nx * o * style.block_flare, py + ny * o * style.block_flare)
+             for o in offsets]
+
+    return (base[0], shoulder[0], flare[0], (x1, y1), flare[1], shoulder[1], base[1])
 
 
 def _crowded(scene: Scene, x: float, y_from: float, y_to: float) -> bool:
